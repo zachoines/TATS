@@ -1,0 +1,6 @@
+CMakeCache.txt
+CMakeFiles/*
+cmake_install.cmake
+detect_cuda_compute_capabilities.cpp
+detect_cuda_version.cc
+Makefile

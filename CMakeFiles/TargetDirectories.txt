@@ -1,0 +1,3 @@
+/home/zachoines/Documents/repos/TATS/CMakeFiles/rebuild_cache.dir
+/home/zachoines/Documents/repos/TATS/CMakeFiles/edit_cache.dir
+/home/zachoines/Documents/repos/TATS/CMakeFiles/TATS.dir
