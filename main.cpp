@@ -1,3 +1,8 @@
+// C++ libs
+#include <stdint.h>
+#include <stdio.h>
+#include <unistd.h>
+
 // Pytorch imports
 #include <torch/torch.h>
 #include <stdio.h>
@@ -34,13 +39,18 @@ int main(int argc, char** argv)
 	else {
 		std::cout << "CUDA is not available! Training on CPU." << std::endl;
 	}
+    Wire* wire = new Wire();
+    uint8_t base_address = 0x40;
+    PCA9685 servos(base_address, wire);
 
-    using namespace cv;
-    using namespace cv::ximgproc::segmentation;
-    Ptr<SelectiveSearchSegmentation> ss = createSelectiveSearchSegmentation();
-    torch::Tensor A = torch::ones(1000, cuda);
-    torch::Tensor B = torch::ones(1000, cuda);
-    torch::Tensor C = A + B;
+
+
+    // using namespace cv;
+    // using namespace cv::ximgproc::segmentation;
+    // Ptr<SelectiveSearchSegmentation> ss = createSelectiveSearchSegmentation();
+    // torch::Tensor A = torch::ones(1000, cuda);
+    // torch::Tensor B = torch::ones(1000, cuda);
+    // torch::Tensor C = A + B;
 
 }
 

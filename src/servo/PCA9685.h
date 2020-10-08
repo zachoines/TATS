@@ -52,7 +52,7 @@
  */
 class PCA9685 {
 public:
-  PCA9685(const uint8_t addr, Wire &i2c);
+  PCA9685(uint8_t addr, Wire &i2c);
   void begin(uint8_t prescale = 0);
   void reset();
   void sleep();
@@ -60,7 +60,6 @@ public:
   void setExtClk(uint8_t prescale);
   void setPWMFreq(float freq);
   void setOutputMode(bool totempole);
-  uint8_t getPWM(uint8_t num);
   void setPWM(uint8_t num, uint16_t on, uint16_t off);
   void setPin(uint8_t num, uint16_t val, bool invert = false);
   uint8_t readPrescale(void);

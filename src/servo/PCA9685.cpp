@@ -17,7 +17,7 @@
  *  @param  i2c Wire object for i2c communication
  *  with
  */
-PCA9685::PCA9685(const uint8_t addr, Wire &i2c) : _i2caddr(addr), _i2c(&i2c) {}
+PCA9685::PCA9685(uint8_t addr, Wire &i2c) : _i2caddr(addr), _i2c(&i2c) {}
 
 /*!
  *  @brief  Setups the I2C interface and hardware
