@@ -150,6 +150,114 @@ main.cpp.s:
 	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/main.cpp.s
 .PHONY : main.cpp.s
 
+src/detection/CascadeDetector.o: src/detection/CascadeDetector.cpp.o
+
+.PHONY : src/detection/CascadeDetector.o
+
+# target to build an object file
+src/detection/CascadeDetector.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/CascadeDetector.cpp.o
+.PHONY : src/detection/CascadeDetector.cpp.o
+
+src/detection/CascadeDetector.i: src/detection/CascadeDetector.cpp.i
+
+.PHONY : src/detection/CascadeDetector.i
+
+# target to preprocess a source file
+src/detection/CascadeDetector.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/CascadeDetector.cpp.i
+.PHONY : src/detection/CascadeDetector.cpp.i
+
+src/detection/CascadeDetector.s: src/detection/CascadeDetector.cpp.s
+
+.PHONY : src/detection/CascadeDetector.s
+
+# target to generate assembly for a file
+src/detection/CascadeDetector.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/CascadeDetector.cpp.s
+.PHONY : src/detection/CascadeDetector.cpp.s
+
+src/detection/ObjectDetector.o: src/detection/ObjectDetector.cpp.o
+
+.PHONY : src/detection/ObjectDetector.o
+
+# target to build an object file
+src/detection/ObjectDetector.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/ObjectDetector.cpp.o
+.PHONY : src/detection/ObjectDetector.cpp.o
+
+src/detection/ObjectDetector.i: src/detection/ObjectDetector.cpp.i
+
+.PHONY : src/detection/ObjectDetector.i
+
+# target to preprocess a source file
+src/detection/ObjectDetector.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/ObjectDetector.cpp.i
+.PHONY : src/detection/ObjectDetector.cpp.i
+
+src/detection/ObjectDetector.s: src/detection/ObjectDetector.cpp.s
+
+.PHONY : src/detection/ObjectDetector.s
+
+# target to generate assembly for a file
+src/detection/ObjectDetector.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/ObjectDetector.cpp.s
+.PHONY : src/detection/ObjectDetector.cpp.s
+
+src/servo/PCA9685.o: src/servo/PCA9685.cpp.o
+
+.PHONY : src/servo/PCA9685.o
+
+# target to build an object file
+src/servo/PCA9685.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/servo/PCA9685.cpp.o
+.PHONY : src/servo/PCA9685.cpp.o
+
+src/servo/PCA9685.i: src/servo/PCA9685.cpp.i
+
+.PHONY : src/servo/PCA9685.i
+
+# target to preprocess a source file
+src/servo/PCA9685.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/servo/PCA9685.cpp.i
+.PHONY : src/servo/PCA9685.cpp.i
+
+src/servo/PCA9685.s: src/servo/PCA9685.cpp.s
+
+.PHONY : src/servo/PCA9685.s
+
+# target to generate assembly for a file
+src/servo/PCA9685.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/servo/PCA9685.cpp.s
+.PHONY : src/servo/PCA9685.cpp.s
+
+src/wire/Wire.o: src/wire/Wire.cpp.o
+
+.PHONY : src/wire/Wire.o
+
+# target to build an object file
+src/wire/Wire.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/wire/Wire.cpp.o
+.PHONY : src/wire/Wire.cpp.o
+
+src/wire/Wire.i: src/wire/Wire.cpp.i
+
+.PHONY : src/wire/Wire.i
+
+# target to preprocess a source file
+src/wire/Wire.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/wire/Wire.cpp.i
+.PHONY : src/wire/Wire.cpp.i
+
+src/wire/Wire.s: src/wire/Wire.cpp.s
+
+.PHONY : src/wire/Wire.s
+
+# target to generate assembly for a file
+src/wire/Wire.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/wire/Wire.cpp.s
+.PHONY : src/wire/Wire.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -162,6 +270,18 @@ help:
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"
+	@echo "... src/detection/CascadeDetector.o"
+	@echo "... src/detection/CascadeDetector.i"
+	@echo "... src/detection/CascadeDetector.s"
+	@echo "... src/detection/ObjectDetector.o"
+	@echo "... src/detection/ObjectDetector.i"
+	@echo "... src/detection/ObjectDetector.s"
+	@echo "... src/servo/PCA9685.o"
+	@echo "... src/servo/PCA9685.i"
+	@echo "... src/servo/PCA9685.s"
+	@echo "... src/wire/Wire.o"
+	@echo "... src/wire/Wire.i"
+	@echo "... src/wire/Wire.s"
 .PHONY : help
 
 

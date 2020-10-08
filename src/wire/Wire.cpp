@@ -6,11 +6,12 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <string>
+#include <iostream>
 
 #include "Wire.h"
 
 
-void Wire::begin(std::string device) {
+Wire::Wire(std::string device) {
     i2cDevice = open(device.c_str(), O_RDWR);
     if (i2cDevice == -1)
     {
@@ -35,7 +36,8 @@ void Wire::write8(uint8_t addr, uint8_t reg, uint8_t data) {
     msgset[0].nmsgs = 1;
 
     if (ioctl(i2cDevice, I2C_RDWR, &msgset) < 0) {
-        throw std::runtime_error("Could not open write to device");
+        // throw std::runtime_error("Could not open write to device");
+        std::cout << "Could not open write to device" << std::endl;
     }
 }
 
@@ -48,9 +50,9 @@ void Wire::read8(uint8_t addr, uint8_t reg, uint8_t *result) {
 
     struct i2c_msg messages[] = {
         { addr, 0, 1, outbuf },
-        { addr, I2C_M_RD | I2C_M_NOSTART, 1, inbuf },
+        { addr, I2C_M_RD , 1, inbuf },
     };
-
+    // | I2C_M_NOSTART
     msgset[0].msgs = messages;
     msgset[0].nmsgs = 2;
 
@@ -60,7 +62,8 @@ void Wire::read8(uint8_t addr, uint8_t reg, uint8_t *result) {
 
     *result = 0;
     if (ioctl(i2cDevice, I2C_RDWR, &msgset) < 0) {
-        throw std::runtime_error("Could not read from device");
+        // throw std::runtime_error("Could not read from device");
+        std::cout << "Could not read from device" << std::endl;
     }
 
     *result = inbuf[0];
@@ -110,7 +113,8 @@ void Wire::writeRead(int i2cAddress, unsigned char * pWriteData, int writeBytes,
     // This function call returns the number of i2c_msg structures processed,
     // or a negative error value
     if (ioctl(i2cDevice, I2C_RDWR, &i2c_data) < 0) {
-        throw std::runtime_error("Could not read from device");
+        // throw std::runtime_error("Could not read from device");
+        std::cout << "Could not read from device" << std::endl;
     }
 }
 

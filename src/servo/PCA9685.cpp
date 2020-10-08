@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
-#include "wire/Wire.h"
+#include "./../wire/Wire.h"
 
 #define ENABLE_DEBUG_OUTPUT 1
 
@@ -17,7 +17,7 @@
  *  @param  i2c Wire object for i2c communication
  *  with
  */
-PCA9685::PCA9685(uint8_t addr, Wire &i2c) : _i2caddr(addr), _i2c(&i2c) {}
+PCA9685::PCA9685(uint8_t addr, Wire *i2c) : _i2caddr(addr), _i2c(i2c) {}
 
 /*!
  *  @brief  Setups the I2C interface and hardware
@@ -25,7 +25,6 @@ PCA9685::PCA9685(uint8_t addr, Wire &i2c) : _i2caddr(addr), _i2c(&i2c) {}
  *          Sets External Clock (Optional)
  */
 void PCA9685::begin(uint8_t prescale) {
-  _i2c->begin();
   reset();
   if (prescale) {
     setExtClk(prescale);

@@ -2,7 +2,7 @@
 #ifndef _PCA9685
 #define _PCA9685
 
-#include "Wire.h"
+#include "./../wire/Wire.h"
 
 // REGISTER ADDRESSES
 #define PCA9685_MODE1 0x00      /**< Mode Register 1 */
@@ -52,7 +52,7 @@
  */
 class PCA9685 {
 public:
-  PCA9685(uint8_t addr, Wire &i2c);
+  PCA9685(uint8_t addr, Wire *i2c);
   void begin(uint8_t prescale = 0);
   void reset();
   void sleep();
