@@ -8,13 +8,7 @@
 #include "opencv4/opencv2/dnn/dnn.hpp"
 #include "opencv2/core/core.hpp"
 
-namespace TATS {
-	struct Rect {
-		int x;
-		int y;
-		int height;
-		int width;
-	};
+namespace Detect {
 	struct DetectionData
 	{
 		int targetCenterX;
@@ -22,20 +16,18 @@ namespace TATS {
 		double confidence;
 		bool found;
 		std::string target;
-		struct Rect boundingBox;
+		int label;
+		cv::Rect boundingBox;
 	};
 	class ObjectDetector
 	{
 	protected:
 		std::vector<std::string> class_names;
 		cv::Mat* last_frame = nullptr;
-		cv::dnn::Net* net = nullptr;
-		int input_color = 1; // 0 is color; 1 is gray
-
+		
 	public:
 		ObjectDetector();
-		virtual struct DetectionData detect(cv::Mat& src, std::string target) = 0;
-		void setInputColor(int code);
+		virtual struct DetectionData detect(cv::Mat& image) = 0;
 	};
 }
 

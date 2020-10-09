@@ -5,24 +5,31 @@
 #include "opencv2/highgui/highgui.hpp" 
 #include "opencv2/imgproc/imgproc.hpp" 
 
-namespace TATS {
+namespace Detect {
 
-	DetectionData CascadeDetector::detect(cv::Mat& src, std::string target)
+	// 0 is color; 1 is gray. Grey by default.
+	void CascadeDetector::setInputColor(int code)
 	{
+		if (code <= 1) {
+			input_color = code;
+		}
+	}
 
-		this->last_frame = &src;
+	DetectionData CascadeDetector::detect(cv::Mat& image) {
+
+		this->last_frame = &image;
 		std::vector<cv::Rect> faces;
 
-		if (input_color) {
+		if (this->input_color) {
 			// Detect faces of different sizes using cascade classifier  
-			this->cascade.detectMultiScale(src, faces, 1.3,
+			this->cascade.detectMultiScale(image, faces, 1.3,
 				2, 0 | cv::CASCADE_SCALE_IMAGE, cv::Size(75, 75));
 			
 		}
 		else {
 			cv::Mat gray, smallImg;
 
-			cv::cvtColor(src, gray, cv::COLOR_BGR2GRAY); // Convert to Gray Scale 
+			cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY); // Convert to Gray Scale 
 			double fx = 1 / scale;
 
 			// Resize the Grayscale Image  
@@ -45,8 +52,7 @@ namespace TATS {
 			float centerX = x1 + width * 0.5;
 			float centerY = y1 + height * 0.5;
 
-			struct Rect objectBounds = { .x = x1, .y = y1, .height = height , .width = width };
-			struct DetectionData detectionResults = { .targetCenterX = centerX, .targetCenterY = centerY, .confidence = 1.0, .found = true, .target = "face", .boundingBox = objectBounds };
+			struct DetectionData detectionResults = { .targetCenterX = centerX, .targetCenterY = centerY, .confidence = 1.0, .found = true, .target = "face", .label = 0, .boundingBox = faces[0] };
 			return detectionResults;
 		}
 		
@@ -57,9 +63,9 @@ namespace TATS {
 	}
 
 	// Draws bounding box and center circle onto frame. Good for debugging.
-	DetectionData CascadeDetector::detect(cv::Mat& src, std::string target, bool draw)
+	DetectionData CascadeDetector::detect(cv::Mat& image, bool draw)
 	{
-		struct DetectionData detectionResults = this->detect(src, "face");
+		struct DetectionData detectionResults = this->detect(image);
 		if (draw) {
 			if (detectionResults.found) {
 				cv::Scalar color = cv::Scalar(255);
@@ -70,13 +76,13 @@ namespace TATS {
 					detectionResults.boundingBox.height
 				);
 				circle(
-					src,
+					image,
 					cv::Point(detectionResults.targetCenterX, detectionResults.targetCenterY),
 					(int)(detectionResults.boundingBox.width + detectionResults.boundingBox.height) / 2 / 10,
 					color, 2, 8, 0);
-				rectangle(src, rec, color, 2, 8, 0);
+				rectangle(image, rec, color, 2, 8, 0);
 				putText(
-					src,
+					image,
 					"face",
 					cv::Point(detectionResults.boundingBox.x, detectionResults.boundingBox.y - 5),
 					cv::FONT_HERSHEY_SIMPLEX,

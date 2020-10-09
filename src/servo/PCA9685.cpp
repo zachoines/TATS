@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <algorithm>
 #include "./../wire/Wire.h"
 
 #define ENABLE_DEBUG_OUTPUT 1
@@ -149,14 +150,6 @@ uint8_t PCA9685::readPrescale(void) {
  *  @param  off At what point in the 4096-part cycle to turn the PWM output OFF
  */
 void PCA9685::setPWM(uint8_t num, uint16_t on, uint16_t off) {
-  // _i2c->beginTransmission(_i2caddr);
-  // _i2c->write(PCA9685_LED0_ON_L + 4 * num);
-  // _i2c->write(on);
-  // _i2c->write(on >> 8);
-  // _i2c->write(off);
-  // _i2c->write(off >> 8);
-  // _i2c->endTransmission();
-
   write8(PCA9685_LED0_ON_L + 4 * num, on & 0xFF);
   write8(PCA9685_LED0_ON_H + 4 * num, on >> 8);
   write8(PCA9685_LED0_OFF_L + 4 * num, off & 0xFF);
@@ -175,7 +168,7 @@ void PCA9685::setPWM(uint8_t num, uint16_t on, uint16_t off) {
  */
 void PCA9685::setPin(uint8_t num, uint16_t val, bool invert) {
   // Clamp value between 0 and 4095 inclusive.
-  val = std::min(val, (uint16_t)4095);
+  val = std::min<uint16_t>(val, (uint16_t)4095);
   if (invert) {
     if (val == 0) {
       // Special value for signal fully on.
@@ -246,21 +239,9 @@ void PCA9685::setOscillatorFrequency(uint32_t freq) {
 uint8_t PCA9685::read8(uint8_t addr) {
   uint8_t result;
   _i2c->read8(_i2caddr, addr, &result);
-
-  // _i2c->beginTransmission(_i2caddr);
-  // _i2c->write(addr);
-  // _i2c->endTransmission();
-
-  // _i2c->requestFrom((uint8_t)_i2caddr, (uint8_t)1);
-  // return _i2c->read();
   return result;
 }
 
 void PCA9685::write8(uint8_t addr, uint8_t d) {
-
   _i2c->write8(_i2caddr, addr, d);
-  // _i2c->beginTransmission(_i2caddr);
-  // _i2c->write(addr);
-  // _i2c->write(d);
-  // _i2c->endTransmission();
 }

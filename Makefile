@@ -204,6 +204,33 @@ src/detection/ObjectDetector.cpp.s:
 	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/ObjectDetector.cpp.s
 .PHONY : src/detection/ObjectDetector.cpp.s
 
+src/detection/RCNNDetector.o: src/detection/RCNNDetector.cpp.o
+
+.PHONY : src/detection/RCNNDetector.o
+
+# target to build an object file
+src/detection/RCNNDetector.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/RCNNDetector.cpp.o
+.PHONY : src/detection/RCNNDetector.cpp.o
+
+src/detection/RCNNDetector.i: src/detection/RCNNDetector.cpp.i
+
+.PHONY : src/detection/RCNNDetector.i
+
+# target to preprocess a source file
+src/detection/RCNNDetector.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/RCNNDetector.cpp.i
+.PHONY : src/detection/RCNNDetector.cpp.i
+
+src/detection/RCNNDetector.s: src/detection/RCNNDetector.cpp.s
+
+.PHONY : src/detection/RCNNDetector.s
+
+# target to generate assembly for a file
+src/detection/RCNNDetector.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/RCNNDetector.cpp.s
+.PHONY : src/detection/RCNNDetector.cpp.s
+
 src/servo/PCA9685.o: src/servo/PCA9685.cpp.o
 
 .PHONY : src/servo/PCA9685.o
@@ -276,6 +303,9 @@ help:
 	@echo "... src/detection/ObjectDetector.o"
 	@echo "... src/detection/ObjectDetector.i"
 	@echo "... src/detection/ObjectDetector.s"
+	@echo "... src/detection/RCNNDetector.o"
+	@echo "... src/detection/RCNNDetector.i"
+	@echo "... src/detection/RCNNDetector.s"
 	@echo "... src/servo/PCA9685.o"
 	@echo "... src/servo/PCA9685.i"
 	@echo "... src/servo/PCA9685.s"

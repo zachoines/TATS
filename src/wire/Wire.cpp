@@ -69,39 +69,42 @@ void Wire::read8(uint8_t addr, uint8_t reg, uint8_t *result) {
     *result = inbuf[0];
 }
 
-void Wire::writeRead(int i2cAddress, unsigned char * pWriteData, int writeBytes, unsigned char * pReadData, int readBytes)
+void Wire::writeRead(uint8_t addr, uint8_t* writeBuff, uint8_t numBytesToWrite, uint8_t* readBuff, uint8_t numBytesToRead)
 {
-    struct i2c_msg msg[2]; // declare a two i2c_msg array
-    struct i2c_rdwr_ioctl_data i2c_data; // declare our i2c_rdwr_ioctl_data structure
-    int msgsUsed=0; // how many i2c_msg structures are used
-    int result; // return value from ioctl() call
+    struct i2c_msg msg[2]; 
+    struct i2c_rdwr_ioctl_data i2c_data; 
+    int msgsUsed = 0; 
+    int result; 
     
     // Assume the first i2c_msg is used for writing
-    if(pWriteData && writeBytes) {
-        msg[0].addr = i2cAddress;
+    if(writeBuff && numBytesToWrite) {
+        msg[0].addr = addr;
         msg[0].flags = 0;
-        msg[0].buf = pWriteData;
-        msg[0].len = writeBytes;
+        msg[0].buf = writeBuff;
+        msg[0].len = numBytesToWrite;
         msgsUsed++;
 
         // Load the second i2c_msg for receiving if the first one is used
-        if(pReadData && readBytes) {
+        if(readBuff && numBytesToRead) {
+            
             // Load up receive msg
-            msg[1].addr = i2cAddress;
+            msg[1].addr = addr;
             msg[1].flags = I2C_M_RD;
-            msg[1].buf = pReadData;
-            msg[1].len = readBytes;
+            msg[1].buf = readBuff;
+            msg[1].len = numBytesToRead;
             msgsUsed++;
         }
     }
-    else if(pReadData && readBytes) {
+    else if(readBuff && numBytesToRead) {
+        
         // Load the first i2c_msg for receiving (no transmit data)
-        msg[0].addr = i2cAddress;
+        msg[0].addr = addr;
         msg[0].flags = I2C_M_RD;
-        msg[0].buf = pReadData;
-        msg[0].len = readBytes;
+        msg[0].buf = readBuff;
+        msg[0].len = numBytesToRead;
         msgsUsed++;
     }
+    
     // Continue if we have data to transfer
     if(msgsUsed) {
         // i2c_msg array is loaded up. Now load i2c_rdwr_ioctl_data structure.
@@ -109,12 +112,10 @@ void Wire::writeRead(int i2cAddress, unsigned char * pWriteData, int writeBytes,
         i2c_data.nmsgs = msgsUsed;
     }
     
-    // With our open file descriptor, perform I2C message transfers
-    // This function call returns the number of i2c_msg structures processed,
-    // or a negative error value
+    // Send message
     if (ioctl(i2cDevice, I2C_RDWR, &i2c_data) < 0) {
         // throw std::runtime_error("Could not read from device");
-        std::cout << "Could not read from device" << std::endl;
+        std::cout << "Could not read/write from device" << std::endl;
     }
 }
 
