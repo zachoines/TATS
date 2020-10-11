@@ -6,6 +6,7 @@
 // Pytorch imports
 #include <torch/torch.h>
 #include <stdio.h>
+#include <vector>
 
 // OpenCV imports
 #include "opencv2/opencv.hpp"
@@ -47,7 +48,8 @@ void setServoPulse(uint8_t n, double pulse, PCA9685 pwm) {
 
 int main(int argc, char** argv)
 {
-
+    auto default_dtype = caffe2::TypeMeta::Make<double>();
+	torch::set_default_dtype(default_dtype);
     torch::Device cpu(torch::kCPU);
     torch::Device cuda(torch::kCUDA);
 
@@ -68,18 +70,39 @@ int main(int argc, char** argv)
 
 
     // Test Racoon Detector
-    std::string path = get_current_dir_name();
-    std::string saved_model_file = "/models/rcnn/jit_raccoon_detector.pt";
-	std::string saved_model_file_path = path + saved_model_file;
-    Detect::RCNNDetector rd(saved_model_file_path);
-    rd.setTargetLabel(0);
+    // std::string path = get_current_dir_name();
+    // std::string saved_model_file = "/models/rcnn/jit_raccoon_detector.pt";
+	// std::string saved_model_file_path = path + saved_model_file;
+    // Detect::RCNNDetector rd(saved_model_file_path);
+    // rd.setTargetLabel(0);
 
-    std::string imageFile = "/images/raccoon-1.jpg";
+    // std::string imageFile = "/images/raccoon-1.jpg";
+    // std::string imageFilePath = path + imageFile;
+    // cv::Mat input_image = cv::imread(imageFilePath, cv::IMREAD_UNCHANGED);
+    // Detect::DetectionData result = rd.detect(input_image);
+
+    // Test Racoon Detector
+    std::string path = get_current_dir_name();
+    std::string frozen_model_pbtxt = path + "/models/frozen_models/FacesMotorbikesairplanesModel.pbtxt";
+	std::string frozen_model_pb = path + "/models/frozen_models/FacesMotorbikesairplanesModel.pb";
+    std::vector<std::vector<cv::Mat>> outputblobs;
+
+
+    cv::dnn::Net tensorflowDetector = cv::dnn::readNetFromTensorflow(frozen_model_pb);
+    tensorflowDetector.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+    tensorflowDetector.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+
+
+    std::string imageFile = "/images/faces/image_0001.jpg";
     std::string imageFilePath = path + imageFile;
     cv::Mat input_image = cv::imread(imageFilePath, cv::IMREAD_UNCHANGED);
-    Detect::DetectionData result = rd.detect(input_image);
-
-
+    input_image.convertTo(input_image, CV_32F, 1 / 255.0);
+    tensorflowDetector.setInput(cv::dnn::blobFromImage(input_image, 1.0, cv::Size(224, 224), 0.0, false, false, CV_32F));
+    tensorflowDetector.forward(outputblobs, {"functional_1/box_output/Sigmoid", "functional_1/label_output/Softmax"});
+    std::cout << outputblobs << std::endl;
+    outputblobs.clear();
+    
+    
     // Test Servos
     for (int angle = -70; angle < 70; angle += 5) {
         int pulselen = Utility::angleToTicks(angle);

@@ -8,7 +8,7 @@ namespace Detect {
 	class RCNNDetector : public ObjectDetector
 	{
 	private:
-        int num_rects = 100;
+        int num_rects = 10;
         int targetLabel = 0;
         torch::jit::script::Module module;
         torch::Device device = torch::kCPU;

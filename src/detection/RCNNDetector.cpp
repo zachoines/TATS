@@ -23,6 +23,7 @@ namespace Detect {
                 module = torch::jit::load(path);
 
                 if (torch::cuda::is_available()) {
+					module.eval();
                     device = torch::kCUDA;
                     module.to(device);
                 }
@@ -57,9 +58,8 @@ namespace Detect {
 		// For input/out of model
 		std::vector<cv::Mat> smallImages;
 		std::vector<torch::jit::IValue> net_input;
-		std::vector<torch::Tensor> inputs_t;
-		std::vector<torch::Tensor> outputs_t;
-		at::Tensor reshaped_src;
+		std::vector<at::Tensor> inputs_t;
+		std::vector<at::Tensor> outputs_t;
 
 		// For NMS
 		std::vector<cv::Rect> nmsBoxes;
@@ -73,8 +73,8 @@ namespace Detect {
 				cv::Mat smallimage = cv::Mat(src, rects[i]);
 				cv::resize(smallimage, smallimage, cv::Size(224, 224), 0, 0, cv::INTER_LINEAR);
 				smallimage.convertTo(smallimage, CV_32FC3, 1 / 255.0);
-				at::Tensor tensor_image = torch::from_blob(smallimage.data, { 1, smallimage.rows, smallimage.cols, 3 }, at::kFloat);
-				reshaped_src = tensor_image.permute({ 0, 3, 1, 2 });
+				at::Tensor tensor_image = at::from_blob(smallimage.data, { 1, smallimage.rows, smallimage.cols, 3 }, at::kFloat);
+				at::Tensor reshaped_src = tensor_image.permute({ 0, 3, 1, 2 });
 				
 				// Mean/std normalization
 				reshaped_src[0][0] = reshaped_src[0][0].sub(0.485).div(0.229);
@@ -88,10 +88,10 @@ namespace Detect {
 		
 		
 		// Pass through pytorch model, find argmax and build up Rects/Scores for NMS
-		torch::Tensor input_batch = torch::cat(inputs_t, 0);
-		net_input.push_back(input_batch.to(device));
-		torch::Tensor output_batch = module.forward(net_input).toTensor();
-		torch::Tensor labels = output_batch.argmax(-1);
+		at::Tensor input_batch = at::cat(inputs_t, 0).to(device);
+		net_input.push_back(input_batch);
+		at::Tensor output_batch = module.forward(net_input).toTensor();
+		at::Tensor labels = output_batch.argmax(-1);
 		std::cout << output_batch << std::endl;
 		std::cout << labels << std::endl;
 		for (int i = 0; i < num_rects; i++) {
