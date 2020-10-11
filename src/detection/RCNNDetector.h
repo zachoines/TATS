@@ -5,6 +5,16 @@
 #include <torch/script.h>
 
 namespace Detect {
+	/* 
+		Object detector based on the RCNN Architecture. Loads any Pytorch JIT model.  
+	
+	
+		//// Example usage
+		Detect::RCNNDetector rd(saved_model_file_path);
+		rd.setTargetLabel(1); // Whatever object you are looking for
+		cv::Mat input_image = cv::imread(imageFilePath, cv::IMREAD_UNCHANGED);
+		Detect::DetectionData result = rd.detect(input_image); 
+	*/
 	class RCNNDetector : public ObjectDetector
 	{
 	private:
@@ -20,3 +30,4 @@ namespace Detect {
         void setTargetLabel(int label);
 	};
 }
+

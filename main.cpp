@@ -35,73 +35,114 @@
 #define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
 #define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
 
-void setServoPulse(uint8_t n, double pulse, PCA9685 pwm) {
-  double pulselength;
-  
-  pulselength = 1000000;   // 1,000,000 us per second
-  pulselength /= SERVO_FREQ;   // Analog servos run at ~60 Hz updates
-  pulselength /= 4096;  // 12 bits of resolution
-  pulse *= 1000000;  // convert input seconds to us
-  pulse /= pulselength;
-  pwm.setPWM(n, 0, pulse);
-}
-
 int main(int argc, char** argv)
 {
+    // Camera related initializations
+    int capture_width = 1280 ;
+    int capture_height = 720 ;
+    int display_width = 1280 ;
+    int display_height = 720 ;
+    int framerate = 60 ;
+    int flip_method = 0 ;
+    std::string pipeline = Utility::gstreamer_pipeline(capture_width, capture_height, display_width, display_height, framerate, flip_method);
+
+    // Set up Torch defaults
     auto default_dtype = caffe2::TypeMeta::Make<double>();
 	torch::set_default_dtype(default_dtype);
     torch::Device cpu(torch::kCPU);
     torch::Device cuda(torch::kCUDA);
+    cv::VideoCapture camera(pipeline, cv::CAP_GSTREAMER);
 
+    // Check for CUDA
     if (torch::cuda::is_available()) {
 		std::cout << "CUDA is available! Training on GPU." << std::endl;
 	}
 	else {
 		std::cout << "CUDA is not available! Training on CPU." << std::endl;
 	}
+
+    // Test Camera
+    if (!camera.isOpened())
+	{
+		throw std::runtime_error("cannot initialize camera");
+	} else {
+        cv::Mat test = Utility::GetImageFromCamera(camera);
+
+        if (test.empty()) {
+            throw std::runtime_error("Issue reading frame!");
+        }
+    }
+
+    // Set up I2C and PWM
     Wire* wire = new Wire();
     const uint8_t base_address = 0x40;
     PCA9685 pwm(base_address, wire);
     pwm.begin();
-
     uint8_t servonum = 1;
     pwm.setOscillatorFrequency(27000000);
     pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
 
-
-    // Test Racoon Detector
-    // std::string path = get_current_dir_name();
-    // std::string saved_model_file = "/models/rcnn/jit_raccoon_detector.pt";
-	// std::string saved_model_file_path = path + saved_model_file;
-    // Detect::RCNNDetector rd(saved_model_file_path);
-    // rd.setTargetLabel(0);
-
-    // std::string imageFile = "/images/raccoon-1.jpg";
-    // std::string imageFilePath = path + imageFile;
-    // cv::Mat input_image = cv::imread(imageFilePath, cv::IMREAD_UNCHANGED);
-    // Detect::DetectionData result = rd.detect(input_image);
-
-    // Test Racoon Detector
+    // Set up Tensorflow DNN
     std::string path = get_current_dir_name();
     std::string frozen_model_pbtxt = path + "/models/frozen_models/FacesMotorbikesairplanesModel.pbtxt";
 	std::string frozen_model_pb = path + "/models/frozen_models/FacesMotorbikesairplanesModel.pb";
     std::vector<std::vector<cv::Mat>> outputblobs;
-
-
+    cv::Mat display_image, input_image;
     cv::dnn::Net tensorflowDetector = cv::dnn::readNetFromTensorflow(frozen_model_pb);
     tensorflowDetector.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
     tensorflowDetector.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
 
-
+    // One time initialization of DNN
     std::string imageFile = "/images/faces/image_0001.jpg";
     std::string imageFilePath = path + imageFile;
-    cv::Mat input_image = cv::imread(imageFilePath, cv::IMREAD_UNCHANGED);
+    input_image = cv::imread(imageFilePath, cv::IMREAD_UNCHANGED);
     input_image.convertTo(input_image, CV_32F, 1 / 255.0);
     tensorflowDetector.setInput(cv::dnn::blobFromImage(input_image, 1.0, cv::Size(224, 224), 0.0, false, false, CV_32F));
     tensorflowDetector.forward(outputblobs, {"functional_1/box_output/Sigmoid", "functional_1/label_output/Softmax"});
-    std::cout << outputblobs << std::endl;
-    outputblobs.clear();
-    
+
+    // Detect loop
+    // cv::namedWindow("CSI Camera", cv::WINDOW_AUTOSIZE);
+    while (true) {
+        
+        outputblobs.clear();
+        input_image = Utility::GetImageFromCamera(camera);
+        display_image = input_image.clone();
+        input_image.convertTo(input_image, CV_32F, 1 / 255.0);
+        cv::resize(input_image, input_image, cv::Size(224, 224), 0, 0, cv::INTER_LINEAR);
+        tensorflowDetector.setInput(cv::dnn::blobFromImage(input_image, 1.0, cv::Size(224, 224), 0.0, true, false, CV_32F));
+        tensorflowDetector.forward(outputblobs, {"functional_1/box_output/Sigmoid", "functional_1/label_output/Softmax"});
+        cv::Mat box = outputblobs.at(0).at(0);
+        cv::Mat probs = outputblobs.at(1).at(0);
+        
+        int h = display_image.rows;
+        int w = display_image.cols;
+
+        // Print what we see
+        std::cout << box << std::endl;
+        std::cout << probs << std::endl;
+        
+        // Box Image dims
+        double startYProb = box.at<float>(0);
+        double endYProb = box.at<float>(1);
+        double startXProb = box.at<float>(2);
+        double endXProb = box.at<float>(3);
+        
+        int startX = static_cast<int>(startXProb * static_cast<double>(w));
+        int startY = static_cast<int>(startYProb * static_cast<double>(h));
+        int endX = static_cast<int>(endXProb * static_cast<double>(w));
+        int endY =  static_cast<int>(endYProb * static_cast<double>(h));
+
+        // Argmax of probs
+        double minVal; 
+        double maxVal; 
+        cv::Point minLoc; 
+        cv::Point maxLoc;
+
+        cv::minMaxLoc(probs, &minVal, &maxVal, &minLoc, &maxLoc );
+        Utility::drawPred(maxVal, startX, startY, endX, endY, display_image, "test");
+        cv::imshow("CSI Camera", display_image);
+        cv::waitKey(1);
+    }
     
     // Test Servos
     for (int angle = -70; angle < 70; angle += 5) {
