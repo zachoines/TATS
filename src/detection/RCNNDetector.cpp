@@ -40,8 +40,9 @@ namespace Detect {
         this->targetLabel = label;
     }
 
-    struct DetectionData RCNNDetector::detect(cv::Mat& image) {
-        cv::Mat src = image.clone();
+    std::vector<struct DetectionData> RCNNDetector::detect(cv::Mat& image) {
+        std::vector<struct DetectionData> detectionResults;
+		cv::Mat src = image.clone();
 
         // Perform selective search on image
 		cv::Ptr<cv::ximgproc::segmentation::SelectiveSearchSegmentation> ss = cv::ximgproc::segmentation::createSelectiveSearchSegmentation();
@@ -92,8 +93,7 @@ namespace Detect {
 		net_input.push_back(input_batch);
 		at::Tensor output_batch = module.forward(net_input).toTensor();
 		at::Tensor labels = output_batch.argmax(-1);
-		std::cout << output_batch << std::endl;
-		std::cout << labels << std::endl;
+
 		for (int i = 0; i < num_rects; i++) {
 		
 			int label = labels[i].item().toInt();
@@ -105,23 +105,44 @@ namespace Detect {
 
 		// Apply Non-Max Suppression
 		std::vector<int> indices;
-		cv::dnn::NMSBoxes(rects, nmsScores, 0.99, 0.5, indices, 1.0, 1);
-		int idx = indices.at(0);
-		cv::Rect box = rects[idx];
+		cv::dnn::NMSBoxes(rects, nmsScores, 0.99, 0.5, indices, 1.0, max_detections);
 
-        int objX = box.width / 2;
-        int objY = box.height / 2;
+		for (int idx : indices) {
+			cv::Rect box = rects[idx];
 
-        this->last_frame = &src;
-        struct DetectionData detectionResults = { .targetCenterX = objX, .targetCenterY = objY, .confidence = nmsScores[idx], .found = true, .target = "", .label = this->targetLabel, .boundingBox = box };
+			int objX = box.width / 2;
+			int objY = box.height / 2;
+
+			struct DetectionData detection = { 
+				.confidence = nmsScores[idx], 
+				.found = true, 
+				.label = this->targetLabel,
+				.target = "", 
+				.center = cv::Point2i(objX, objY), 
+				.boundingBox = box 
+			};
+
+			detectionResults.push_back(detection);
+
+		}
+
+		
         return detectionResults;
     }
     
-    struct DetectionData RCNNDetector::detect(cv::Mat& src, bool draw) {
+    std::vector<struct DetectionData> RCNNDetector::detect(cv::Mat& image, bool draw, int numDrawn) {
         
-        struct DetectionData detectionResults = this->detect(src);
-        if (draw) {
-            Utility::drawPred(detectionResults.confidence, detectionResults.boundingBox.x, detectionResults.boundingBox.y, detectionResults.boundingBox.x + detectionResults.boundingBox.width, detectionResults.boundingBox.y + detectionResults.boundingBox.height, src);
+        std::vector<struct DetectionData> detectionResults = this->detect(image);
+        if (draw && !detectionResults.empty()) {
+			int count = 0;
+			for (struct DetectionData detection : detectionResults) {
+				if (detection.found && count <= numDrawn) {
+					count++;
+					Utility::drawPred(detection.confidence, detection.boundingBox.x, detection.boundingBox.y, detection.boundingBox.x + detection.boundingBox.width, detection.boundingBox.y + detection.boundingBox.height, image, detection.target);
+				}
+			}
         }
+
+		return detectionResults;
     }
 };

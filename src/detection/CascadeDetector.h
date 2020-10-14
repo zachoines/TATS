@@ -8,12 +8,12 @@ namespace Detect {
 	{
 	public:
 		CascadeDetector(std::string path);
-		struct DetectionData detect(cv::Mat& image);
-		struct DetectionData detect(cv::Mat& image, bool draw);
+		std::vector<struct DetectionData> detect(cv::Mat& image);
+		std::vector<struct DetectionData> detect(cv::Mat& image, bool draw, int numDrawn);
 		void setInputColor(int code);
 	private:
 		int input_color = 1; // 0 is color; 1 is gray
-		float scale = 1.;
+		float scale = 1.0;
 		cv::CascadeClassifier cascade;
 	};
 };

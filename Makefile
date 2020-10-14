@@ -231,6 +231,33 @@ src/detection/RCNNDetector.cpp.s:
 	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/RCNNDetector.cpp.s
 .PHONY : src/detection/RCNNDetector.cpp.s
 
+src/detection/YoloDetector.o: src/detection/YoloDetector.cpp.o
+
+.PHONY : src/detection/YoloDetector.o
+
+# target to build an object file
+src/detection/YoloDetector.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/YoloDetector.cpp.o
+.PHONY : src/detection/YoloDetector.cpp.o
+
+src/detection/YoloDetector.i: src/detection/YoloDetector.cpp.i
+
+.PHONY : src/detection/YoloDetector.i
+
+# target to preprocess a source file
+src/detection/YoloDetector.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/YoloDetector.cpp.i
+.PHONY : src/detection/YoloDetector.cpp.i
+
+src/detection/YoloDetector.s: src/detection/YoloDetector.cpp.s
+
+.PHONY : src/detection/YoloDetector.s
+
+# target to generate assembly for a file
+src/detection/YoloDetector.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/YoloDetector.cpp.s
+.PHONY : src/detection/YoloDetector.cpp.s
+
 src/servo/PCA9685.o: src/servo/PCA9685.cpp.o
 
 .PHONY : src/servo/PCA9685.o
@@ -306,6 +333,9 @@ help:
 	@echo "... src/detection/RCNNDetector.o"
 	@echo "... src/detection/RCNNDetector.i"
 	@echo "... src/detection/RCNNDetector.s"
+	@echo "... src/detection/YoloDetector.o"
+	@echo "... src/detection/YoloDetector.i"
+	@echo "... src/detection/YoloDetector.s"
 	@echo "... src/servo/PCA9685.o"
 	@echo "... src/servo/PCA9685.i"
 	@echo "... src/servo/PCA9685.s"
