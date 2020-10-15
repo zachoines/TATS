@@ -54,27 +54,30 @@ int main(int argc, char** argv)
 
     servos->initServo({
         .servoNum = 0,
-        .minAngle = -150.0,
-        .maxAngle = 150.0,
-        .minMs = 0.5,
-        .maxMs = 2.5,
+        .minAngle = -65.0,
+        .maxAngle = 65.0,
+        .minMs = 0.9,
+        .maxMs = 2.1,
         .resetAngle = 0.0
     });
 
     servos->initServo({
         .servoNum = 1,
-        .minAngle = -150.0,
-        .maxAngle = 150.0,
-        .minMs = 0.5,
-        .maxMs = 2.5,
+        .minAngle = -65.0,
+        .maxAngle = 65.0,
+        .minMs = 0.9,
+        .maxMs = 2.1,
         .resetAngle = 0.0
     });
+
+    servos->setAngle(0, 0.0);
+    servos->setAngle(1, 0.0);
 
     // Test The servos
     for (int angle = -70; angle < 70; angle += 5) {
         servos->setAngle(0, angle);
         servos->setAngle(1, angle);
-        wire->delay(1000);
+        wire->delay(250);
     }
     servos->setAngle(0, 0.0);
     servos->setAngle(1, 0.0);

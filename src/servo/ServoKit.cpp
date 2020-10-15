@@ -15,10 +15,10 @@ namespace control {
     }
 
     int ServoKit::secondsToTicks(double impulseSec) {
-        double pulselength = 1000000.0; 
-        pulselength /= static_cast<double>(_frequency);
-        pulselength /= 4096.0;  // 12 bits of resolution
-        impulseSec *= static_cast<double>(1000000);  // seconds to us
+        double pulselength = 1000000;   // 1,000,000 us per second
+        pulselength /= _frequency;  
+        pulselength /= 4096;  // 12 bits of resolution
+        impulseSec *= 1000000;  // sec to use
         impulseSec /= pulselength;
         return static_cast<int>(impulseSec);
     }
@@ -33,18 +33,34 @@ namespace control {
         }
         
 		double millis = Utility::mapOutput(angle, s.minAngle, s.maxAngle, s.minMs / 1000.0, s.maxMs / 1000.0);
-        double test = Utility::mapOutput(angle, s.minAngle, s.maxAngle, s.minMs, s.maxMs);
 		int ticks = secondsToTicks(millis);
-        int testTicks = millisecondToTicks(test);
 		_pwm->setPWM(s.servoNum, 0, ticks);
 	}
 
-    void ServoKit::setMsRange(int servo, double low, double high) {
+    
 
+    void ServoKit::setMsRange(int servo, double low, double high) {
+        struct Servo s;
+        if (servo < 0 || servo > 15) {
+            throw std::runtime_error("servo number out of range");
+        } else {
+            s = servos[servo];
+            s.minMs = low;
+            s.maxMs = high;
+            servos[s.servoNum] = s;
+        }
     }
 
     void ServoKit::setAngleRange(int servo, double low, double high) {
-
+        struct Servo s;
+        if (servo < 0 || servo > 15) {
+            throw std::runtime_error("servo number out of range");
+        } else {
+            s = servos[servo];
+            s.minAngle = low;
+            s.maxAngle  = high;
+            servos[s.servoNum] = s;
+        }
     }
 
     void ServoKit::initServo(struct Servo servo) {
