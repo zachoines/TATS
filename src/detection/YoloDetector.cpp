@@ -19,7 +19,7 @@ namespace Detect {
                 cv::randu(img, cv::Scalar(0, 0, 0), cv::Scalar(255, 255, 255));
                 run(img);
             } catch (...) {
-                throw std::runtime_error("Error loading YoloDetector model");
+                throw std::runtime_error("Error loading Yolo5 model");
             }
     
         } else {

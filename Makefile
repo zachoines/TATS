@@ -285,6 +285,33 @@ src/servo/PCA9685.cpp.s:
 	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/servo/PCA9685.cpp.s
 .PHONY : src/servo/PCA9685.cpp.s
 
+src/servo/ServoKit.o: src/servo/ServoKit.cpp.o
+
+.PHONY : src/servo/ServoKit.o
+
+# target to build an object file
+src/servo/ServoKit.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/servo/ServoKit.cpp.o
+.PHONY : src/servo/ServoKit.cpp.o
+
+src/servo/ServoKit.i: src/servo/ServoKit.cpp.i
+
+.PHONY : src/servo/ServoKit.i
+
+# target to preprocess a source file
+src/servo/ServoKit.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/servo/ServoKit.cpp.i
+.PHONY : src/servo/ServoKit.cpp.i
+
+src/servo/ServoKit.s: src/servo/ServoKit.cpp.s
+
+.PHONY : src/servo/ServoKit.s
+
+# target to generate assembly for a file
+src/servo/ServoKit.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/servo/ServoKit.cpp.s
+.PHONY : src/servo/ServoKit.cpp.s
+
 src/wire/Wire.o: src/wire/Wire.cpp.o
 
 .PHONY : src/wire/Wire.o
@@ -339,6 +366,9 @@ help:
 	@echo "... src/servo/PCA9685.o"
 	@echo "... src/servo/PCA9685.i"
 	@echo "... src/servo/PCA9685.s"
+	@echo "... src/servo/ServoKit.o"
+	@echo "... src/servo/ServoKit.i"
+	@echo "... src/servo/ServoKit.s"
 	@echo "... src/wire/Wire.o"
 	@echo "... src/wire/Wire.i"
 	@echo "... src/wire/Wire.s"

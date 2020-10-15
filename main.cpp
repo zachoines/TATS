@@ -28,16 +28,16 @@
 #include "./src/detection/YoloDetector.h"
 #include "./src/wire/Wire.h"
 #include "./src/servo/PCA9685.h"
+#include "./src/servo/ServoKit.h"
 #include "./src/util/util.h"
-
-#define SERVOMIN  150 // This is the 'minimum' pulse length count (out of 4096)
-#define SERVOMAX  600 // This is the 'maximum' pulse length count (out of 4096)
-#define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
-#define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
-#define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
 
 int main(int argc, char** argv)
 {
+
+    // Setup Torch defaults
+    // auto default_dtype = caffe2::TypeMeta::Make<float>();
+	// torch::set_default_dtype(default_dtype);
+
     // Camera related initializations
     int capture_width = 1280 ;
     int capture_height = 720 ;
@@ -48,14 +48,37 @@ int main(int argc, char** argv)
     std::string pipeline = Utility::gstreamer_pipeline(capture_width, capture_height, display_width, display_height, framerate, flip_method);
 
     // Setup I2C and PWM
-    Wire* wire = new Wire();
-    const uint8_t base_address = 0x40;
-    PCA9685 pwm(base_address, wire);
-    pwm.begin();
-    uint8_t servonum = 1;
-    pwm.setOscillatorFrequency(27000000);
-    pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
+    control::Wire* wire = new control::Wire();
+    control::PCA9685* pwm = new control::PCA9685(0x40, wire);
+    control::ServoKit* servos = new control::ServoKit(pwm);
 
+    servos->initServo({
+        .servoNum = 0,
+        .minAngle = -150.0,
+        .maxAngle = 150.0,
+        .minMs = 0.5,
+        .maxMs = 2.5,
+        .resetAngle = 0.0
+    });
+
+    servos->initServo({
+        .servoNum = 1,
+        .minAngle = -150.0,
+        .maxAngle = 150.0,
+        .minMs = 0.5,
+        .maxMs = 2.5,
+        .resetAngle = 0.0
+    });
+
+    // Test The servos
+    for (int angle = -70; angle < 70; angle += 5) {
+        servos->setAngle(0, angle);
+        servos->setAngle(1, angle);
+        wire->delay(1000);
+    }
+    servos->setAngle(0, 0.0);
+    servos->setAngle(1, 0.0);
+    
     // Check for CUDA
     torch::DeviceType device_type;
     if (torch::cuda::is_available()) {
@@ -65,11 +88,6 @@ int main(int argc, char** argv)
         device_type = torch::kCPU;
         std::cout << "CUDA is not available! Training on CPU." << std::endl;
     }
-
-    // Setup Torch defaults
-    // auto default_dtype = caffe2::TypeMeta::Make<float>();
-	// torch::set_default_dtype(default_dtype);
-   
 
     // Setup Camera
     cv::VideoCapture camera(pipeline, cv::CAP_GSTREAMER);
@@ -82,8 +100,6 @@ int main(int argc, char** argv)
         }
     }
 
-    
-
     // Uno class names
     std::vector<std::string> class_names = {
         "0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
@@ -94,13 +110,8 @@ int main(int argc, char** argv)
 	std::string weights = path + "/models/yolo/yolo_uno.torchscript.pt";
     Detect::YoloDetector detector = Detect::YoloDetector(weights, class_names);
 
-    // img = cv::imread(path + "/images/uno/image_0002.jpg");
-    // result = detector.run(img, 0.4f, 0.5f);
-    
     // Detect loop
     while (true) {
-        
-        
         cv::Mat input_image = Utility::GetImageFromCamera(camera);
         if (input_image.empty()) {
             std::cout << "Issue getting frame from camera!!" << std::endl;
@@ -112,38 +123,38 @@ int main(int argc, char** argv)
         cv::imshow("Result", input_image);
         cv::waitKey(1);
     }
-    
-    // Test Servos
-    for (int angle = -70; angle < 70; angle += 5) {
-        int pulselen = Utility::angleToTicks(angle);
-        pwm.setPWM(servonum, 0, pulselen);
-        wire->delay(500);
-    }
-
-    wire->delay(500);
-    for (uint16_t pulselen = SERVOMAX; pulselen > SERVOMIN; pulselen+=5) {
-        pwm.setPWM(servonum, 0, pulselen);
-        wire->delay(500);
-    }
-
-    wire->delay(500);
-    for (uint16_t microsec = USMIN ; microsec < USMAX; microsec += 5) {
-        pwm.writeMicroseconds(servonum, microsec);
-        wire->delay(50);
-    }
-
-    wire->delay(500);
-    for (uint16_t microsec = USMAX; microsec > USMIN; microsec -= 5) {
-        pwm.writeMicroseconds(servonum, microsec);
-        wire->delay(50);
-    }
-
-    // Bring back to zero
-    wire->delay(500);
-    int pulselen = Utility::angleToTicks(0.0);
-    pwm.setPWM(servonum, 0, pulselen); 
 
     cv::destroyAllWindows();
+    
+    // Test Servos
+    // for (int angle = -70; angle < 70; angle += 5) {
+    //     int pulselen = Utility::angleToTicks(angle);
+    //     pwm.setPWM(servonum, 0, pulselen);
+    //     wire->delay(500);
+    // }
+
+    // wire->delay(500);
+    // for (uint16_t pulselen = SERVOMAX; pulselen > SERVOMIN; pulselen+=5) {
+    //     pwm.setPWM(servonum, 0, pulselen);
+    //     wire->delay(500);
+    // }
+
+    // wire->delay(500);
+    // for (uint16_t microsec = USMIN ; microsec < USMAX; microsec += 5) {
+    //     pwm.writeMicroseconds(servonum, microsec);
+    //     wire->delay(50);
+    // }
+
+    // wire->delay(500);
+    // for (uint16_t microsec = USMAX; microsec > USMIN; microsec -= 5) {
+    //     pwm.writeMicroseconds(servonum, microsec);
+    //     wire->delay(50);
+    // }
+
+    // // Bring back to zero
+    // wire->delay(500);
+    // int pulselen = Utility::angleToTicks(0.0);
+    // pwm.setPWM(servonum, 0, pulselen); 
 
 }
 
