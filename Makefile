@@ -258,6 +258,222 @@ src/detection/YoloDetector.cpp.s:
 	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/YoloDetector.cpp.s
 .PHONY : src/detection/YoloDetector.cpp.s
 
+src/env/Env.o: src/env/Env.cpp.o
+
+.PHONY : src/env/Env.o
+
+# target to build an object file
+src/env/Env.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/env/Env.cpp.o
+.PHONY : src/env/Env.cpp.o
+
+src/env/Env.i: src/env/Env.cpp.i
+
+.PHONY : src/env/Env.i
+
+# target to preprocess a source file
+src/env/Env.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/env/Env.cpp.i
+.PHONY : src/env/Env.cpp.i
+
+src/env/Env.s: src/env/Env.cpp.s
+
+.PHONY : src/env/Env.s
+
+# target to generate assembly for a file
+src/env/Env.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/env/Env.cpp.s
+.PHONY : src/env/Env.cpp.s
+
+src/network/Normal.o: src/network/Normal.cpp.o
+
+.PHONY : src/network/Normal.o
+
+# target to build an object file
+src/network/Normal.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/Normal.cpp.o
+.PHONY : src/network/Normal.cpp.o
+
+src/network/Normal.i: src/network/Normal.cpp.i
+
+.PHONY : src/network/Normal.i
+
+# target to preprocess a source file
+src/network/Normal.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/Normal.cpp.i
+.PHONY : src/network/Normal.cpp.i
+
+src/network/Normal.s: src/network/Normal.cpp.s
+
+.PHONY : src/network/Normal.s
+
+# target to generate assembly for a file
+src/network/Normal.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/Normal.cpp.s
+.PHONY : src/network/Normal.cpp.s
+
+src/network/PolicyNetwork.o: src/network/PolicyNetwork.cpp.o
+
+.PHONY : src/network/PolicyNetwork.o
+
+# target to build an object file
+src/network/PolicyNetwork.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/PolicyNetwork.cpp.o
+.PHONY : src/network/PolicyNetwork.cpp.o
+
+src/network/PolicyNetwork.i: src/network/PolicyNetwork.cpp.i
+
+.PHONY : src/network/PolicyNetwork.i
+
+# target to preprocess a source file
+src/network/PolicyNetwork.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/PolicyNetwork.cpp.i
+.PHONY : src/network/PolicyNetwork.cpp.i
+
+src/network/PolicyNetwork.s: src/network/PolicyNetwork.cpp.s
+
+.PHONY : src/network/PolicyNetwork.s
+
+# target to generate assembly for a file
+src/network/PolicyNetwork.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/PolicyNetwork.cpp.s
+.PHONY : src/network/PolicyNetwork.cpp.s
+
+src/network/QNetwork.o: src/network/QNetwork.cpp.o
+
+.PHONY : src/network/QNetwork.o
+
+# target to build an object file
+src/network/QNetwork.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/QNetwork.cpp.o
+.PHONY : src/network/QNetwork.cpp.o
+
+src/network/QNetwork.i: src/network/QNetwork.cpp.i
+
+.PHONY : src/network/QNetwork.i
+
+# target to preprocess a source file
+src/network/QNetwork.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/QNetwork.cpp.i
+.PHONY : src/network/QNetwork.cpp.i
+
+src/network/QNetwork.s: src/network/QNetwork.cpp.s
+
+.PHONY : src/network/QNetwork.s
+
+# target to generate assembly for a file
+src/network/QNetwork.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/QNetwork.cpp.s
+.PHONY : src/network/QNetwork.cpp.s
+
+src/network/ReplayBuffer.o: src/network/ReplayBuffer.cpp.o
+
+.PHONY : src/network/ReplayBuffer.o
+
+# target to build an object file
+src/network/ReplayBuffer.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/ReplayBuffer.cpp.o
+.PHONY : src/network/ReplayBuffer.cpp.o
+
+src/network/ReplayBuffer.i: src/network/ReplayBuffer.cpp.i
+
+.PHONY : src/network/ReplayBuffer.i
+
+# target to preprocess a source file
+src/network/ReplayBuffer.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/ReplayBuffer.cpp.i
+.PHONY : src/network/ReplayBuffer.cpp.i
+
+src/network/ReplayBuffer.s: src/network/ReplayBuffer.cpp.s
+
+.PHONY : src/network/ReplayBuffer.s
+
+# target to generate assembly for a file
+src/network/ReplayBuffer.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/ReplayBuffer.cpp.s
+.PHONY : src/network/ReplayBuffer.cpp.s
+
+src/network/SACAgent.o: src/network/SACAgent.cpp.o
+
+.PHONY : src/network/SACAgent.o
+
+# target to build an object file
+src/network/SACAgent.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/SACAgent.cpp.o
+.PHONY : src/network/SACAgent.cpp.o
+
+src/network/SACAgent.i: src/network/SACAgent.cpp.i
+
+.PHONY : src/network/SACAgent.i
+
+# target to preprocess a source file
+src/network/SACAgent.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/SACAgent.cpp.i
+.PHONY : src/network/SACAgent.cpp.i
+
+src/network/SACAgent.s: src/network/SACAgent.cpp.s
+
+.PHONY : src/network/SACAgent.s
+
+# target to generate assembly for a file
+src/network/SACAgent.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/SACAgent.cpp.s
+.PHONY : src/network/SACAgent.cpp.s
+
+src/network/ValueNetwork.o: src/network/ValueNetwork.cpp.o
+
+.PHONY : src/network/ValueNetwork.o
+
+# target to build an object file
+src/network/ValueNetwork.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/ValueNetwork.cpp.o
+.PHONY : src/network/ValueNetwork.cpp.o
+
+src/network/ValueNetwork.i: src/network/ValueNetwork.cpp.i
+
+.PHONY : src/network/ValueNetwork.i
+
+# target to preprocess a source file
+src/network/ValueNetwork.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/ValueNetwork.cpp.i
+.PHONY : src/network/ValueNetwork.cpp.i
+
+src/network/ValueNetwork.s: src/network/ValueNetwork.cpp.s
+
+.PHONY : src/network/ValueNetwork.s
+
+# target to generate assembly for a file
+src/network/ValueNetwork.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/network/ValueNetwork.cpp.s
+.PHONY : src/network/ValueNetwork.cpp.s
+
+src/pid/PID.o: src/pid/PID.cpp.o
+
+.PHONY : src/pid/PID.o
+
+# target to build an object file
+src/pid/PID.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/pid/PID.cpp.o
+.PHONY : src/pid/PID.cpp.o
+
+src/pid/PID.i: src/pid/PID.cpp.i
+
+.PHONY : src/pid/PID.i
+
+# target to preprocess a source file
+src/pid/PID.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/pid/PID.cpp.i
+.PHONY : src/pid/PID.cpp.i
+
+src/pid/PID.s: src/pid/PID.cpp.s
+
+.PHONY : src/pid/PID.s
+
+# target to generate assembly for a file
+src/pid/PID.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/pid/PID.cpp.s
+.PHONY : src/pid/PID.cpp.s
+
 src/servo/PCA9685.o: src/servo/PCA9685.cpp.o
 
 .PHONY : src/servo/PCA9685.o
@@ -363,6 +579,30 @@ help:
 	@echo "... src/detection/YoloDetector.o"
 	@echo "... src/detection/YoloDetector.i"
 	@echo "... src/detection/YoloDetector.s"
+	@echo "... src/env/Env.o"
+	@echo "... src/env/Env.i"
+	@echo "... src/env/Env.s"
+	@echo "... src/network/Normal.o"
+	@echo "... src/network/Normal.i"
+	@echo "... src/network/Normal.s"
+	@echo "... src/network/PolicyNetwork.o"
+	@echo "... src/network/PolicyNetwork.i"
+	@echo "... src/network/PolicyNetwork.s"
+	@echo "... src/network/QNetwork.o"
+	@echo "... src/network/QNetwork.i"
+	@echo "... src/network/QNetwork.s"
+	@echo "... src/network/ReplayBuffer.o"
+	@echo "... src/network/ReplayBuffer.i"
+	@echo "... src/network/ReplayBuffer.s"
+	@echo "... src/network/SACAgent.o"
+	@echo "... src/network/SACAgent.i"
+	@echo "... src/network/SACAgent.s"
+	@echo "... src/network/ValueNetwork.o"
+	@echo "... src/network/ValueNetwork.i"
+	@echo "... src/network/ValueNetwork.s"
+	@echo "... src/pid/PID.o"
+	@echo "... src/pid/PID.i"
+	@echo "... src/pid/PID.s"
 	@echo "... src/servo/PCA9685.o"
 	@echo "... src/servo/PCA9685.i"
 	@echo "... src/servo/PCA9685.s"

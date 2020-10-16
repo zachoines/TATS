@@ -29,7 +29,6 @@ namespace control {
         double _res = 4096;
         PCA9685 *_pwm;
         
-        int calcTicks(float impulseMs);
         int millisecondToTicks(double impulseMs);
         int secondsToTicks(double impulseSec);
 

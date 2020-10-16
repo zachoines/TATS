@@ -37,8 +37,6 @@ namespace control {
 		_pwm->setPWM(s.servoNum, 0, ticks);
 	}
 
-    
-
     void ServoKit::setMsRange(int servo, double low, double high) {
         struct Servo s;
         if (servo < 0 || servo > 15) {
@@ -69,6 +67,8 @@ namespace control {
         } else {
             servos[servo.servoNum] = servo;
         }
+
+        setAngle(servo.servoNum, servo.resetAngle);
     }
 };
 
