@@ -1,5 +1,7 @@
 #pragma once
 #include <cmath>
+#include <condition_variable>
+#include <mutex>
 
 #include "../util/data.h"
 #include "../util/util.h"
@@ -13,12 +15,13 @@ namespace TATS {
 	class Env
 	{
 	private:
-		pthread_mutex_t* _lock;
-		pthread_cond_t* _cond;
-		int _frameSkip;
+
+		std::mutex _lock;
+		std::condition_variable _cond;
 		Utility::param* _params;
 		Utility::cfg* _config;
 
+		int _frameSkip;
 		double _lastTimeStamp[NUM_SERVOS];
 
 		Utility::ED _eventData[NUM_SERVOS];
@@ -45,7 +48,7 @@ namespace TATS {
 		control::ServoKit* _servos;
 
 	public:
-		Env(Utility::param* parameters, pthread_mutex_t* stateDataLoc, pthread_cond_t* stateDataCond);
+		Env(Utility::param* parameters);
 		~Env();
 
 		bool isDone();

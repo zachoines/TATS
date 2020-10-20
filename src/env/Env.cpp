@@ -1,22 +1,19 @@
 #include "Env.h"
 
 namespace TATS {
-	Env::Env(Utility::param* parameters, pthread_mutex_t* stateDataLock, pthread_cond_t* stateDataCond)
+	Env::Env(Utility::param* parameters)
 	{
-
-		_cond = stateDataCond;
-		_lock = stateDataLock;
 		_params = parameters;
-		_config = parameters->config;
+		_config = new Utility::Config();
 
 		_pids[0] = parameters->tilt;
 		_pids[1] = parameters->pan;
 
-		_resetAngles[0] = parameters->config->resetAngleY;
-		_resetAngles[1] = parameters->config->resetAngleX;
+		_resetAngles[0] = _config->resetAngleY;
+		_resetAngles[1] = _config->resetAngleX;
 
-		_disableServo[0] = parameters->config->disableY;
-		_disableServo[1] = parameters->config->disableX;
+		_disableServo[0] = _config->disableY;
+		_disableServo[1] = _config->disableX;
 
 		_currentAngles[0] = 0.0;
 		_currentAngles[1] = 0.0;
@@ -24,8 +21,8 @@ namespace TATS {
 		_lastAngles[0] = 0.0;
 		_lastAngles[1] = 0.0;
 
-		_invert[0] = _params->config->invertY;
-		_invert[1] = _params->config->invertX;
+		_invert[0] = _config->invertY;
+		_invert[1] = _config->invertX;
 
 		// Setup I2C and PWM
 		_wire = new control::Wire();
@@ -55,53 +52,69 @@ namespace TATS {
 		delete _wire;
 		delete _pwm;
 		delete _servos;
+		delete _config;
 	}
 
 	void Env::_sleep()
 	{
-		int milis = 1000 / _params->rate;
-		Utility::msleep(milis);
+		int milli = 1000 / _params->rate;
+		std::this_thread::sleep_for(std::chrono::milliseconds(milli));
 	}
 
 	void Env::_syncEnv()
 	{
-		// Sleep for specified time and Wait for env to respond to changes
 		_sleep();
 
-		pthread_mutex_lock(_lock);
-		for (int servo = 0; servo < NUM_SERVOS; servo++) {
-			
-			if (_disableServo[servo]) {
-				continue;
+		std::unique_lock<std::mutex> lck(_lock);
+
+		// Sleep for specified time and Wait for env to respond to changes
+		try {
+			for (int servo = 0; servo < NUM_SERVOS; servo++) {
+				
+				if (_disableServo[servo]) {
+					continue;
+				}				
+
+				while (_eventData[servo].timestamp == _lastTimeStamp[servo]) {
+					_cond.wait(lck);
+				}
+
+				_lastData[servo] = _currentData[servo];
+				_currentData[servo] = _eventData[servo];
+				_lastTimeStamp[servo] = _currentData[servo].timestamp;
 			}
 
-			while (_eventData[servo].timestamp == _lastTimeStamp[servo]) {
-				pthread_cond_wait(_cond, _lock);
-			}
-
-			_lastData[servo] = _currentData[servo];
-			_currentData[servo] = _eventData[servo];
-			_lastTimeStamp[servo] = _currentData[servo].timestamp;
+			lck.unlock();
 		}
-
-		pthread_mutex_unlock(_lock);
+		catch(const std::exception& e)
+		{
+			std::cerr << e.what() << '\n';
+			throw std::runtime_error("cannot sync with servos");
+		}
 	}
 
 	void Env::update(Utility::ED eventDataArray[NUM_SERVOS]) {
-
-		if (pthread_mutex_lock(_lock) == 0) {
+		
+		std::unique_lock<std::mutex> lck(_lock);
+		try
+		{
+			// std::lock_guard<std::mutex> lck(_lock);
 			for (int servo = 0; servo < NUM_SERVOS; servo++) {
 				if (_disableServo[servo]) {
 					continue;
 				}
 
-				_eventData[servo] = eventDataArray[servo];
+				this->_eventData[servo] = eventDataArray[servo];
 			}
 			
-			pthread_cond_broadcast(_cond);
+			lck.unlock();
+			_cond.notify_one();
 		}
-
-		pthread_mutex_unlock(_lock);
+		catch(const std::exception& e)
+		{
+			std::cerr << e.what() << '\n';
+			throw std::runtime_error("cannot update event data");
+		}
 	}
 
 	bool Env::isDone()
@@ -172,21 +185,21 @@ namespace TATS {
 				stepResults.servos[servo].actions[a] = actions[servo][a];
 
 				if (rescale) {
-					actions[servo][a] = Utility::rescaleAction(actions[servo][a], _params->config->actionLow, _params->config->actionHigh);
+					actions[servo][a] = Utility::rescaleAction(actions[servo][a], _config->actionLow, _config->actionHigh);
 				}
 			}
 
 			// Print out the PID gains
 			if (0.05 >= randChance) {
-				std::cout << "Here is the new actions(s): ";
-				for (int a = 0; a < _params->config->numActions; a++) {
+				std::cout << "Here are the new actions(s): ";
+				for (int a = 0; a < _config->numActions; a++) {
 					std::cout << actions[servo][a] << ", ";
 				}
 				std::cout << std::endl;
 			}
 
 			double newAngle = 0.0;
-			if (!_params->config->usePIDs) {
+			if (!_config->usePIDs) {
 				newAngle = actions[servo][0];
 			}
 			else {
@@ -194,8 +207,8 @@ namespace TATS {
 				newAngle = _pids[servo]->update(_currentData[servo].obj, 1000.0 / static_cast<double>(_params->rate));
 			}
 
-			newAngle = Utility::mapOutput(newAngle, _params->config->pidOutputLow, _params->config->pidOutputHigh, _params->config->angleLow, _params->config->angleHigh);
-			if (_invert[servo]) { newAngle = _params->config->angleHigh - newAngle; }
+			newAngle = Utility::mapOutput(newAngle, _config->pidOutputLow, _config->pidOutputHigh, _config->angleLow, _config->angleHigh);
+			if (_invert[servo]) { newAngle = _config->angleHigh - newAngle; }
 			_lastAngles[servo] = _currentAngles[servo];
 			_currentAngles[servo] = newAngle;
 			_servos->setAngle(servo, newAngle);
@@ -220,7 +233,7 @@ namespace TATS {
 			}
 
 			// Fill out the step results
-			if (!_params->config->usePIDs) {
+			if (!_config->usePIDs) {
 				_pids[servo]->update(currentError, 1000.0 / static_cast<double>(_params->rate));
 				stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
 			}
@@ -229,8 +242,8 @@ namespace TATS {
 			}
 
 			stepResults.servos[servo].nextState.obj = _currentData[servo].obj / _currentData[servo].frame;
-			stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo] / _params->config->angleHigh;
-			stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _params->config->angleHigh;
+			stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo] / _config->angleHigh;
+			stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _config->angleHigh;
 			stepResults.servos[servo].done = _currentData[servo].done;
 			_observation[servo] = stepResults.servos[servo].nextState;
 		}

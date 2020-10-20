@@ -11,8 +11,6 @@
 #include <boost/interprocess/allocators/allocator.hpp>
 #include "../pid/PID.h"
 
-
-
 namespace Utility {
     #define NUM_SERVOS 2
     #define NUM_INPUT 5
@@ -152,7 +150,7 @@ namespace Utility {
             invertX(false),                      // Flip output angles for pan
             invertY(false),						 // Flip output angles for tilt
             disableX(false),                     // Disable the pan servo
-            disableY(false),                     // Disable the tilt servo
+            disableY(true),                      // Disable the tilt servo
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(true),					 // Use openCV tracker instead of face detection
@@ -178,15 +176,14 @@ namespace Utility {
 
         int dims[2];
 
+        int ShmID;
         int pid;
-        ED* eventData;
         int rate; // Updates per second
-        int fd;
 
         bool isTraining;
         bool freshData;
-        cfg* config;
-        
+
+        Parameter() {}
     } typedef param;
 
 }

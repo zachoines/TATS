@@ -17,6 +17,7 @@
 #include <csignal>
 #include <random>
 #include <ctime>
+#include <thread>
 
 // Pytorch imports
 #include <torch/torch.h>
@@ -26,9 +27,7 @@
 #include "opencv2/core/core.hpp"
 #include "opencv2/core/ocl.hpp"
 #include "opencv2/imgcodecs.hpp"
-#include "opencv2/imgcodecs/imgcodecs.hpp"
 #include "opencv2/highgui/highgui.hpp"
-#include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/videoio/videoio.hpp"
 #include "opencv2/video/video.hpp"
 #include "opencv2/video/tracking.hpp"
@@ -59,23 +58,15 @@
 #include "./src/pid/PID.h"
 
 // Threads
-void* panTiltThread(void* args);
-void* detectThread(void* args);
-void* autoTuneThread(void* args);
+void panTiltThread(Utility::param* parameters);
+void detectThread(Utility::param* parameters);
+void syncThread(Utility::param* parameters);
 
 // Thread Sync
 pthread_mutex_t stateDataLock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t trainCond = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t trainLock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t dataCond = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t dataLock = PTHREAD_MUTEX_INITIALIZER;
 
 SACAgent* pidAutoTuner = nullptr;
 TATS::Env* servos = nullptr;
-
-// Camera related initializations
-std::string pipeline = Utility::gstreamer_pipeline(1280, 720, 1280, 720, 60, 0);
-cv::VideoCapture camera(pipeline, cv::CAP_GSTREAMER);
 
 // Log files
 std::string statFileName = "/stat/episodeAverages.txt";
@@ -91,31 +82,35 @@ int main(int argc, char** argv)
 {
 	using namespace Utility;
 	using namespace TATS;
-	
+
     // Initialize defaults and params
     param* parameters = (param*)malloc(sizeof(param));
-	parameters->config = new Config();
-    servos = new TATS::Env(parameters, &dataLock, &dataCond);
+	Utility::Config* config = new Utility::Config();
+    servos = new TATS::Env(parameters);
 
-    // Create a large array for syncing parent and child process' model parameters
+
+	// Shared memory for SAC model syncing
 	int ShmID = shmget(IPC_PRIVATE, 10000 * sizeof(double), IPC_CREAT | 0666);
 	if (ShmID < 0) {
         throw std::runtime_error("Could not initialize shared memory");
 	}
 
+	parameters->ShmID = ShmID;
+
 	// Create a shared memory buffer for experiance replay
 	boost::interprocess::shared_memory_object::remove("SharedMemorySegment");
-	boost::interprocess::managed_shared_memory segment(boost::interprocess::create_only, "SharedMemorySegment", sizeof(TD) * parameters->config->maxBufferSize + 1);
+	boost::interprocess::managed_shared_memory segment(boost::interprocess::create_only, "SharedMemorySegment", sizeof(TD) * config->maxBufferSize + 1);
 	const ShmemAllocator alloc_inst(segment.get_segment_manager());
 	SharedBuffer* sharedTrainingBuffer = segment.construct<SharedBuffer>("SharedBuffer") (alloc_inst);
 
-    // Setup stats
+    // Setup stats files
     std::string avePath = get_current_dir_name() + statFileName;
 	std::string lossPath = get_current_dir_name() + lossFileName;
 	std::string statPath = get_current_dir_name() + stateDir;
 
 	mkdir(statPath.c_str(), 0755);
 
+	// Remove old logs
 	if (fileExists(avePath)) {
 		std::remove(avePath.c_str());
 	}
@@ -134,24 +129,8 @@ int main(int argc, char** argv)
         std::cout << "CUDA is not available! Training on CPU." << std::endl;
     }
 
-    // Setup Camera
-    if (!camera.isOpened())
-	{
-		throw std::runtime_error("cannot initialize camera");
-	} else {
-        cv::Mat test = GetImageFromCamera(camera);
-
-        if (test.empty())
-        {
-            throw std::runtime_error("Issue reading frame!");
-        }
-
-        int height = test.rows;
-        int width = test.cols;
-
-        parameters->dims[1] = width;
-        parameters->dims[0] = height;
-    }
+	parameters->dims[1] = 1280;
+	parameters->dims[0] = 720;
 
     /*
         // Uno class names
@@ -181,87 +160,33 @@ int main(int argc, char** argv)
     */
 
     // Setup pids
-	parameters->rate = parameters->config->updateRate; 
+	parameters->rate = config->updateRate; 
 	parameters->isTraining = false;
 	parameters->freshData = false;
 
     // Parent process is image recognition PID/servo controller, second is SAC Servo autotuner
     pid_t pid = fork();
 	if (pid > 0) {
-        
-        // Find shared memory reference for the parent
-		double* ShmPTRParent;
-		ShmPTRParent = (double*)shmat(ShmID, 0, 0);
-
-		if (ShmPTRParent == nullptr) {
-			throw std::runtime_error("Could not initialize shared memory");
-		}
-
-        parameters->pid = pid;
-        
-        // Kill child if parent dies
+		
+		// Kill child if parent dies
 		prctl(PR_SET_PDEATHSIG, SIGKILL); 
-
-        // Setup signal mask
-		sigset_t  mask;
-		siginfo_t info;
-		pid_t     child, p;
-		int       signum;
-
-		sigemptyset(&mask);
-		sigaddset(&mask, SIGINT);
-		sigaddset(&mask, SIGHUP);
-		sigaddset(&mask, SIGTERM);
-		sigaddset(&mask, SIGQUIT);
-		sigaddset(&mask, SIGUSR1);
-		sigaddset(&mask, SIGUSR2);
-
-		if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
-			throw std::runtime_error("Cannot block SIGUSR1 or SIGUSR2");
-		}
-
+        parameters->pid = pid;
+		
 
         // Setup threads and PIDS
-        PID* pan = new PID(parameters->config->defaultGains[0], parameters->config->defaultGains[1], parameters->config->defaultGains[2], parameters->config->pidOutputLow, parameters->config->pidOutputHigh, static_cast<double>(parameters->dims[1]) / 2.0);
-        PID* tilt = new PID(parameters->config->defaultGains[0], parameters->config->defaultGains[1], parameters->config->defaultGains[2], parameters->config->pidOutputLow, parameters->config->pidOutputHigh, static_cast<double>(parameters->dims[0]) / 2.0);
+        PID* pan = new PID(config->defaultGains[0], config->defaultGains[1], config->defaultGains[2], config->pidOutputLow, config->pidOutputHigh, static_cast<double>(parameters->dims[1]) / 2.0);
+        PID* tilt = new PID(config->defaultGains[0], config->defaultGains[1], config->defaultGains[2], config->pidOutputLow, config->pidOutputHigh, static_cast<double>(parameters->dims[0]) / 2.0);
         parameters->pan = pan;
         parameters->tilt = tilt;
-        pidAutoTuner = new SACAgent(parameters->config->numInput, parameters->config->numHidden, parameters->config->numActions, parameters->config->actionHigh, parameters->config->actionLow);
-        
-        pthread_t detectTid, panTiltTid;
-		pthread_create(&panTiltTid, NULL, panTiltThread, (void*)parameters);
-		pthread_create(&detectTid, NULL, detectThread, (void*)parameters);
-		pthread_detach(panTiltTid);
-		pthread_detach(detectTid);
+        pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
-        // Loop for syncing parent network params
-        while (true) {
+		std::thread detectT(detectThread, std::ref(parameters));
+		std::thread panTiltT(panTiltThread, std::ref(parameters));
+		std::thread syncT(syncThread, std::ref(parameters));
 
-			signum = sigwaitinfo(&mask, &info);
-			if (signum == -1) {
-				if (errno == EINTR)
-					continue;
-				std::runtime_error("Parent process: sigwaitinfo() failed");
-			}
-
-			// Update weights on signal received from autotune thread
-			if (signum == SIGUSR1 && info.si_pid == pid) {
-				std::cout << "Loading new weights..." << std::endl;
-				if (pthread_mutex_lock(&stateDataLock) == 0) {
-					int valuesRead = pidAutoTuner->sync(true, ShmPTRParent);
-					std::cout << "Tensors read in parent: " << valuesRead << std::endl;
-				}
-
-				pthread_mutex_unlock(&stateDataLock);
-			}
-
-			// Break when on SIGINT
-			if (signum == SIGINT && !info.si_pid == pid) {
-				camera.release();
-				std::cout << "Ctrl+C detected!" << std::endl;
-				break;
-			}
-		}
+		detectT.join();
+		panTiltT.join();
+		syncT.join();
 
 		// Terminate Child processes
 		kill(-pid, SIGQUIT);
@@ -273,7 +198,7 @@ int main(int argc, char** argv)
 		}
 
     } else {
-        SACAgent* pidAutoTunerchild = new SACAgent(parameters->config->numInput, parameters->config->numHidden, parameters->config->numActions, parameters->config->actionHigh, parameters->config->actionLow);
+        SACAgent* pidAutoTunerchild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
         // Get Shared memory reference for the child
 		double* ShmPTRChild;
@@ -286,7 +211,7 @@ int main(int argc, char** argv)
         // Retrieve the training buffer from shared memory
 		boost::interprocess::managed_shared_memory _segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
 		SharedBuffer* trainingBuffer = _segment.find<SharedBuffer>("SharedBuffer").first;
-		ReplayBuffer* replayBuffer = new ReplayBuffer(parameters->config->maxBufferSize, trainingBuffer);
+		ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer);
 
 
         // Setup signal mask
@@ -334,12 +259,14 @@ int main(int argc, char** argv)
 				// Begin training process
 				while (isTraining) {
 
-			    	// replayBuffer->removeOld(batchSize);
                     // TrainBuffer batch = replayBuffer->sample(batchSize);
                     // pidAutoTunerChild->update(batchSize, &batch);
 					// int valuesWritten = pidAutoTunerChild->sync(false, ShmPTRChild);
 					// std::cout << "Tensors written in child: " << valuesWritten << std::endl;
 
+					replayBuffer->clear();
+					Utility::msleep(2000);
+					std::cout << "Sync signal sent..." << std::endl;
 					kill(getppid(), SIGUSR1);
 
 					
@@ -355,6 +282,64 @@ int main(int argc, char** argv)
     }
 }
 
+void syncThread(Utility::param* parameters) {
+	using namespace Utility;
+	Utility::Config* config = new Utility::Config();
+	
+	// SHared memory referance for the parent process
+	double* ShmPTRParent = (double*)shmat(parameters->ShmID, 0, 0);
+
+	if (ShmPTRParent == nullptr) {
+		throw std::runtime_error("Could not initialize shared memory");
+	}
+
+	// Setup signal mask
+	sigset_t  mask;
+	siginfo_t info;
+	pid_t     child, p;
+	int       signum;
+
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGINT);
+	sigaddset(&mask, SIGHUP);
+	sigaddset(&mask, SIGTERM);
+	sigaddset(&mask, SIGQUIT);
+	sigaddset(&mask, SIGUSR1);
+	sigaddset(&mask, SIGUSR2);
+
+	if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
+		throw std::runtime_error("Cannot block SIGUSR1 or SIGUSR2");
+	}
+
+	// Loop for syncing parent network params
+	while (true) {
+
+		signum = sigwaitinfo(&mask, &info);
+		if (signum == -1) {
+			if (errno == EINTR)
+				continue;
+			std::runtime_error("Parent process: sigwaitinfo() failed");
+		}
+
+		// Update weights on signal received from autotune thread
+		if (signum == SIGUSR1 && info.si_pid == parameters->pid) {
+			std::cout << "Received sync signal..." << std::endl;
+			if (pthread_mutex_lock(&stateDataLock) == 0) {
+				// int valuesRead = pidAutoTuner->sync(true, parameters->ShmPTR);
+				// std::cout << "Tensors read in parent: " << valuesRead << std::endl;
+			}
+
+			pthread_mutex_unlock(&stateDataLock);
+		}
+
+		// Break when on SIGINT
+		if (signum == SIGINT && !info.si_pid == parameters->pid) {
+			std::cout << "Ctrl+C detected!" << std::endl;
+			break;
+		}
+	}
+}
+
 static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* context)
 {
 	// Take care of all segfaults
@@ -367,18 +352,18 @@ static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* co
 	sig_value1 = sig_number;
 }
 
-void* panTiltThread(void* args) {
+void panTiltThread(Utility::param* parameters) {
 	using namespace TATS;
 	using namespace Utility;
 	std::mt19937 eng{ std::random_device{}() };
     torch::Device device(torch::kCUDA);
 	auto options = torch::TensorOptions().dtype(torch::kDouble).device(device);
-	param* parameters = (param*)args;
+	Utility::Config* config = new Utility::Config();
 
     // Retrieve the training buffer from shared memory
 	boost::interprocess::managed_shared_memory _segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
 	SharedBuffer* trainingBuffer = _segment.find<SharedBuffer>("SharedBuffer").first;
-	ReplayBuffer* replayBuffer = new ReplayBuffer(parameters->config->maxBufferSize, trainingBuffer);
+	ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer);
 
 	// Training options and record keeping
 	double episodeAverageRewards = 0.0;
@@ -388,8 +373,8 @@ void* panTiltThread(void* args) {
 	double episodeSteps = 0.0;
 
 	// training state variables
-	bool initialRandomActions = parameters->config->initialRandomActions;
-	int numInitialRandomActions = parameters->config->numInitialRandomActions;
+	bool initialRandomActions = config->initialRandomActions;
+	int numInitialRandomActions = config->numInitialRandomActions;
 	
 	double predictedActions[NUM_SERVOS][NUM_ACTIONS];
 	double stateArray[NUM_INPUT];
@@ -398,7 +383,11 @@ void* panTiltThread(void* args) {
 	ED eventData[NUM_SERVOS];
 	RD resetResults;
 
-	resetResults = servos->reset();	
+	try {
+		resetResults = servos->reset();	
+	} catch (...) {
+		throw std::runtime_error("cannot reset servos");
+	}
 	
 	for (int servo = 0; servo < NUM_SERVOS; servo++) {
 		currentState[servo] = resetResults.servos[servo];
@@ -406,28 +395,28 @@ void* panTiltThread(void* args) {
 
 	while (true) {
 
-		if (parameters->config->useAutoTuning) {
+		if (config->useAutoTuning) {
 
 			if (!servos->isDone()) {
 				for (int i = 0; i < 2; i++) {
 
 					// Query network and get PID gains
-					if (parameters->config->trainMode) {
+					if (config->trainMode) {
 						if (initialRandomActions && numInitialRandomActions >= 0) {
 
 							numInitialRandomActions--;
 							std::cout << "Random action count: " << numInitialRandomActions << std::endl;
-							for (int a = 0; a < parameters->config->numActions; a++) {
-								predictedActions[i][a] = std::uniform_real_distribution<double>{ parameters->config->actionLow, parameters->config->actionHigh }(eng);;
+							for (int a = 0; a < config->numActions; a++) {
+								predictedActions[i][a] = std::uniform_real_distribution<double>{ config->actionLow, config->actionHigh }(eng);;
 							}
 						}
 						else {
 							currentState[i].getStateArray(stateArray);
-							at::Tensor actions = pidAutoTuner->get_action(torch::from_blob(stateArray, { 1, parameters->config->numInput }, options), true);
+							at::Tensor actions = pidAutoTuner->get_action(torch::from_blob(stateArray, { 1, config->numInput }, options), true);
 
-							if (parameters->config->numActions > 1) {
+							if (config->numActions > 1) {
 								auto actions_a = actions.accessor<double, 1>();
-								for (int a = 0; a < parameters->config->numActions; a++) {
+								for (int a = 0; a < config->numActions; a++) {
 									predictedActions[i][a] = actions_a[a];
 								}
 							}
@@ -439,10 +428,10 @@ void* panTiltThread(void* args) {
 					}
 					else {
 						currentState[i].getStateArray(stateArray);
-						at::Tensor actions = pidAutoTuner->get_action(torch::from_blob(stateArray, { 1, parameters->config->numInput }, options), false);
-						if (parameters->config->numActions > 1) {
+						at::Tensor actions = pidAutoTuner->get_action(torch::from_blob(stateArray, { 1, config->numInput }, options), false);
+						if (config->numActions > 1) {
 							auto actions_a = actions.accessor<double, 1>();
-							for (int a = 0; a < parameters->config->numActions; a++) {
+							for (int a = 0; a < config->numActions; a++) {
 								predictedActions[i][a] = actions_a[a];
 							}
 						}
@@ -453,16 +442,22 @@ void* panTiltThread(void* args) {
 					
 				}
 
-				SR stepResults = servos->step(predictedActions);
+				SR stepResults;
 
-				if (parameters->config->trainMode) {;
+				try {
+					stepResults = servos->step(predictedActions);
+				} catch (...) {
+					throw std::runtime_error("cannot step with servos");
+				}
+
+				if (config->trainMode) {;
 					
 					for (int servo = 0; servo < NUM_SERVOS; servo++) {
 						trainData[servo] = stepResults.servos[servo];
 						trainData[servo].currentState = currentState[servo];
 						currentState[servo] = trainData[servo].nextState;
 
-						if (replayBuffer->size() <= parameters->config->maxBufferSize) {
+						if (replayBuffer->size() <= config->maxBufferSize) {
 							replayBuffer->add(trainData[servo]);
 						}
 					}
@@ -499,13 +494,20 @@ void* panTiltThread(void* args) {
 					}
 
 		
-                    if (replayBuffer->size() > parameters->config->minBufferSize + 1) {
+                    if (replayBuffer->size() > config->minBufferSize + 1) {
                         kill(parameters->pid, SIGUSR1);
                     } 
 				}
 			}
 			else {
-				resetResults = servos->reset();
+				
+				try {
+					resetResults = servos->reset();
+				} catch (...) {
+					throw std::runtime_error("cannot reset servos");
+				}
+				
+				
 				for (int servo = 0; servo < NUM_SERVOS; servo++) {
 					currentState[servo] = resetResults.servos[servo];
 				}		
@@ -514,50 +516,77 @@ void* panTiltThread(void* args) {
 		else {
 			if (!servos->isDone()) {
 				for (int i = 0; i < 2; i++) {
-					predictedActions[i][0] = parameters->config->defaultGains[0];
-					predictedActions[i][1] = parameters->config->defaultGains[1];
-					predictedActions[i][2] = parameters->config->defaultGains[2];
+					predictedActions[i][0] = config->defaultGains[0];
+					predictedActions[i][1] = config->defaultGains[1];
+					predictedActions[i][2] = config->defaultGains[2];
 				}
 
-				servos->step(predictedActions, false);
+				try {
+					servos->step(predictedActions, false);
+				} catch (...) {
+					throw std::runtime_error("cannot step with servos");
+				}
 
 				// TODO remove this after testing
-				if (replayBuffer->size() <= parameters->config->maxBufferSize) {
+				if (replayBuffer->size() <= config->maxBufferSize) {
 					TD data;
 					replayBuffer->add(data);
 				}
-				if (replayBuffer->size() > parameters->config->minBufferSize + 1) {
+				if (replayBuffer->size() > config->minBufferSize + 1) {
+					std::cout << "Sending train signal..." << std::endl;
 					kill(parameters->pid, SIGUSR1);
 				} 
 			}
 			else {
-				resetResults = servos->reset();
+
+				try {
+					resetResults = servos->reset();
+				} catch (...) {
+					throw std::runtime_error("cannot reset servos");
+				}
 			}	
 		}
 	}
 }
 
-void* detectThread(void* args)
+void detectThread(Utility::param* parameters)
 {
 	using namespace TATS;
 	using namespace Utility;
-	param* parameters = (param*)args;
-	int fd = parameters->fd;
+
+	// Init camera
+	std::string pipeline = Utility::gstreamer_pipeline(1280, 720, 1280, 720, 120, 0);
+	cv::VideoCapture* camera = nullptr;
+	camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
+	Utility::Config* config = new Utility::Config();
+
+    // Setup Camera
+    if (!camera->isOpened())
+	{
+		throw std::runtime_error("cannot initialize camera");
+	} else {
+        cv::Mat test = GetImageFromCamera(camera);
+
+        if (test.empty())
+        {
+            throw std::runtime_error("Issue reading frame!");
+        }
+    }
 
 	// user hyperparams
-	float recheckChance = parameters->config->recheckChance;
-	int trackerType = parameters->config->trackerType;
-	bool useTracking = parameters->config->useTracking;
-	bool draw = parameters->config->draw;
-	bool showVideo = parameters->config->showVideo;
-	bool cascadeDetector = parameters->config->cascadeDetector;
+	float recheckChance = config->recheckChance;
+	int trackerType = config->trackerType;
+	bool useTracking = config->useTracking;
+	bool draw = config->draw;
+	bool showVideo = config->showVideo;
+	bool cascadeDetector = config->cascadeDetector;
 
 	// program state variables
 	bool rechecked = false;
 	bool isTracking = false;
 	bool isSearching = false;
 	int lossCount = 0;
-	int lossCountMax = parameters->config->lossCountMax;
+	int lossCountMax = config->lossCountMax;
 
 	// Create object tracker to optimize detection performance
 	cv::Rect2d roi;
@@ -579,7 +608,7 @@ void* detectThread(void* args)
 	std::chrono::steady_clock::time_point Tbegin, Tend;
 	auto execbegin = std::chrono::high_resolution_clock::now();
 
-	if (!camera.isOpened())
+	if (!camera->isOpened())
 	{
 		throw std::runtime_error("cannot initialize camera");
 	}
@@ -597,7 +626,14 @@ void* detectThread(void* args)
 
 		try
 		{
-			frame = GetImageFromCamera(camera);
+			try {
+				frame = GetImageFromCamera(camera);
+			} catch (const std::exception& e)
+			{
+				std::cerr << e.what();
+				camera->release();
+				throw std::runtime_error("could not get image from camera");
+			}
 
 			if (frame.empty())
 			{
@@ -611,12 +647,19 @@ void* detectThread(void* args)
 			if (isTracking) {
 				isSearching = false;
 
-				// Get the new tracking result
-				if (!tracker->update(frame, roi)) {
-					isTracking = false;
-					lossCount++;
-					goto detect;
-				}
+				try {
+					// Get the new tracking result
+					if (!tracker->update(frame, roi)) {
+						isTracking = false;
+						lossCount++;
+						goto detect;
+					}
+				} catch (const std::exception& e)
+				{
+					std::cerr << e.what();
+					camera->release();
+					throw std::runtime_error("could not update opencv tracker");
+				}			
 
 				// Chance to revalidate object tracking quality
 				if (recheckChance >= static_cast<float>(rand()) / static_cast <float> (RAND_MAX)) {
@@ -659,8 +702,12 @@ void* detectThread(void* args)
                     tilt,
 					pan
                 };
-                
-                servos->update(eventDataArray);
+
+				try {
+					servos->update(eventDataArray);
+				} catch (...) {
+					throw std::runtime_error("cannot update event data");
+				}
 
 				// draw to frame
 				if (draw) {
@@ -670,9 +717,18 @@ void* detectThread(void* args)
 			else {
 
 			detect:
-				results = cd.detect(frame, draw, 1);
-                Detect::DetectionData result = results.at(0);
-
+				try {
+					results = cd.detect(frame, draw, 1);
+				} catch (const std::exception& e)
+				{
+					std::cerr << e.what();
+					camera->release();
+					throw std::runtime_error("Could not detect target from frame");
+				}
+				
+				Detect::DetectionData result;
+				if (!results.empty()) { result = results.at(0);} 
+                 
 				if (result.found) {
 
 					// Update loop variants
@@ -719,7 +775,11 @@ void* detectThread(void* args)
                         pan
                     };
                     
-                    servos->update(eventDataArray);
+                    try {
+						servos->update(eventDataArray);
+					} catch (...) {
+						throw std::runtime_error("cannot update event data");
+					}
 
 					if (useTracking) {
 
@@ -728,9 +788,17 @@ void* detectThread(void* args)
 						roi.width = result.boundingBox.width;
 						roi.height = result.boundingBox.height;
 
-						tracker = createOpenCVTracker(trackerType);
-						if (tracker->init(frame, roi)) {
-							isTracking = true;
+						try {
+							tracker = createOpenCVTracker(trackerType);
+
+							if (tracker->init(frame, roi)) {
+								isTracking = true;
+							}
+						} catch (const std::exception& e)
+						{
+							std::cerr << e.what();
+							camera->release();
+							throw std::runtime_error("Could not init opencv tracker");
 						}
 					} 
 				}
@@ -780,7 +848,11 @@ void* detectThread(void* args)
                             pan
                         };
                         
-                        servos->update(eventDataArray);
+                        try {
+							servos->update(eventDataArray);
+						} catch (...) {
+							throw std::runtime_error("cannot update event data");
+						}
                     } 
 				}
 			}
@@ -790,26 +862,26 @@ void* detectThread(void* args)
 				cv::waitKey(1);
 			}
 		}
-		catch (const std::exception&)
+		catch (const std::exception& e)
 		{
+			std::cerr << e.what();
+			camera->release();
 			throw std::runtime_error("Issue detecting target from video");
 		}
 	}
-
-	return NULL;
 }
 
 // void* autoTuneThread(void* args)
 // {
 // 	param* parameters = (param*)args;
-// 	int batchSize = parameters->config->batchSize;
-// 	long maxTrainingSteps = parameters->config->maxTrainingSteps;
+// 	int batchSize = config->batchSize;
+// 	long maxTrainingSteps = config->maxTrainingSteps;
 // 	long currentSteps = 0;
-// 	int minBufferSize = parameters->config->minBufferSize;
-// 	int maxBufferSize = parameters->config->maxBufferSize;
-// 	int sessions = parameters->config->maxTrainingSessions;
-// 	int numUpdates = parameters->config->numUpdates;
-// 	double rate = parameters->config->trainRate;
+// 	int minBufferSize = config->minBufferSize;
+// 	int maxBufferSize = config->maxBufferSize;
+// 	int sessions = config->maxTrainingSessions;
+// 	int numUpdates = config->numUpdates;
+// 	double rate = config->trainRate;
 
 // 	// Annealed ERE (Emphasizing Recent Experience)
 // 	// https://arxiv.org/pdf/1906.04009.pdf
@@ -824,7 +896,7 @@ void* detectThread(void* args)
 // 	replayBuffer->clear();
 	
 // 	if (sessions <= 0) {
-// 		parameters->config->trainMode = false; // start running in eval mode
+// 		config->trainMode = false; // start running in eval mode
 // 		std::cout << "Training session over!!" << std::endl;
 // 	}
 	

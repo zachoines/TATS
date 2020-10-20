@@ -2,6 +2,11 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <thread>
+#include <chrono>
+
+#include <unistd.h>
+
 #include "opencv2/opencv.hpp"
 #include "opencv2/core/core.hpp"
 #include "opencv2/video/tracking.hpp"
@@ -9,24 +14,26 @@
 
 namespace Utility {
 
-	static int msleep(int milli) {
-		struct timespec ts;
-        int res;
+	static void msleep(int milli) {
+		// struct timespec ts;
+        // int res;
 
-        if (milli < 0)
-        {
-            errno = EINVAL;
-            return -1;
-        }
+        // if (milli < 0)
+        // {
+        //     errno = EINVAL;
+        //     return -1;
+        // }
 
-        ts.tv_sec = milli / 1000;
-        ts.tv_nsec = (milli % 1000) * 1000000;
+        // ts.tv_sec = milli / 1000;
+        // ts.tv_nsec = (milli % 1000) * 1000000;
 
-        do {
-            res = nanosleep(&ts, &ts);
-        } while (res && errno == EINTR);
+        // do {
+        //     res = nanosleep(&ts, &ts);
+        // } while (res && errno == EINTR);
 
-        return res;
+        // return res;
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(milli));
         
         /*using namespace std;
 
@@ -63,11 +70,16 @@ namespace Utility {
 	}
 
 	// Get a frame from the camera
-	static cv::Mat GetImageFromCamera(cv::VideoCapture& camera)
+	static cv::Mat GetImageFromCamera(cv::VideoCapture* camera)
 	{
 		cv::Mat frame;
-		camera >> frame;
+		camera->read(frame);
+		// *camera >> frame;
 		return frame;
+		// std::string path = get_current_dir_name();
+		// std::string imageFile = "/images/faces/image_0001.jpg";
+		// std::string imageFilePath = path + imageFile;
+		// return cv::imread(imageFilePath);
 	}
 
 	// Create GStreamer camera config
@@ -108,7 +120,7 @@ namespace Utility {
 			tracker = cv::TrackerCSRT::create();
 			break;
 		}
-
+		
 		return tracker;
 	}
 
