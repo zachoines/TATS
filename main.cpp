@@ -65,8 +65,11 @@ void syncThread(Utility::param* parameters);
 // Thread Sync
 pthread_mutex_t stateDataLock = PTHREAD_MUTEX_INITIALIZER;
 
+
+// Shared between threads
 SACAgent* pidAutoTuner = nullptr;
 TATS::Env* servos = nullptr;
+cv::VideoCapture* camera = nullptr;
 
 // Log files
 std::string statFileName = "/stat/episodeAverages.txt";
@@ -83,11 +86,14 @@ int main(int argc, char** argv)
 	using namespace Utility;
 	using namespace TATS;
 
-    // Initialize defaults and params
-    param* parameters = (param*)malloc(sizeof(param));
-	Utility::Config* config = new Utility::Config();
-    servos = new TATS::Env(parameters);
+    // Initialize defaults and params(param*)malloc(sizeof(param))
+    param* parameters = new Parameter();
+	Config* config = new Config();
+    servos = new TATS::Env();
 
+	// Init camera
+	std::string pipeline = gstreamer_pipeline(config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
+	camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
 
 	// Shared memory for SAC model syncing
 	int ShmID = shmget(IPC_PRIVATE, 10000 * sizeof(double), IPC_CREAT | 0666);
@@ -129,64 +135,60 @@ int main(int argc, char** argv)
         std::cout << "CUDA is not available! Training on CPU." << std::endl;
     }
 
-	parameters->dims[1] = 1280;
-	parameters->dims[0] = 720;
+	/*
+	// Uno class names
+	std::vector<std::string> class_names = {
+		"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
+	};
 
-    /*
-        // Uno class names
-        std::vector<std::string> class_names = {
-            "0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
-        };
+	// load the network
+	std::string path = get_current_dir_name();
+	std::string weights = path + "/models/yolo/yolo_uno.torchscript.pt";
+	Detect::YoloDetector detector = Detect::YoloDetector(weights, class_names);
 
-        // load the network
-        std::string path = get_current_dir_name();
-        std::string weights = path + "/models/yolo/yolo_uno.torchscript.pt";
-        Detect::YoloDetector detector = Detect::YoloDetector(weights, class_names);
+	// Detect loop
+	while (true) {
+		cv::Mat input_image = GetImageFromCamera(camera);
+		*camera >> input_image;
+		if (input_image.empty()) {
+			std::cout << "Issue getting frame from camera!!" << std::endl;
+			continue;
+		}
 
-        // Detect loop
-        while (true) {
-            cv::Mat input_image = GetImageFromCamera(camera);
-            if (input_image.empty()) {
-                std::cout << "Issue getting frame from camera!!" << std::endl;
-                continue;
-            }
-
-            auto results = detector.detect(input_image, true, 1);
-            cv::namedWindow("Result", cv::WINDOW_AUTOSIZE);
-            cv::imshow("Result", input_image);
-            cv::waitKey(1);
-        }
-
-    */
+		auto results = detector.detect(input_image, true, 1);
+		cv::namedWindow("Result", cv::WINDOW_AUTOSIZE);
+		cv::imshow("Result", input_image);
+		cv::waitKey(1);
+	}
+	*/
 
     // Setup pids
-	parameters->rate = config->updateRate; 
 	parameters->isTraining = false;
 	parameters->freshData = false;
 
+	pid_t pid;
     // Parent process is image recognition PID/servo controller, second is SAC Servo autotuner
-    pid_t pid = fork();
-	if (pid > 0) {
-		
+    // pid = fork();
+	// if (pid > 0) {
+	if (true) {
+
 		// Kill child if parent dies
 		prctl(PR_SET_PDEATHSIG, SIGKILL); 
         parameters->pid = pid;
 		
 
         // Setup threads and PIDS
-        PID* pan = new PID(config->defaultGains[0], config->defaultGains[1], config->defaultGains[2], config->pidOutputLow, config->pidOutputHigh, static_cast<double>(parameters->dims[1]) / 2.0);
-        PID* tilt = new PID(config->defaultGains[0], config->defaultGains[1], config->defaultGains[2], config->pidOutputLow, config->pidOutputHigh, static_cast<double>(parameters->dims[0]) / 2.0);
-        parameters->pan = pan;
-        parameters->tilt = tilt;
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
-		std::thread detectT(detectThread, std::ref(parameters));
-		std::thread panTiltT(panTiltThread, std::ref(parameters));
-		std::thread syncT(syncThread, std::ref(parameters));
+		// std::thread detectT(detectThread, std::ref(parameters));
+		std::thread panTiltT(panTiltThread, parameters);
+		// std::thread syncT(syncThread, std::ref(parameters));
 
-		detectT.join();
-		panTiltT.join();
-		syncT.join();
+		// detectT.join();
+		panTiltT.detach();
+		// syncT.join();
+
+		detectThread(parameters);
 
 		// Terminate Child processes
 		kill(-pid, SIGQUIT);
@@ -530,7 +532,7 @@ void panTiltThread(Utility::param* parameters) {
 				// TODO remove this after testing
 				if (replayBuffer->size() <= config->maxBufferSize) {
 					TD data;
-					replayBuffer->add(data);
+					// replayBuffer->add(data);
 				}
 				if (replayBuffer->size() > config->minBufferSize + 1) {
 					std::cout << "Sending train signal..." << std::endl;
@@ -554,10 +556,6 @@ void detectThread(Utility::param* parameters)
 	using namespace TATS;
 	using namespace Utility;
 
-	// Init camera
-	std::string pipeline = Utility::gstreamer_pipeline(1280, 720, 1280, 720, 120, 0);
-	cv::VideoCapture* camera = nullptr;
-	camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
 	Utility::Config* config = new Utility::Config();
 
     // Setup Camera
@@ -565,9 +563,7 @@ void detectThread(Utility::param* parameters)
 	{
 		throw std::runtime_error("cannot initialize camera");
 	} else {
-        cv::Mat test = GetImageFromCamera(camera);
-
-        if (test.empty())
+        if (GetImageFromCamera(camera).empty())
         {
             throw std::runtime_error("Issue reading frame!");
         }
@@ -711,14 +707,15 @@ void detectThread(Utility::param* parameters)
 
 				// draw to frame
 				if (draw) {
-					// TODO:: Draw bb on frame
+					Utility::drawPred(1.0, roi.x, roi.y, roi.x + roi.width, roi.y + roi.height, frame);
 				}
 			}
 			else {
 
 			detect:
 				try {
-					results = cd.detect(frame, draw, 1);
+					std::vector<struct Detect::DetectionData> out = cd.detect(frame, draw, 1);
+					results = out;
 				} catch (const std::exception& e)
 				{
 					std::cerr << e.what();
@@ -727,7 +724,11 @@ void detectThread(Utility::param* parameters)
 				}
 				
 				Detect::DetectionData result;
-				if (!results.empty()) { result = results.at(0);} 
+				result.found = false;
+
+				if (!results.empty()) { 
+					result = results.at(0);
+				} 
                  
 				if (result.found) {
 
@@ -783,20 +784,15 @@ void detectThread(Utility::param* parameters)
 
 					if (useTracking) {
 
-						roi.x = result.boundingBox.x;
-						roi.y = result.boundingBox.y;
-						roi.width = result.boundingBox.width;
-						roi.height = result.boundingBox.height;
-
 						try {
+							roi = result.boundingBox;
 							tracker = createOpenCVTracker(trackerType);
 
 							if (tracker->init(frame, roi)) {
 								isTracking = true;
 							}
-						} catch (const std::exception& e)
-						{
-							std::cerr << e.what();
+						} catch (const std::exception& e) {
+							std::cerr << e.what() << std::endl;
 							camera->release();
 							throw std::runtime_error("Could not init opencv tracker");
 						}

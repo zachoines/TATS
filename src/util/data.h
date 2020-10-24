@@ -126,6 +126,10 @@ namespace Utility {
         double actionHigh;
         double actionLow;
 
+        // Other 
+        int dims[2];
+        int maxFrameRate;
+    
         Config() :
 
             numActions(NUM_ACTIONS),             // Number of output classifications for policy network
@@ -133,7 +137,7 @@ namespace Utility {
             numInput(NUM_INPUT),                 // Number of elements in policy/value network's input vectors
 
             maxBufferSize(1000000),              // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(20),                   // Min replay buffer size before training size.
+            minBufferSize(512),                  // Min replay buffer size before training size.
             maxTrainingSteps(1000000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
@@ -143,19 +147,19 @@ namespace Utility {
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(false),                // Use SAC network to query for PID gains.
 
-            recheckChance(0.1),                  // Chance to revalidate tracking quality
+            recheckChance(0.01),                 // Chance to revalidate tracking quality
             lossCountMax(2),                     // Max number of rechecks before episode is considered over
-            updateRate(5),                       // Servo updates, commands per second
+            updateRate(10),                      // Servo updates, commands per second
             trainRate(1.0),					     // Network updates, sessions per second
             invertX(false),                      // Flip output angles for pan
             invertY(false),						 // Flip output angles for tilt
             disableX(false),                     // Disable the pan servo
             disableY(true),                      // Disable the tilt servo
 
-            trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
+            trackerType(0),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(true),					 // Use openCV tracker instead of face detection
-            draw(false),						 // Draw target bounding box and center on frame
-            showVideo(false),					 // Show camera feed
+            draw(true),						     // Draw target bounding box and center on frame
+            showVideo(true),					 // Show camera feed
             cascadeDetector(true),				 // Use faster cascade face detector 
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
             actionHigh(0.1),                     // Max output to of policy network's logits
@@ -166,19 +170,17 @@ namespace Utility {
             angleHigh(65.0),                     // Max allowable output angle to servos
             angleLow(-65.0),                     // Min allowable output angle to servos
             resetAngleX(0.0),                    // Angle when reset
-            resetAngleY(0.0)                     // Angle when reset
+            resetAngleY(0.0),                    // Angle when reset
+            
+            dims({ 720, 1280 }),                 // Dimensions of frame
+            maxFrameRate(60)                     // Camera capture rate
             {}
     } typedef cfg;
 
     struct Parameter {
-        PID* pan;
-        PID* tilt;
-
-        int dims[2];
 
         int ShmID;
         int pid;
-        int rate; // Updates per second
 
         bool isTraining;
         bool freshData;

@@ -30,24 +30,30 @@ namespace Detect {
 			cv::Mat gray, smallImg;
 
 			cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY); // Convert to Gray Scale 
-			double fx = 1 / scale;
+			// double fx = 1 / scale;
 
-			// Resize the Grayscale Image  
-			cv:resize(gray, smallImg, cv::Size(), fx, fx, cv::INTER_LINEAR);
-			cv::equalizeHist(smallImg, smallImg);
+			// // Resize the Grayscale Image  
+			// cv:resize(gray, smallImg, cv::Size(), fx, fx, cv::INTER_LINEAR);
+			// cv::equalizeHist(smallImg, smallImg);
 
 			// Detect faces of different sizes using cascade classifier  
-			this->cascade.detectMultiScale(smallImg, faces, 1.3,
+			this->cascade.detectMultiScale(gray, faces, 1.3,
 				2, 0 | cv::CASCADE_SCALE_IMAGE, cv::Size(75, 75));
 		}
 
 		if (!faces.empty()) {
 			for (cv::Rect face : faces) {
+
 				int x1 = face.x;
 				int y1 = face.y;
 
 				int width = face.width;
 				int height = face.height;
+
+				if (width <= 1 || height <= 1) {
+					std::cout << "Bad detection from cascade detector. Check settings" << std::endl;
+					continue;
+				}
 
 				int centerX = x1 + width * 0.5;
 				int centerY = y1 + height * 0.5;

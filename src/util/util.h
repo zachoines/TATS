@@ -88,6 +88,10 @@ namespace Utility {
 			std::to_string(capture_height) + ", format=(string)NV12, framerate=(fraction)" + std::to_string(framerate) +
 			"/1 ! nvvidconv flip-method=" + std::to_string(flip_method) + " ! video/x-raw, width=(int)" + std::to_string(display_width) + ", height=(int)" +
 			std::to_string(display_height) + ", format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink";
+		// return "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=(int)" + std::to_string(capture_width) + ", height=(int)" +
+		// 	std::to_string(capture_height) + ", format=(string)NV12, framerate=(fraction)" + std::to_string(framerate) +
+		// 	"/1 ! nvvidconv flip-method=" + std::to_string(flip_method) + " ! video/x-raw, width=(int)" + std::to_string(display_width) + ", height=(int)" +
+		// 	std::to_string(display_height) + ", format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink";
 	}
 
 	static void appendLineToFile(std::string filepath, std::string line)
@@ -134,7 +138,6 @@ namespace Utility {
 		-1.0 punishment for done state
 		0.0 to -1.0 punishment for marginally worse transitions
 	
-		
 		Else reward ranges from -2.0 to 0.0. 
 		-1.0 for done state
 		0.0 to -1.0 depending on current error ('threshold' - 'error new' scaled)

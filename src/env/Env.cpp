@@ -1,13 +1,12 @@
 #include "Env.h"
 
 namespace TATS {
-	Env::Env(Utility::param* parameters)
+	Env::Env()
 	{
-		_params = parameters;
 		_config = new Utility::Config();
 
-		_pids[0] = parameters->tilt;
-		_pids[1] = parameters->pan;
+		_pids[0] = new PID(_config->defaultGains[0], _config->defaultGains[1], _config->defaultGains[2], _config->pidOutputLow, _config->pidOutputHigh, static_cast<double>(_config->dims[0]) / 2.0);
+		_pids[1] = new PID(_config->defaultGains[0], _config->defaultGains[1], _config->defaultGains[2], _config->pidOutputLow, _config->pidOutputHigh, static_cast<double>(_config->dims[1]) / 2.0);
 
 		_resetAngles[0] = _config->resetAngleY;
 		_resetAngles[1] = _config->resetAngleX;
@@ -57,7 +56,7 @@ namespace TATS {
 
 	void Env::_sleep()
 	{
-		int milli = 1000 / _params->rate;
+		int milli = 1000 / _config->updateRate;
 		std::this_thread::sleep_for(std::chrono::milliseconds(milli));
 	}
 
@@ -204,13 +203,22 @@ namespace TATS {
 			}
 			else {
 				_pids[servo]->setWeights(actions[servo][0], actions[servo][1], actions[servo][2]);
-				newAngle = _pids[servo]->update(_currentData[servo].obj, 1000.0 / static_cast<double>(_params->rate));
+				newAngle = _pids[servo]->update(_currentData[servo].obj, 1000.0 / static_cast<double>(_config->updateRate));
 			}
 
 			newAngle = Utility::mapOutput(newAngle, _config->pidOutputLow, _config->pidOutputHigh, _config->angleLow, _config->angleHigh);
 			if (_invert[servo]) { newAngle = _config->angleHigh - newAngle; }
 			_lastAngles[servo] = _currentAngles[servo];
 			_currentAngles[servo] = newAngle;
+
+			// Print out the angles
+			if (0.05 >= randChance) {
+				std::cout << "Here are the angles: ";
+				std::cout << newAngle << std::endl;
+				std::cout << "For servo: ";
+				std::cout << servo << std::endl;
+			}
+
 			_servos->setAngle(servo, newAngle);
 		}
 
@@ -229,12 +237,12 @@ namespace TATS {
 				throw std::runtime_error("State must represent a complete transition");
 			}
 			else {
-				stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_params->dims[servo]) / 2.0, _currentData[servo].done, 0.02, true);
+				stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.02, true);
 			}
 
 			// Fill out the step results
 			if (!_config->usePIDs) {
-				_pids[servo]->update(currentError, 1000.0 / static_cast<double>(_params->rate));
+				_pids[servo]->update(currentError, 1000.0 / static_cast<double>(_config->updateRate));
 				stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
 			}
 			else {

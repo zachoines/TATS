@@ -18,7 +18,6 @@ namespace TATS {
 
 		std::mutex _lock;
 		std::condition_variable _cond;
-		Utility::param* _params;
 		Utility::cfg* _config;
 
 		int _frameSkip;
@@ -35,8 +34,6 @@ namespace TATS {
 		double _currentAngles[NUM_SERVOS];
 		double _lastAngles[NUM_SERVOS];
 
-		PID* _pan = nullptr;
-		PID* _tilt = nullptr;
 		PID* _pids[NUM_SERVOS];
 
 		void _sleep();
@@ -48,7 +45,7 @@ namespace TATS {
 		control::ServoKit* _servos;
 
 	public:
-		Env(Utility::param* parameters);
+		Env();
 		~Env();
 
 		bool isDone();
