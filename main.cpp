@@ -83,6 +83,10 @@ volatile sig_atomic_t sig_value1;
 
 int main(int argc, char** argv)
 {
+
+	// Kill child if parent dies
+	prctl(PR_SET_PDEATHSIG, SIGKILL); 
+
 	using namespace Utility;
 	using namespace TATS;
 
@@ -92,7 +96,8 @@ int main(int argc, char** argv)
     servos = new TATS::Env();
 
 	// Init camera
-	std::string pipeline = gstreamer_pipeline(config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
+	std::string pipeline = "nvarguscamerasrc sensor-id=0 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=3264, height=2464, framerate=21/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
+	// std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
 	camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
 
 	// Shared memory for SAC model syncing
@@ -135,58 +140,26 @@ int main(int argc, char** argv)
         std::cout << "CUDA is not available! Training on CPU." << std::endl;
     }
 
-	/*
-	// Uno class names
-	std::vector<std::string> class_names = {
-		"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
-	};
-
-	// load the network
-	std::string path = get_current_dir_name();
-	std::string weights = path + "/models/yolo/yolo_uno.torchscript.pt";
-	Detect::YoloDetector detector = Detect::YoloDetector(weights, class_names);
-
-	// Detect loop
-	while (true) {
-		cv::Mat input_image = GetImageFromCamera(camera);
-		*camera >> input_image;
-		if (input_image.empty()) {
-			std::cout << "Issue getting frame from camera!!" << std::endl;
-			continue;
-		}
-
-		auto results = detector.detect(input_image, true, 1);
-		cv::namedWindow("Result", cv::WINDOW_AUTOSIZE);
-		cv::imshow("Result", input_image);
-		cv::waitKey(1);
-	}
-	*/
-
     // Setup pids
 	parameters->isTraining = false;
 	parameters->freshData = false;
 
 	pid_t pid;
     // Parent process is image recognition PID/servo controller, second is SAC Servo autotuner
-    // pid = fork();
-	// if (pid > 0) {
-	if (true) {
-
-		// Kill child if parent dies
-		prctl(PR_SET_PDEATHSIG, SIGKILL); 
+    pid = fork();
+	if (pid > 0) {
+	// if (true) {
         parameters->pid = pid;
 		
 
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
-		// std::thread detectT(detectThread, std::ref(parameters));
-		std::thread panTiltT(panTiltThread, parameters);
-		// std::thread syncT(syncThread, std::ref(parameters));
+		std::thread panTiltT(panTiltThread, std::ref(parameters));
+		std::thread syncT(syncThread, std::ref(parameters));
 
-		// detectT.join();
 		panTiltT.detach();
-		// syncT.join();
+		syncT.detach();
 
 		detectThread(parameters);
 
@@ -200,7 +173,8 @@ int main(int argc, char** argv)
 		}
 
     } else {
-        SACAgent* pidAutoTunerchild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
+        
+		SACAgent* pidAutoTunerchild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
         // Get Shared memory reference for the child
 		double* ShmPTRChild;
@@ -214,7 +188,6 @@ int main(int argc, char** argv)
 		boost::interprocess::managed_shared_memory _segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
 		SharedBuffer* trainingBuffer = _segment.find<SharedBuffer>("SharedBuffer").first;
 		ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer);
-
 
         // Setup signal mask
 		struct sigaction sig_action;
@@ -532,7 +505,7 @@ void panTiltThread(Utility::param* parameters) {
 				// TODO remove this after testing
 				if (replayBuffer->size() <= config->maxBufferSize) {
 					TD data;
-					// replayBuffer->add(data);
+					replayBuffer->add(data);
 				}
 				if (replayBuffer->size() > config->minBufferSize + 1) {
 					std::cout << "Sending train signal..." << std::endl;
@@ -570,7 +543,8 @@ void detectThread(Utility::param* parameters)
     }
 
 	// user hyperparams
-	float recheckChance = config->recheckChance;
+	int frameCount = 0;
+	int recheckFrequency = config->recheckFrequency;
 	int trackerType = config->trackerType;
 	bool useTracking = config->useTracking;
 	bool draw = config->draw;
@@ -609,8 +583,20 @@ void detectThread(Utility::param* parameters)
 		throw std::runtime_error("cannot initialize camera");
 	}
 
+	/*
 	std::string path = get_current_dir_name();
-	Detect::CascadeDetector cd("./models/haar/haarcascade_frontalface_alt2.xml");
+	Detect::CascadeDetector detector("./models/haar/haarcascade_frontalface_alt2.xml");
+	*/
+
+	// load the network
+	std::vector<std::string> class_names = {
+		"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
+	};
+
+	std::string path = get_current_dir_name();
+	std::string weights = path + "/models/yolo/yolo_uno.torchscript.pt";
+	Detect::YoloDetector detector = Detect::YoloDetector(weights, class_names);
+
 	std::vector<struct Detect::DetectionData> results;
 
 	while (true) {
@@ -658,9 +644,12 @@ void detectThread(Utility::param* parameters)
 				}			
 
 				// Chance to revalidate object tracking quality
-				if (recheckChance >= static_cast<float>(rand()) / static_cast <float> (RAND_MAX)) {
+				if (frameCount >= recheckFrequency) {
+					frameCount = 0;
 					rechecked = true;
 					goto detect;
+				} else {
+					frameCount++;
 				}
 
 			validated:
@@ -714,7 +703,7 @@ void detectThread(Utility::param* parameters)
 
 			detect:
 				try {
-					std::vector<struct Detect::DetectionData> out = cd.detect(frame, draw, 1);
+					std::vector<struct Detect::DetectionData> out = detector.detect(frame, draw, 1);
 					results = out;
 				} catch (const std::exception& e)
 				{

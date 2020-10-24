@@ -77,27 +77,31 @@ namespace Utility {
 
     struct Config {
 
-
         // Network Options
         int numActions;
         int numHidden;
         int numInput;
+        double actionHigh;
+        double actionLow;
 
         // Train Options
+        long maxTrainingSteps;
         int maxBufferSize;
         int minBufferSize;
-        long maxTrainingSteps;
+        int updateRate;
         int maxTrainingSessions;
-        double numUpdates;
+        int numFrameSkip;
         int batchSize;
-        bool initialRandomActions;
         int numInitialRandomActions;
         bool trainMode;
         bool frameSkip;
-        int numFrameSkip;
-
+        bool initialRandomActions;
+        double numUpdates;
+        double trainRate;
+        
         // Tracking Options
-        float recheckChance;
+        int lossCountMax;
+        int recheckFrequency;
         int trackerType;
         bool useTracking;
         bool useAutoTuning;
@@ -105,26 +109,21 @@ namespace Utility {
         bool showVideo;
         bool cascadeDetector;
         bool usePIDs;
-        int lossCountMax;
+
+        // PID options
+        double pidOutputHigh;
+        double pidOutputLow;
+        double defaultGains[3];
 
         // Servo options
         double angleHigh;
         double angleLow;
         double resetAngleX;
         double resetAngleY;
-        double pidOutputHigh;
-        double pidOutputLow;
-        double defaultGains[3];
-        int updateRate;
-        double trainRate;
         bool invertX;
         bool invertY;
         bool disableX;
         bool disableY;
-
-        // bounds
-        double actionHigh;
-        double actionLow;
 
         // Other 
         int dims[2];
@@ -137,7 +136,7 @@ namespace Utility {
             numInput(NUM_INPUT),                 // Number of elements in policy/value network's input vectors
 
             maxBufferSize(1000000),              // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(512),                  // Min replay buffer size before training size.
+            minBufferSize(32),                   // Min replay buffer size before training size.
             maxTrainingSteps(1000000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
@@ -147,16 +146,16 @@ namespace Utility {
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(false),                // Use SAC network to query for PID gains.
 
-            recheckChance(0.01),                 // Chance to revalidate tracking quality
+            recheckFrequency(60),                // Num frames in-between revalidations of tracking quality
             lossCountMax(2),                     // Max number of rechecks before episode is considered over
-            updateRate(10),                      // Servo updates, commands per second
+            updateRate(5),                       // Servo updates, commands per second
             trainRate(1.0),					     // Network updates, sessions per second
             invertX(false),                      // Flip output angles for pan
             invertY(false),						 // Flip output angles for tilt
             disableX(false),                     // Disable the pan servo
             disableY(true),                      // Disable the tilt servo
 
-            trackerType(0),						 // { CSRT, MOSSE, GOTURN } 
+            trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(true),					 // Use openCV tracker instead of face detection
             draw(true),						     // Draw target bounding box and center on frame
             showVideo(true),					 // Show camera feed
@@ -173,7 +172,8 @@ namespace Utility {
             resetAngleY(0.0),                    // Angle when reset
             
             dims({ 720, 1280 }),                 // Dimensions of frame
-            maxFrameRate(60)                     // Camera capture rate
+            // dims({ 1080, 1920 }),                // Dimensions of frame
+            maxFrameRate(120)                    // Camera capture rate
             {}
     } typedef cfg;
 

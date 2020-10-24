@@ -15,32 +15,7 @@
 namespace Utility {
 
 	static void msleep(int milli) {
-		// struct timespec ts;
-        // int res;
-
-        // if (milli < 0)
-        // {
-        //     errno = EINVAL;
-        //     return -1;
-        // }
-
-        // ts.tv_sec = milli / 1000;
-        // ts.tv_nsec = (milli % 1000) * 1000000;
-
-        // do {
-        //     res = nanosleep(&ts, &ts);
-        // } while (res && errno == EINTR);
-
-        // return res;
-
 		std::this_thread::sleep_for(std::chrono::milliseconds(milli));
-        
-        /*using namespace std;
-
-        chrono::system_clock::time_point timePt =
-            chrono::system_clock::now() + chrono::milliseconds(msec);
-
-        this_thread::sleep_until(timePt); */
 	}
 
     static int mapOutput(int x, int in_min, int in_max, int out_min, int out_max) {
@@ -73,25 +48,16 @@ namespace Utility {
 	static cv::Mat GetImageFromCamera(cv::VideoCapture* camera)
 	{
 		cv::Mat frame;
-		camera->read(frame);
-		// *camera >> frame;
+		*camera >> frame;
 		return frame;
-		// std::string path = get_current_dir_name();
-		// std::string imageFile = "/images/faces/image_0001.jpg";
-		// std::string imageFilePath = path + imageFile;
-		// return cv::imread(imageFilePath);
 	}
 
 	// Create GStreamer camera config
-	static std::string gstreamer_pipeline (int capture_width, int capture_height, int display_width, int display_height, int framerate, int flip_method) {
-		return "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int)" + std::to_string(capture_width) + ", height=(int)" +
+	static std::string gstreamer_pipeline (int camera, int capture_width, int capture_height, int display_width, int display_height, int framerate, int flip_method) {
+		return "nvarguscamerasrc sensor-id=" + std::to_string(camera) + " ! video/x-raw(memory:NVMM), width=(int)" + std::to_string(capture_width) + ", height=(int)" +
 			std::to_string(capture_height) + ", format=(string)NV12, framerate=(fraction)" + std::to_string(framerate) +
 			"/1 ! nvvidconv flip-method=" + std::to_string(flip_method) + " ! video/x-raw, width=(int)" + std::to_string(display_width) + ", height=(int)" +
 			std::to_string(display_height) + ", format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink";
-		// return "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=(int)" + std::to_string(capture_width) + ", height=(int)" +
-		// 	std::to_string(capture_height) + ", format=(string)NV12, framerate=(fraction)" + std::to_string(framerate) +
-		// 	"/1 ! nvvidconv flip-method=" + std::to_string(flip_method) + " ! video/x-raw, width=(int)" + std::to_string(display_width) + ", height=(int)" +
-		// 	std::to_string(display_height) + ", format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink";
 	}
 
 	static void appendLineToFile(std::string filepath, std::string line)
