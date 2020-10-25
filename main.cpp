@@ -64,7 +64,7 @@ void syncThread(Utility::param* parameters);
 
 // Thread Sync
 pthread_mutex_t stateDataLock = PTHREAD_MUTEX_INITIALIZER;
-
+pid_t pid;
 
 // Shared between threads
 SACAgent* pidAutoTuner = nullptr;
@@ -90,14 +90,17 @@ int main(int argc, char** argv)
 	using namespace Utility;
 	using namespace TATS;
 
-    // Initialize defaults and params(param*)malloc(sizeof(param))
+    // Initialize defaults
     param* parameters = new Parameter();
 	Config* config = new Config();
     servos = new TATS::Env();
 
 	// Init camera
-	std::string pipeline = "nvarguscamerasrc sensor-id=0 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=3264, height=2464, framerate=21/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
+	// width=3264, height=2464
+	//std::string pipeline = "nvarguscamerasrc sensor-id=1 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=120/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
+
 	// std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
+	std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
 	camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
 
 	// Shared memory for SAC model syncing
@@ -144,24 +147,22 @@ int main(int argc, char** argv)
 	parameters->isTraining = false;
 	parameters->freshData = false;
 
-	pid_t pid;
     // Parent process is image recognition PID/servo controller, second is SAC Servo autotuner
     pid = fork();
 	if (pid > 0) {
-	// if (true) {
+
         parameters->pid = pid;
-		
 
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
-		std::thread panTiltT(panTiltThread, std::ref(parameters));
-		std::thread syncT(syncThread, std::ref(parameters));
+		// std::thread syncT(syncThread, parameters);
+		std::thread panTiltT(panTiltThread, parameters);
+		std::thread detectT(detectThread, parameters);
 
 		panTiltT.detach();
-		syncT.detach();
-
-		detectThread(parameters);
+		detectT.detach();
+		syncThread(parameters);
 
 		// Terminate Child processes
 		kill(-pid, SIGQUIT);
@@ -243,8 +244,7 @@ int main(int argc, char** argv)
 					Utility::msleep(2000);
 					std::cout << "Sync signal sent..." << std::endl;
 					kill(getppid(), SIGUSR1);
-
-					
+					isTraining = false;
 					// if (replayBuffer->size() == 0) {
 					// 	isTraining = false; 
 					// }
@@ -297,7 +297,7 @@ void syncThread(Utility::param* parameters) {
 		}
 
 		// Update weights on signal received from autotune thread
-		if (signum == SIGUSR1 && info.si_pid == parameters->pid) {
+		if (signum == SIGUSR1 && info.si_pid == pid) {
 			std::cout << "Received sync signal..." << std::endl;
 			if (pthread_mutex_lock(&stateDataLock) == 0) {
 				// int valuesRead = pidAutoTuner->sync(true, parameters->ShmPTR);

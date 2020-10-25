@@ -136,7 +136,7 @@ namespace Utility {
             numInput(NUM_INPUT),                 // Number of elements in policy/value network's input vectors
 
             maxBufferSize(1000000),              // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(32),                   // Min replay buffer size before training size.
+            minBufferSize(512),                  // Min replay buffer size before training size.
             maxTrainingSteps(1000000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
@@ -148,14 +148,14 @@ namespace Utility {
 
             recheckFrequency(60),                // Num frames in-between revalidations of tracking quality
             lossCountMax(2),                     // Max number of rechecks before episode is considered over
-            updateRate(5),                       // Servo updates, commands per second
+            updateRate(20),                      // Servo updates, commands per second
             trainRate(1.0),					     // Network updates, sessions per second
             invertX(false),                      // Flip output angles for pan
             invertY(false),						 // Flip output angles for tilt
             disableX(false),                     // Disable the pan servo
             disableY(true),                      // Disable the tilt servo
 
-            trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
+            trackerType(0),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(true),					 // Use openCV tracker instead of face detection
             draw(true),						     // Draw target bounding box and center on frame
             showVideo(true),					 // Show camera feed
