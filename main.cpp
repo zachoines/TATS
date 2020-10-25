@@ -97,10 +97,10 @@ int main(int argc, char** argv)
 
 	// Init camera
 	// width=3264, height=2464
-	//std::string pipeline = "nvarguscamerasrc sensor-id=1 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=120/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
+	std::string pipeline = "nvarguscamerasrc sensor-id=1 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=120/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
 
 	// std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
-	std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
+	// std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
 	camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
 
 	// Shared memory for SAC model syncing
@@ -175,15 +175,25 @@ int main(int argc, char** argv)
 
     } else {
         
-		SACAgent* pidAutoTunerchild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
+		// Create the SAC agent for training
+		SACAgent* pidAutoTunerChild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
         // Get Shared memory reference for the child
 		double* ShmPTRChild;
 		ShmPTRChild = (double*)shmat(ShmID, 0, 0);
-
 		if (ShmPTRChild == nullptr) {
 			throw std::runtime_error("Could not initialize shared memory");
 		}
+
+		// Variables for training
+		int batchSize = config->batchSize;
+		long maxTrainingSteps = config->maxTrainingSteps;
+		long currentSteps = 0;
+		int minBufferSize = config->minBufferSize;
+		int maxBufferSize = config->maxBufferSize;
+		int sessions = config->maxTrainingSessions;
+		int numUpdates = config->numUpdates;
+		double rate = config->trainRate;
 
         // Retrieve the training buffer from shared memory
 		boost::interprocess::managed_shared_memory _segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
@@ -224,6 +234,7 @@ int main(int argc, char** argv)
 			sig_value1 = 0;
 
 			// Sleep until signal is caught; train model on waking
+		start:
 			sigsuspend(&zeromask);
 
 			if (sig_value1 == SIGUSR1) {
@@ -232,25 +243,54 @@ int main(int argc, char** argv)
 
 				bool isTraining = true;
 
+
+				// Annealed ERE (Emphasizing Recent Experience)
+				// https://arxiv.org/pdf/1906.04009.pdf
+				double N0 = 0.996;
+				double NT = 1.0;
+				double T = maxTrainingSteps;
+				double t_i = 0;
+
 				// Begin training process
 				while (isTraining) {
+		
+					// Increment/set ERE related loop variables
+					double N = static_cast<double>(replayBuffer->size());
+					t_i += 1;
+					double n_i = N0 + (NT - N0) * (t_i / T);
+					int cmin = N - ( minBufferSize );
+						
+					// Check if training is over
+					if (currentSteps >= maxTrainingSteps) {
+						currentSteps = 0;
+						sessions--;
+						replayBuffer->clear();
+						t_i = 0;
+						goto start;
+					}
+					else {
+						currentSteps += 1;
+					}
 
-                    // TrainBuffer batch = replayBuffer->sample(batchSize);
-                    // pidAutoTunerChild->update(batchSize, &batch);
-					// int valuesWritten = pidAutoTunerChild->sync(false, ShmPTRChild);
-					// std::cout << "Tensors written in child: " << valuesWritten << std::endl;
+					// Perform a training session
+					for (int k = 0; k < numUpdates; k += 1) {
+						int startingRange = std::min<int>( N - N * std::pow(n_i, static_cast<double>(k) * (1000.0 / numUpdates)), cmin);
 
-					replayBuffer->clear();
-					Utility::msleep(2000);
+						TrainBuffer batch = replayBuffer->ere_sample(batchSize, startingRange);
+						pidAutoTunerChild->update(batch.size(), &batch);
+					}
+
+					// Write values to shared memory for parent to read
+					int valuesWritten = pidAutoTunerChild->sync(false, ShmPTRChild);
+					std::cout << "Tensors written in child: " << valuesWritten << std::endl;
+
+					// Inform parent new params are available
 					std::cout << "Sync signal sent..." << std::endl;
 					kill(getppid(), SIGUSR1);
-					isTraining = false;
-					// if (replayBuffer->size() == 0) {
-					// 	isTraining = false; 
-					// }
-					// else {
-					// 	msleep(milis);
-					// }			
+
+					// Sleep per train rate
+					long milis = static_cast<long>(1000.0 / rate);
+					msleep(milis);
 				}
 			}
 		}
@@ -261,7 +301,7 @@ void syncThread(Utility::param* parameters) {
 	using namespace Utility;
 	Utility::Config* config = new Utility::Config();
 	
-	// SHared memory referance for the parent process
+	// Shared memory referance for the parent process
 	double* ShmPTRParent = (double*)shmat(parameters->ShmID, 0, 0);
 
 	if (ShmPTRParent == nullptr) {
@@ -289,6 +329,7 @@ void syncThread(Utility::param* parameters) {
 	// Loop for syncing parent network params
 	while (true) {
 
+		// Wait until sync signal is received
 		signum = sigwaitinfo(&mask, &info);
 		if (signum == -1) {
 			if (errno == EINTR)
@@ -299,12 +340,9 @@ void syncThread(Utility::param* parameters) {
 		// Update weights on signal received from autotune thread
 		if (signum == SIGUSR1 && info.si_pid == pid) {
 			std::cout << "Received sync signal..." << std::endl;
-			if (pthread_mutex_lock(&stateDataLock) == 0) {
-				// int valuesRead = pidAutoTuner->sync(true, parameters->ShmPTR);
-				// std::cout << "Tensors read in parent: " << valuesRead << std::endl;
-			}
 
-			pthread_mutex_unlock(&stateDataLock);
+			int valuesRead = pidAutoTuner->sync(true, ShmPTRParent);
+			std::cout << "Tensors read in parent: " << valuesRead << std::endl;
 		}
 
 		// Break when on SIGINT
@@ -855,74 +893,6 @@ void detectThread(Utility::param* parameters)
 		}
 	}
 }
-
-// void* autoTuneThread(void* args)
-// {
-// 	param* parameters = (param*)args;
-// 	int batchSize = config->batchSize;
-// 	long maxTrainingSteps = config->maxTrainingSteps;
-// 	long currentSteps = 0;
-// 	int minBufferSize = config->minBufferSize;
-// 	int maxBufferSize = config->maxBufferSize;
-// 	int sessions = config->maxTrainingSessions;
-// 	int numUpdates = config->numUpdates;
-// 	double rate = config->trainRate;
-
-// 	// Annealed ERE (Emphasizing Recent Experience)
-// 	// https://arxiv.org/pdf/1906.04009.pdf
-// 	double N0 = 0.996;
-// 	double NT = 1.0;
-// 	double T = maxTrainingSteps;
-// 	double t_i = 0;
-	
-// start:
-
-// 	parameters->freshData = false;
-// 	replayBuffer->clear();
-	
-// 	if (sessions <= 0) {
-// 		config->trainMode = false; // start running in eval mode
-// 		std::cout << "Training session over!!" << std::endl;
-// 	}
-	
-// 	// Wait for the buffer to fill
-// 	pthread_mutex_lock(&trainLock);
-// 	while (!parameters->freshData) {
-// 		pthread_cond_wait(&trainCond, &trainLock);
-// 	}
-// 	pthread_mutex_unlock(&trainLock);
-
-// 	while (true) {
-
-// 		double N = static_cast<double>(replayBuffer->size());
-// 		t_i += 1;
-// 		double n_i = N0 + (NT - N0) * (t_i / T);
-// 		int cmin = N - ( minBufferSize );
-		
-		
-//         if (currentSteps >= maxTrainingSteps) {
-//             currentSteps = 0;
-//             sessions--;
-//             t_i = 0;
-//             goto start;
-//         }
-//         else {
-//             currentSteps += 1;
-//         }
-
-//         for (int k = 0; k < numUpdates; k += 1) {
-//             int startingRange = std::min<int>( N - N * std::pow(n_i, static_cast<double>(k) * (1000.0 / numUpdates)), cmin);
-
-//             TrainBuffer batch = replayBuffer->ere_sample(batchSize, startingRange);
-//             pidAutoTuner->update(batch.size(), &batch);
-//         }
-
-//         long milis = static_cast<long>(1000.0 / rate);
-//         msleep(milis);
-// 	}
-
-// 	return NULL;
-// }
 
 
 // g++ -o test /home/zachoines/Documents/repos/test/pytorch/test.cpp -std=gnu++17 -Wl,--no-as-needed -g -I/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6/torch/include -I/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6/torch/include/torch/csrc/api/include -L/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6/torch/lib -lc10_cuda -lc10 -ltorch -ltorch_cuda -ltorch_cpu

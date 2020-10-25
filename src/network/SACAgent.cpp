@@ -433,16 +433,22 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
 int SACAgent::sync(bool parent, double* data)
 {
 	if (parent) {
-		int counter = 0;
+		if (pthread_mutex_lock(&_policyNetLock) == 0) {
+			int counter = 0;
 
-		counter = this->_load_from_array(*_q_net1, data, counter);
-		counter = this->_load_from_array(*_q_net2, data, counter);
-		counter = this->_load_from_array(*_policy_net, data, counter);
-		counter = this->_load_from_array(*_value_network, data, counter);
-		counter = this->_load_from_array(*_target_value_network, data, counter);
-		counter = this->_load_from_array(_log_alpha, data, counter);
-
-		return counter;
+			counter = this->_load_from_array(*_q_net1, data, counter);
+			counter = this->_load_from_array(*_q_net2, data, counter);
+			counter = this->_load_from_array(*_policy_net, data, counter);
+			counter = this->_load_from_array(*_value_network, data, counter);
+			counter = this->_load_from_array(*_target_value_network, data, counter);
+			counter = this->_load_from_array(_log_alpha, data, counter);
+			
+			pthread_mutex_unlock(&_policyNetLock);
+			return counter;
+		}  else {
+			pthread_mutex_unlock(&_policyNetLock);
+			throw std::runtime_error("could not obtain lock while syncing");
+		}
 	}
 	else {
 		int counter = 0;
