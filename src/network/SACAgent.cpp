@@ -12,8 +12,12 @@
 #include "../util/data.h"
 #include "../util/util.h"
 
-SACAgent::SACAgent(int num_inputs, int num_hidden, int num_actions, double action_max, double action_min, bool alphaAdjuster, double gamma, double tau, double alpha, double q_lr, double p_lr, double a_lr)
+SACAgent::SACAgent(int num_inputs, int num_hidden, int num_actions, double action_max, double action_min, bool alphaAdjuster, double gamma, double tau, double alpha, double q_lr, double p_lr, double a_lr, torch::DeviceType device)
 {
+	
+	this->device = device;
+	auto optionsDouble = torch::TensorOptions().dtype(torch::kDouble).device(device);
+	
 	_self_adjusting_alpha = alphaAdjuster;
 	_num_inputs = num_inputs;
 	_num_actions = num_actions;
@@ -24,7 +28,7 @@ SACAgent::SACAgent(int num_inputs, int num_hidden, int num_actions, double actio
 
 	_gamma = gamma;
 	_tau = tau;
-	_alpha = torch::tensor(alpha);
+	_alpha = torch::tensor(alpha).to(optionsDouble);
 	_a_lr = a_lr;
 	_q_lr = q_lr;
 	_p_lr = p_lr;
@@ -36,6 +40,13 @@ SACAgent::SACAgent(int num_inputs, int num_hidden, int num_actions, double actio
 	_value_network = new ValueNetwork(num_inputs, num_hidden);
 	_target_value_network = new ValueNetwork(num_inputs, num_hidden);
 
+	// set default types
+	_q_net1->to(device, torch::kDouble, false);
+	_q_net2->to(device, torch::kDouble, false);
+	_policy_net->to(device, torch::kDouble, false);
+	_value_network->to(device, torch::kDouble, false);
+	_target_value_network->to(device, torch::kDouble, false);
+
 	// Logging
 	_lossFileName = "/stat/trainingLoss.txt";
 	_lossPath = get_current_dir_name() + _lossFileName;
@@ -43,17 +54,14 @@ SACAgent::SACAgent(int num_inputs, int num_hidden, int num_actions, double actio
 	
 	/*_target_q_network_1 = new QNetwork(num_inputs, num_actions, num_hidden);
 	_target_q_network_2 = new QNetwork(num_inputs, num_actions, num_hidden);*/
-	
-	
 	_target_entropy = -1 * num_actions;
 	
-
 	// Load last checkpoint if available
 	if (load_checkpoint()) {
 
 	}
 	else {
-		_log_alpha = torch::log(_alpha);
+		_log_alpha = torch::log(_alpha).to(optionsDouble);
 		_log_alpha.set_requires_grad(true);
 	}
 
@@ -117,18 +125,23 @@ void SACAgent::_transfer_params_v2(torch::nn::Module& from, torch::nn::Module& t
 	auto to_params = to.named_parameters(true);
 	auto from_params = from.named_parameters(true);
 
-	for (auto& from_param : from_params) {
-		/*torch::Tensor new_value = from_param.value().data.clone();
+	try {
+		for (auto& from_param : from_params) {
+			/*torch::Tensor new_value = from_param.value().data.clone();
 
-		if (param_smoothing) {
-			torch::Tensor old_value = to_params[from_param.key()].data.clone();
-			new_value = _tau * new_value + (1.0 - _tau) * old_value;
-		} 
-		
-		to_params[from_param.key()].data.copy_(new_value);*/
-		to_params[from_param.key()].data().mul_(1.0 - _tau);
-		to_params[from_param.key()].data().add_(_tau * from_param.value().data());
+			if (param_smoothing) {
+				torch::Tensor old_value = to_params[from_param.key()].data.clone();
+				new_value = _tau * new_value + (1.0 - _tau) * old_value;
+			} 
+			
+			to_params[from_param.key()].data.copy_(new_value);*/
+			to_params[from_param.key()].data().mul_(1.0 - _tau);
+			to_params[from_param.key()].data().add_(_tau * from_param.value().data());
+		}
+	} catch (const c10::Error& e) {   
+		throw std::runtime_error("could not transfer params: " + e.msg());
 	}
+	
 }
 
 void SACAgent::_load_from(torch::nn::Module& module, std::stringstream& fd) {
@@ -281,152 +294,156 @@ torch::Tensor SACAgent::get_action(torch::Tensor state, bool trainMode)
 void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
 {
 	using namespace Utility;
-	double states[batchSize][_num_inputs];
-	double next_states[batchSize][_num_inputs];
-	double actions[batchSize][_num_actions];
-	double rewards[batchSize];
-	double dones[batchSize];
-	double currentStateArray[_num_inputs];
-	double nextStateArray[_num_inputs];
+	
+	try {
+		double states[batchSize][_num_inputs];
+		double next_states[batchSize][_num_inputs];
+		double actions[batchSize][_num_actions];
+		double rewards[batchSize];
+		double dones[batchSize];
+		double currentStateArray[_num_inputs];
+		double nextStateArray[_num_inputs];
 
-	for (int entry = 0; entry < batchSize; entry++) {
-		TD train_data = replayBuffer->at(entry);
-		train_data.currentState.getStateArray(currentStateArray);
-		train_data.nextState.getStateArray(nextStateArray);
+		for (int entry = 0; entry < batchSize; entry++) {
+			TD train_data = replayBuffer->at(entry);
+			train_data.currentState.getStateArray(currentStateArray);
+			train_data.nextState.getStateArray(nextStateArray);
 
-		for (int i = 0; i < _num_inputs; i++) {
-			states[entry][i] = currentStateArray[i];
-			next_states[entry][i] = nextStateArray[i];
+			for (int i = 0; i < _num_inputs; i++) {
+				states[entry][i] = currentStateArray[i];
+				next_states[entry][i] = nextStateArray[i];
 
-			if (i < _num_actions) {
-				actions[entry][i] = train_data.actions[i];
+				if (i < _num_actions) {
+					actions[entry][i] = train_data.actions[i];
+				}
 			}
+
+			rewards[entry] = train_data.reward;
+			dones[entry] = static_cast<double>(train_data.done);
 		}
 
-		rewards[entry] = train_data.reward;
-		dones[entry] = static_cast<double>(train_data.done);
-	}
+		// Prepare Training tensors
+		auto optionsDouble = torch::TensorOptions().dtype(torch::kDouble).device(device);
+		torch::Tensor states_t = torch::from_blob(states, { batchSize, _num_inputs }, optionsDouble);
+		torch::Tensor next_states_t = torch::from_blob(next_states, { batchSize, _num_inputs }, optionsDouble);
+		torch::Tensor actions_t = torch::from_blob(actions, { batchSize, _num_actions }, optionsDouble);
+		torch::Tensor rewards_t = torch::from_blob(rewards, { batchSize }, optionsDouble);
+		torch::Tensor dones_t = torch::from_blob(dones, { batchSize }, optionsDouble);
 
-	// Prepare Training tensors
-	auto optionsDouble = torch::TensorOptions().dtype(torch::kDouble).device(torch::kCPU, -1);
-	torch::Tensor states_t = torch::from_blob(states, { batchSize, _num_inputs }, optionsDouble);
-	torch::Tensor next_states_t = torch::from_blob(next_states, { batchSize, _num_inputs }, optionsDouble);
-	torch::Tensor actions_t = torch::from_blob(actions, { batchSize, _num_actions }, optionsDouble);
-	torch::Tensor rewards_t = torch::from_blob(rewards, { batchSize }, optionsDouble);
-	torch::Tensor dones_t = torch::from_blob(dones, { batchSize }, optionsDouble);
+		// Sample from Policy
+		torch::Tensor current = _policy_net->sample(states_t, batchSize);
+		torch::Tensor reshapedResult = current.view({ 5, batchSize, _num_actions });
+		torch::Tensor new_actions_t = reshapedResult[0];
+		torch::Tensor log_pi_t = reshapedResult[1];
+		torch::Tensor mean = reshapedResult[2];
+		torch::Tensor std = reshapedResult[3];
+		torch::Tensor z_values = reshapedResult[4];
+		log_pi_t = log_pi_t.sum(1, true);
 
-	// Sample from Policy
-	torch::Tensor current = _policy_net->sample(states_t, batchSize);
-	torch::Tensor reshapedResult = current.view({ 5, batchSize, _num_actions });
-	torch::Tensor new_actions_t = reshapedResult[0];
-	torch::Tensor log_pi_t = reshapedResult[1];
-	torch::Tensor mean = reshapedResult[2];
-	torch::Tensor std = reshapedResult[3];
-	torch::Tensor z_values = reshapedResult[4];
-	log_pi_t = log_pi_t.sum(1, true);
+		// Update alpha temperature
+		if (_self_adjusting_alpha) {
 
-	// Update alpha temperature
-	if (_self_adjusting_alpha) {
+			torch::Tensor alpha_loss = (-1.0 * _log_alpha * (log_pi_t + _target_entropy).detach()).mean();
+			_alpha_optimizer->zero_grad();
+			alpha_loss.backward();
+			_alpha_optimizer->step();
+			_alpha = torch::exp(_log_alpha);
+			std::cout << "Current alpha: " << _alpha << std::endl;
+		}
 
-		torch::Tensor alpha_loss = (-1.0 * _log_alpha * (log_pi_t + _target_entropy).detach()).mean();
-		_alpha_optimizer->zero_grad();
-		alpha_loss.backward();
-		_alpha_optimizer->step();
-		_alpha = torch::exp(_log_alpha);
-		std::cout << "Current alpha: " << _alpha << std::endl;
-	}
+		// Estimated Q-Values
+		torch::Tensor q_prediction_1 = _q_net1->forward(states_t, actions_t, batchSize);
+		torch::Tensor q_prediction_2 = _q_net2->forward(states_t, actions_t, batchSize);
 
-	// Estimated Q-Values
-	torch::Tensor q_prediction_1 = _q_net1->forward(states_t, actions_t, batchSize);
-	torch::Tensor q_prediction_2 = _q_net2->forward(states_t, actions_t, batchSize);
+		// Training the Q-Value Function
+		torch::Tensor target_values = _target_value_network->forward(next_states_t, batchSize);
+		torch::Tensor target_q_values = torch::unsqueeze(rewards_t, 1) + _gamma * target_values * torch::unsqueeze(1.0 - dones_t, 1);
 
-	// Training the Q-Value Function
-	torch::Tensor target_values = _target_value_network->forward(next_states_t, batchSize);
-	torch::Tensor target_q_values = torch::unsqueeze(rewards_t, 1) + _gamma * target_values * torch::unsqueeze(1.0 - dones_t, 1);
+		torch::Tensor q_value_loss1 = 0.5 * torch::mean(torch::pow(q_prediction_1 - target_q_values.detach(), 2.0));
+		torch::Tensor q_value_loss2 = 0.5 * torch::mean(torch::pow(q_prediction_2 - target_q_values.detach(), 2.0));
 
-	torch::Tensor q_value_loss1 = 0.5 * torch::mean(torch::pow(q_prediction_1 - target_q_values.detach(), 2.0));
-	torch::Tensor q_value_loss2 = 0.5 * torch::mean(torch::pow(q_prediction_2 - target_q_values.detach(), 2.0));
+		// Training Value Function
+		torch::Tensor qf1_pi = _q_net1->forward(states_t, new_actions_t, batchSize);
+		torch::Tensor qf2_pi = _q_net2->forward(states_t, new_actions_t, batchSize);
+		torch::Tensor value_predictions = _value_network->forward(states_t, batchSize);
+		torch::Tensor q_value_predictions = torch::min(qf1_pi, qf2_pi);
+		torch::Tensor target_value_func = q_value_predictions - _alpha * log_pi_t;
+		torch::Tensor value_loss = 0.5 * torch::mean(torch::pow(value_predictions - target_value_func.detach(), 2.0));
+		
+		// Training the policy
+		torch::Tensor policy_loss = (_alpha * log_pi_t - torch::min(qf1_pi, qf2_pi)).mean();
+		
+		// Update Policy Network
+		if (pthread_mutex_lock(&_policyNetLock) == 0) {
+			_policy_net->optimizer->zero_grad();
+			policy_loss.backward();
+			// torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 0.5);
+			_policy_net->optimizer->step();
+			pthread_mutex_unlock(&_policyNetLock);
+		}
+		else {
+			pthread_mutex_unlock(&_policyNetLock);
+			throw std::runtime_error("could not obtain lock");
+		}
 
-	// Training Value Function
-	torch::Tensor qf1_pi = _q_net1->forward(states_t, new_actions_t, batchSize);
-	torch::Tensor qf2_pi = _q_net2->forward(states_t, new_actions_t, batchSize);
-	torch::Tensor value_predictions = _value_network->forward(states_t, batchSize);
-	torch::Tensor q_value_predictions = torch::min(qf1_pi, qf2_pi);
-	torch::Tensor target_value_func = q_value_predictions - _alpha * log_pi_t;
-	torch::Tensor value_loss = 0.5 * torch::mean(torch::pow(value_predictions - target_value_func.detach(), 2.0));
+		/*c
+		// Determine policy advantage and calc loss
+		torch::Tensor advantage = torch::min(qf1_pi, qf2_pi) - value_predictions.detach();
+		torch::Tensor policy_loss = (_alpha * log_pi_t - advantage).mean();
 
-	
-	// Training the policy
-	torch::Tensor policy_loss = (_alpha * log_pi_t - torch::min(qf1_pi, qf2_pi)).mean();
-	
-	// Update Policy Network
-	if (pthread_mutex_lock(&_policyNetLock) == 0) {
-		_policy_net->optimizer->zero_grad();
-		policy_loss.backward();
-		// torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 0.5);
-		_policy_net->optimizer->step();
-		pthread_mutex_unlock(&_policyNetLock);
-	}
-	else {
-		pthread_mutex_unlock(&_policyNetLock);
-		throw std::runtime_error("could not obtain lock");
-	}
-	
+		// Policy Regularization
+		torch::Tensor mean_reg = 1e-3 * torch::mean(mean.sum(1, true).pow(2.0));
+		torch::Tensor std_reg = 1e-3 * torch::mean(std.sum(1, true).pow(2.0));
 
-	/*
-	// Determine policy advantage and calc loss
-	torch::Tensor advantage = torch::min(qf1_pi, qf2_pi) - value_predictions.detach();
-	torch::Tensor policy_loss = (_alpha * log_pi_t - advantage).mean();
+		torch::Tensor actor_reg = mean_reg + std_reg;
+		policy_loss += actor_reg;
+		*/
 
-	// Policy Regularization
-	torch::Tensor mean_reg = 1e-3 * torch::mean(mean.sum(1, true).pow(2.0));
-	torch::Tensor std_reg = 1e-3 * torch::mean(std.sum(1, true).pow(2.0));
+		// Update Q-Value networks
+		_q_net1->optimizer->zero_grad();
+		q_value_loss1.backward();
+		_q_net1->optimizer->step();
 
-	torch::Tensor actor_reg = mean_reg + std_reg;
-	policy_loss += actor_reg;
-	*/
+		_q_net2->optimizer->zero_grad();
+		q_value_loss2.backward();
+		_q_net2->optimizer->step();
 
-	// Update Q-Value networks
-	_q_net1->optimizer->zero_grad();
-	q_value_loss1.backward();
-	_q_net1->optimizer->step();
+		// Update Value network
+		_value_network->zero_grad();
+		value_loss.backward();
+		_value_network->optimizer->step();
+		
+		// Delay update of Target Value and Policy Networks
+		if (_current_update >= _max_delay) {
+			_current_update = 0;
 
-	_q_net2->optimizer->zero_grad();
-	q_value_loss2.backward();
-	_q_net2->optimizer->step();
+			// Copy over network params with averaging
+			_transfer_params_v2(*_value_network, *_target_value_network, true);
 
-	// Update Value network
-	_value_network->zero_grad();
-	value_loss.backward();
-	_value_network->optimizer->step();
-	
-	// Delay update of Target Value and Policy Networks
-	if (_current_update >= _max_delay) {
-		_current_update = 0;
+			if (_current_save_delay >= _max_save_delay) {
+				_current_save_delay = 0;
+				save_checkpoint();
+			}	
+		}
+		else {
+			_current_save_delay++;
+			_current_update++;
+			_total_update++;
+		}
 
-		// Copy over network params with averaging
-		_transfer_params_v2(*_value_network, *_target_value_network, true);
-
-		if (_current_save_delay >= _max_save_delay) {
-			_current_save_delay = 0;
-			save_checkpoint();
-		}	
-	}
-	else {
-
+		// Write loss info to log
 		std::string episodeData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
-			(std::chrono::system_clock::now().time_since_epoch()).count()) + ','
-			+ std::to_string(_total_update) + ','
-			+ std::to_string(policy_loss.item().toDouble()) + ','
-			+ std::to_string(value_loss.item().toDouble()) + ','
-			+ std::to_string(q_value_loss1.item().toDouble()) + ','
-			+ std::to_string(q_value_loss2.item().toDouble());
+				(std::chrono::system_clock::now().time_since_epoch()).count()) + ','
+				+ std::to_string(_total_update) + ','
+				+ std::to_string(policy_loss.item().toDouble()) + ','
+				+ std::to_string(value_loss.item().toDouble()) + ','
+				+ std::to_string(q_value_loss1.item().toDouble()) + ','
+				+ std::to_string(q_value_loss2.item().toDouble());
 
-		Utility::appendLineToFile(_lossPath, episodeData);
+			Utility::appendLineToFile(_lossPath, episodeData);
 
-		_current_save_delay++;
-		_current_update++;
-		_total_update++;
+	} catch (const c10::Error& e) {   
+		throw std::runtime_error("could not update model: " + e.msg());
 	}
 }
 
@@ -452,7 +469,6 @@ int SACAgent::sync(bool parent, double* data)
 	}
 	else {
 		int counter = 0;
-
 		counter = this->_save_to_array(*_q_net1, data, counter);
 		counter = this->_save_to_array(*_q_net2, data, counter);
 		counter = this->_save_to_array(*_policy_net, data, counter);
@@ -465,11 +481,13 @@ int SACAgent::sync(bool parent, double* data)
 }
 
 int SACAgent::_save_to_array(torch::nn::Module& from, double* address, int index) {
+	std::cout << "Here we are 1" << std::endl;
 	torch::autograd::GradMode::set_enabled(false);
 
 	auto params = from.named_parameters(true);
 	auto buffers = from.named_buffers(true);
 	
+	std::cout << "Here we are 2" << std::endl;
 	for (const auto& val : params) {
 		
 		torch::Tensor value = val.value().clone().detach();
@@ -482,6 +500,7 @@ int SACAgent::_save_to_array(torch::nn::Module& from, double* address, int index
 		}
 	}
 	
+	std::cout << "Here we are 3" << std::endl;
 	for (const auto& val : buffers) {
 
 		torch::Tensor value = val.value().clone().detach();	
@@ -494,6 +513,7 @@ int SACAgent::_save_to_array(torch::nn::Module& from, double* address, int index
 		}
 	}
 
+	std::cout << "Here we are 4" << std::endl;
 	torch::autograd::GradMode::set_enabled(true);
 	return index;
 }
@@ -509,7 +529,7 @@ int SACAgent::_save_to_array(torch::Tensor& from, double* address, int index) {
 }
 
 int SACAgent::_load_from_array(torch::nn::Module& to, double* address, int index) {
-	auto optionsDouble = torch::TensorOptions().dtype(torch::kDouble).device(torch::kCPU, -1);
+	auto optionsDouble = torch::TensorOptions().dtype(torch::kDouble).device(device);
 	torch::autograd::GradMode::set_enabled(false);
 
 	auto params = to.named_parameters(true);

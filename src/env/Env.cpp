@@ -189,7 +189,7 @@ namespace TATS {
 			}
 
 			// Print out the PID gains
-			if (0.05 >= randChance) {
+			if (0.01 >= randChance) {
 				std::cout << "Here are the new actions(s): ";
 				for (int a = 0; a < _config->numActions; a++) {
 					std::cout << actions[servo][a] << ", ";
@@ -212,7 +212,7 @@ namespace TATS {
 			_currentAngles[servo] = newAngle;
 
 			// Print out the angles
-			if (0.05 >= randChance) {
+			if (0.01 >= randChance) {
 				std::cout << "Here are the angles: ";
 				std::cout << newAngle << std::endl;
 				std::cout << "For servo: ";

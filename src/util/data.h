@@ -137,11 +137,11 @@ namespace Utility {
 
             maxTrainingSessions(1),              // Number of training sessions on model params
             maxBufferSize(1000000),              // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(2000),                 // Min replay buffer size before training size.
+            minBufferSize(64),                  // Min replay buffer size before training size.
             maxTrainingSteps(1000000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
-            batchSize(128),                      // Network batch size.
+            batchSize(8),                        // Network batch size.
             initialRandomActions(true),          // Enable random actions.
             numInitialRandomActions(20000),      // Number of random actions taken.
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
@@ -158,8 +158,8 @@ namespace Utility {
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(true),					 // Use openCV tracker instead of face detection
-            draw(true),						     // Draw target bounding box and center on frame
-            showVideo(true),					 // Show camera feed
+            draw(false),						 // Draw target bounding box and center on frame
+            showVideo(false),					 // Show camera feed
             cascadeDetector(true),				 // Use faster cascade face detector 
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
             actionHigh(0.1),                     // Max output to of policy network's logits

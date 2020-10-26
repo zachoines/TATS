@@ -62,9 +62,8 @@ void panTiltThread(Utility::param* parameters);
 void detectThread(Utility::param* parameters);
 void syncThread(Utility::param* parameters);
 
-// Thread Sync
-pthread_mutex_t stateDataLock = PTHREAD_MUTEX_INITIALIZER;
 pid_t pid;
+int ShmID = -1;
 
 // Shared between threads
 SACAgent* pidAutoTuner = nullptr;
@@ -83,7 +82,7 @@ volatile sig_atomic_t sig_value1;
 
 int main(int argc, char** argv)
 {
-
+	
 	// Kill child if parent dies
 	prctl(PR_SET_PDEATHSIG, SIGKILL); 
 
@@ -95,16 +94,8 @@ int main(int argc, char** argv)
 	Config* config = new Config();
     servos = new TATS::Env();
 
-	// Init camera
-	// width=3264, height=2464
-	std::string pipeline = "nvarguscamerasrc sensor-id=1 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=120/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
-
-	// std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
-	// std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
-	camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
-
 	// Shared memory for SAC model syncing
-	int ShmID = shmget(IPC_PRIVATE, 10000 * sizeof(double), IPC_CREAT | 0666);
+	ShmID = shmget(IPC_PRIVATE, 20000 * sizeof(double), IPC_CREAT | 0666);
 	if (ShmID < 0) {
         throw std::runtime_error("Could not initialize shared memory");
 	}
@@ -133,16 +124,6 @@ int main(int argc, char** argv)
 		std::remove(lossPath.c_str());
 	}
     
-    // Check for CUDA
-    torch::DeviceType device_type;
-    if (torch::cuda::is_available()) {
-        device_type = torch::kCUDA;
-        std::cout << "CUDA is available! Training on GPU." << std::endl;
-    } else {
-        device_type = torch::kCPU;
-        std::cout << "CUDA is not available! Training on CPU." << std::endl;
-    }
-
     // Setup pids
 	parameters->isTraining = false;
 	parameters->freshData = false;
@@ -150,8 +131,28 @@ int main(int argc, char** argv)
     // Parent process is image recognition PID/servo controller, second is SAC Servo autotuner
     pid = fork();
 	if (pid > 0) {
+	// if (true) {
 
         parameters->pid = pid;
+
+		// Init camera
+		// width=3264, height=2464
+		std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1, format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
+		// std::string pipeline = "nvarguscamerasrc sensor-id=0 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=30/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
+
+		// std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
+		// std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
+		camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
+
+		// Check for CUDA
+		// torch::DeviceType device_type;
+		// if (torch::cuda::is_available()) {
+		// 	device_type = torch::kCUDA;
+		// 	std::cout << "CUDA is available! Training on GPU." << std::endl;
+		// } else {
+		// 	device_type = torch::kCPU;
+		// 	std::cout << "CUDA is not available! Training on CPU." << std::endl;
+		// }
 
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
@@ -174,6 +175,7 @@ int main(int argc, char** argv)
 		}
 
     } else {
+		
         
 		// Create the SAC agent for training
 		SACAgent* pidAutoTunerChild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
@@ -302,7 +304,7 @@ void syncThread(Utility::param* parameters) {
 	Utility::Config* config = new Utility::Config();
 	
 	// Shared memory referance for the parent process
-	double* ShmPTRParent = (double*)shmat(parameters->ShmID, 0, 0);
+	double* ShmPTRParent = (double*)shmat(ShmID, 0, 0);
 
 	if (ShmPTRParent == nullptr) {
 		throw std::runtime_error("Could not initialize shared memory");
@@ -369,7 +371,7 @@ void panTiltThread(Utility::param* parameters) {
 	using namespace TATS;
 	using namespace Utility;
 	std::mt19937 eng{ std::random_device{}() };
-    torch::Device device(torch::kCUDA);
+    torch::Device device(torch::kCPU);
 	auto options = torch::TensorOptions().dtype(torch::kDouble).device(device);
 	Utility::Config* config = new Utility::Config();
 
@@ -388,6 +390,7 @@ void panTiltThread(Utility::param* parameters) {
 	// training state variables
 	bool initialRandomActions = config->initialRandomActions;
 	int numInitialRandomActions = config->numInitialRandomActions;
+	bool isTraining = false;
 	
 	double predictedActions[NUM_SERVOS][NUM_ACTIONS];
 	double stateArray[NUM_INPUT];
@@ -395,6 +398,10 @@ void panTiltThread(Utility::param* parameters) {
 	TD trainData[NUM_SERVOS];
 	ED eventData[NUM_SERVOS];
 	RD resetResults;
+	bool disableServo[NUM_SERVOS] = {
+		config->disableY,
+		config->disableX
+	};
 
 	try {
 		resetResults = servos->reset();	
@@ -418,7 +425,7 @@ void panTiltThread(Utility::param* parameters) {
 						if (initialRandomActions && numInitialRandomActions >= 0) {
 
 							numInitialRandomActions--;
-							std::cout << "Random action count: " << numInitialRandomActions << std::endl;
+							// std::cout << "Random action count: " << numInitialRandomActions << std::endl;
 							for (int a = 0; a < config->numActions; a++) {
 								predictedActions[i][a] = std::uniform_real_distribution<double>{ config->actionLow, config->actionHigh }(eng);;
 							}
@@ -426,7 +433,7 @@ void panTiltThread(Utility::param* parameters) {
 						else {
 							currentState[i].getStateArray(stateArray);
 							at::Tensor actions = pidAutoTuner->get_action(torch::from_blob(stateArray, { 1, config->numInput }, options), true);
-
+							actions.to(torch::kCPU);
 							if (config->numActions > 1) {
 								auto actions_a = actions.accessor<double, 1>();
 								for (int a = 0; a < config->numActions; a++) {
@@ -452,7 +459,6 @@ void panTiltThread(Utility::param* parameters) {
 							predictedActions[i][0] = actions.item().toDouble();
 						}
 					}
-					
 				}
 
 				SR stepResults;
@@ -466,6 +472,11 @@ void panTiltThread(Utility::param* parameters) {
 				if (config->trainMode) {;
 					
 					for (int servo = 0; servo < NUM_SERVOS; servo++) {
+
+						if (disableServo[servo]) {
+							continue;
+						}	
+
 						trainData[servo] = stepResults.servos[servo];
 						trainData[servo].currentState = currentState[servo];
 						currentState[servo] = trainData[servo].nextState;
@@ -506,8 +517,10 @@ void panTiltThread(Utility::param* parameters) {
 						episodeRewards = 0.0;
 					}
 
-		
-                    if (replayBuffer->size() > config->minBufferSize + 1) {
+					// Inform child process to start training
+                    if (!isTraining && replayBuffer->size() > config->minBufferSize) {
+						std::cout << "Sending train signal..." << std::endl;
+						isTraining = true;
                         kill(parameters->pid, SIGUSR1);
                     } 
 				}
@@ -519,7 +532,6 @@ void panTiltThread(Utility::param* parameters) {
 				} catch (...) {
 					throw std::runtime_error("cannot reset servos");
 				}
-				
 				
 				for (int servo = 0; servo < NUM_SERVOS; servo++) {
 					currentState[servo] = resetResults.servos[servo];
@@ -539,16 +551,6 @@ void panTiltThread(Utility::param* parameters) {
 				} catch (...) {
 					throw std::runtime_error("cannot step with servos");
 				}
-
-				// TODO remove this after testing
-				if (replayBuffer->size() <= config->maxBufferSize) {
-					TD data;
-					replayBuffer->add(data);
-				}
-				if (replayBuffer->size() > config->minBufferSize + 1) {
-					std::cout << "Sending train signal..." << std::endl;
-					kill(parameters->pid, SIGUSR1);
-				} 
 			}
 			else {
 
