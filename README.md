@@ -48,6 +48,7 @@ Target acquisition and tracking system. The aim of this repo is to use various d
     * cmake -DCMAKE_PREFIX_PATH={path to build dir}/pytorch/build/lib.linux-aarch64-3.6/
         * Its also possible to use python installation of Pytorch for the build as well
     * make TATS
+    
 * Run install
     * export LD_LIBRARY_PATH=/home/{username}/pytorch/build/lib:$LD_LIBRARY_PATH 
     * ./TATS
