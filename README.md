@@ -2,9 +2,9 @@
 Target acquisition and tracking system. The aim of this repo is to use various deep learning techniques for detecting and tracking targets, optimized for IOT systems like the RPI 4 and NVIDEA Jetson product lines.
 
 ## Requirements
-libtorch 1.6.0
-libboost 1.61.0
-OpenCV 4.4.0
+* libtorch 1.6.0
+* libboost 1.61.0
+* OpenCV 4.4.0
 
 ## Technologies
 * Target detection done via a choice of cascade models, RCNN models, or Yolo5 models.
@@ -39,7 +39,7 @@ OpenCV 4.4.0
 		* git submodule update --init --recursive
 		* sudo python3 setup.py develop
         * python3 setup.py install
-        
+
 * lib Boost
 	* Sudo apt-get install libboost
 	* Include dir via linker command: -I/usr/include/boost
