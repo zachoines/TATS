@@ -164,12 +164,12 @@ void SACAgent::save_checkpoint()
 {
 	// Load from file if exists
 	std::string path = get_current_dir_name();
-	std::string QModelFile1 = path + "/Q_Net_Checkpoint1.pt";
-	std::string QModelFile2 = path + "/Q_Net_Checkpoint2.pt";
-	std::string PModelFile = path + "/P_Net_Checkpoint.pt";
-	std::string AlphaFile = path + "/Alpha_Checkpoint.pt";
-	std::string ValueFile = path + "/Value_Checkpoint.pt";
-	std::string TargetValueFile = path + "/Target_Value_Checkpoint.pt";
+	std::string QModelFile1 = path + "/models/checkpoint/Q_Net_Checkpoint1.pt";
+	std::string QModelFile2 = path + "//models/checkpoint/Q_Net_Checkpoint2.pt";
+	std::string PModelFile = path + "/models/checkpoint/P_Net_Checkpoint.pt";
+	std::string AlphaFile = path + "/models/checkpoint/Alpha_Checkpoint.pt";
+	std::string ValueFile = path + "/models/checkpoint/Value_Checkpoint.pt";
+	std::string TargetValueFile = path + "/models/checkpoint/Target_Value_Checkpoint.pt";
 
 	torch::serialize::OutputArchive QModelArchive1;
 	_q_net1->save(QModelArchive1);
@@ -206,12 +206,12 @@ bool SACAgent::load_checkpoint()
 {
 	// Load from file if exists
 	std::string path = get_current_dir_name();
-	std::string QModelFile1 = path + "/Q_Net_Checkpoint1.pt";
-	std::string QModelFile2 = path + "/Q_Net_Checkpoint2.pt";
-	std::string PModelFile = path + "/P_Net_Checkpoint.pt";
-	std::string AlphaFile = path + "/Alpha_Checkpoint.pt";
-	std::string ValueFile = path + "/Value_Checkpoint.pt";
-	std::string TargetValueFile = path + "/Target_Value_Checkpoint.pt";
+	std::string QModelFile1 = path + "/models/checkpoint/Q_Net_Checkpoint1.pt";
+	std::string QModelFile2 = path + "/models/checkpoint/Q_Net_Checkpoint2.pt";
+	std::string PModelFile = path + "/models/checkpoint/P_Net_Checkpoint.pt";
+	std::string AlphaFile = path + "/models/checkpoint/Alpha_Checkpoint.pt";
+	std::string ValueFile = path + "/models/checkpoint/Value_Checkpoint.pt";
+	std::string TargetValueFile = path + "/models/checkpoint/Target_Value_Checkpoint.pt";
 
 
 	if (
@@ -453,12 +453,12 @@ int SACAgent::sync(bool parent, double* data)
 		if (pthread_mutex_lock(&_policyNetLock) == 0) {
 			int counter = 0;
 
-			counter = this->_load_from_array(*_q_net1, data, counter);
-			counter = this->_load_from_array(*_q_net2, data, counter);
+			// counter = this->_load_from_array(*_q_net1, data, counter);
+			// counter = this->_load_from_array(*_q_net2, data, counter);
 			counter = this->_load_from_array(*_policy_net, data, counter);
-			counter = this->_load_from_array(*_value_network, data, counter);
-			counter = this->_load_from_array(*_target_value_network, data, counter);
-			counter = this->_load_from_array(_log_alpha, data, counter);
+			// counter = this->_load_from_array(*_value_network, data, counter);
+			// counter = this->_load_from_array(*_target_value_network, data, counter);
+			// counter = this->_load_from_array(_log_alpha, data, counter);
 			
 			pthread_mutex_unlock(&_policyNetLock);
 			return counter;
@@ -468,52 +468,39 @@ int SACAgent::sync(bool parent, double* data)
 		}
 	}
 	else {
-		int counter = 0;
-		counter = this->_save_to_array(*_q_net1, data, counter);
-		counter = this->_save_to_array(*_q_net2, data, counter);
-		counter = this->_save_to_array(*_policy_net, data, counter);
-		counter = this->_save_to_array(*_value_network, data, counter);
-		counter = this->_save_to_array(*_target_value_network, data, counter);
-		counter = this->_save_to_array(_log_alpha, data, counter);
+		try {
+			int counter = 0;
+			// counter = this->_save_to_array(*_q_net1, data, counter);
+			// counter = this->_save_to_array(*_q_net2, data, counter);
+			counter = this->_save_to_array(*_policy_net, data, counter);
+			// counter = this->_save_to_array(*_value_network, data, counter);
+			// counter = this->_save_to_array(*_target_value_network, data, counter);
+			// counter = this->_save_to_array(_log_alpha, data, counter);
 
-		return counter;
+			return counter;
+		} catch (...) {
+			throw std::runtime_error("Error while syncing model params with parent");
+		}
 	}
 }
 
 int SACAgent::_save_to_array(torch::nn::Module& from, double* address, int index) {
-	std::cout << "Here we are 1" << std::endl;
 	torch::autograd::GradMode::set_enabled(false);
-
 	auto params = from.named_parameters(true);
-	auto buffers = from.named_buffers(true);
-	
-	std::cout << "Here we are 2" << std::endl;
+
 	for (const auto& val : params) {
 		
-		torch::Tensor value = val.value().clone().detach();
-		value = torch::flatten(value);
-
-		int size = value.size(-1);
+		torch::Tensor value = val.value();
+		torch::Tensor layer = torch::flatten(value);
+		auto layer_a = layer.accessor<double, 1>();
+		int size = layer.numel();
+		
 		for (int i = 0; i < size; i++) {
-			address[index] = value[i].item().toDouble();
-			index++;
-		}
-	}
-	
-	std::cout << "Here we are 3" << std::endl;
-	for (const auto& val : buffers) {
-
-		torch::Tensor value = val.value().clone().detach();	
-		value = torch::flatten(value);
-
-		int size = value.size(-1);
-		for (int i = 0; i < size; i++) {
-			address[index] = value[i].item().toDouble();
+			address[index] = layer_a[i];
 			index++;
 		}
 	}
 
-	std::cout << "Here we are 4" << std::endl;
 	torch::autograd::GradMode::set_enabled(true);
 	return index;
 }
@@ -531,13 +518,11 @@ int SACAgent::_save_to_array(torch::Tensor& from, double* address, int index) {
 int SACAgent::_load_from_array(torch::nn::Module& to, double* address, int index) {
 	auto optionsDouble = torch::TensorOptions().dtype(torch::kDouble).device(device);
 	torch::autograd::GradMode::set_enabled(false);
-
 	auto params = to.named_parameters(true);
-	auto buffers = to.named_buffers(true);
+
 	for (const auto& val : params) {
 
 		int size = val.value().numel();
-
 		double copy[size];
 
 		for (int i = 0; i < size; i++) {
@@ -546,21 +531,6 @@ int SACAgent::_load_from_array(torch::nn::Module& to, double* address, int index
 		}
 
 		params[val.key()].data().copy_(torch::from_blob(copy, val.value().data().sizes(), optionsDouble));
-
-	}
-	
-	for (const auto& val : buffers) {
-
-		int size = val.value().numel();
-
-		double copy[size];
-
-		for (int i = 0; i < size; i++) {
-			copy[i] = address[index];
-			index++;
-		}
-
-		buffers[val.key()].data().copy_(torch::from_blob(copy, val.value().data().sizes(), optionsDouble));
 
 	}
 

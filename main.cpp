@@ -63,7 +63,6 @@ void detectThread(Utility::param* parameters);
 void syncThread(Utility::param* parameters);
 
 pid_t pid;
-int ShmID = -1;
 
 // Shared between threads
 SACAgent* pidAutoTuner = nullptr;
@@ -94,19 +93,13 @@ int main(int argc, char** argv)
 	Config* config = new Config();
     servos = new TATS::Env();
 
-	// Shared memory for SAC model syncing
-	ShmID = shmget(IPC_PRIVATE, 20000 * sizeof(double), IPC_CREAT | 0666);
-	if (ShmID < 0) {
-        throw std::runtime_error("Could not initialize shared memory");
-	}
-
-	parameters->ShmID = ShmID;
-
 	// Create a shared memory buffer for experiance replay
+	int numParams = 70000;
 	boost::interprocess::shared_memory_object::remove("SharedMemorySegment");
-	boost::interprocess::managed_shared_memory segment(boost::interprocess::create_only, "SharedMemorySegment", sizeof(TD) * config->maxBufferSize + 1);
+	boost::interprocess::managed_shared_memory segment(boost::interprocess::create_only, "SharedMemorySegment", (sizeof(TD) * config->maxBufferSize + 1) + sizeof(double) * numParams);
 	const ShmemAllocator alloc_inst(segment.get_segment_manager());
-	SharedBuffer* sharedTrainingBuffer = segment.construct<SharedBuffer>("SharedBuffer") (alloc_inst);
+	SharedBuffer* sharedTrainingBuffer = segment.construct<SharedBuffer>("SharedBuffer")(alloc_inst);
+	double* modelParamsArray = segment.construct<double>("ModelParams")[numParams](0.0);
 
     // Setup stats files
     std::string avePath = get_current_dir_name() + statFileName;
@@ -131,28 +124,15 @@ int main(int argc, char** argv)
     // Parent process is image recognition PID/servo controller, second is SAC Servo autotuner
     pid = fork();
 	if (pid > 0) {
-	// if (true) {
 
         parameters->pid = pid;
 
 		// Init camera
-		// width=3264, height=2464
 		std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1, format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
 		// std::string pipeline = "nvarguscamerasrc sensor-id=0 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=30/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
-
 		// std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
 		// std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
 		camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
-
-		// Check for CUDA
-		// torch::DeviceType device_type;
-		// if (torch::cuda::is_available()) {
-		// 	device_type = torch::kCUDA;
-		// 	std::cout << "CUDA is available! Training on GPU." << std::endl;
-		// } else {
-		// 	device_type = torch::kCPU;
-		// 	std::cout << "CUDA is not available! Training on CPU." << std::endl;
-		// }
 
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
@@ -180,13 +160,6 @@ int main(int argc, char** argv)
 		// Create the SAC agent for training
 		SACAgent* pidAutoTunerChild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
-        // Get Shared memory reference for the child
-		double* ShmPTRChild;
-		ShmPTRChild = (double*)shmat(ShmID, 0, 0);
-		if (ShmPTRChild == nullptr) {
-			throw std::runtime_error("Could not initialize shared memory");
-		}
-
 		// Variables for training
 		int batchSize = config->batchSize;
 		long maxTrainingSteps = config->maxTrainingSteps;
@@ -201,6 +174,10 @@ int main(int argc, char** argv)
 		boost::interprocess::managed_shared_memory _segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
 		SharedBuffer* trainingBuffer = _segment.find<SharedBuffer>("SharedBuffer").first;
 		ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer);
+
+		// Retrieve model params shared memory 
+		std::pair<double*, std::size_t> pair  = _segment.find<double>("ModelParams");
+		double *modelParamsArray = pair.first;
 
         // Setup signal mask
 		struct sigaction sig_action;
@@ -242,7 +219,6 @@ int main(int argc, char** argv)
 			if (sig_value1 == SIGUSR1) {
 
 				std::cout << "Train signal received..." << std::endl;
-
 				bool isTraining = true;
 
 
@@ -283,7 +259,7 @@ int main(int argc, char** argv)
 					}
 
 					// Write values to shared memory for parent to read
-					int valuesWritten = pidAutoTunerChild->sync(false, ShmPTRChild);
+					int valuesWritten = pidAutoTunerChild->sync(false, modelParamsArray);
 					std::cout << "Tensors written in child: " << valuesWritten << std::endl;
 
 					// Inform parent new params are available
@@ -303,11 +279,12 @@ void syncThread(Utility::param* parameters) {
 	using namespace Utility;
 	Utility::Config* config = new Utility::Config();
 	
-	// Shared memory referance for the parent process
-	double* ShmPTRParent = (double*)shmat(ShmID, 0, 0);
+	boost::interprocess::managed_shared_memory _segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
+	std::pair<double*, std::size_t> pair  = _segment.find<double>("ModelParams");
+	double *modelParamsArray = pair.first;
 
-	if (ShmPTRParent == nullptr) {
-		throw std::runtime_error("Could not initialize shared memory");
+	if (!modelParamsArray) {
+		std::cout << "Issue finding model params shared array" << std::endl;
 	}
 
 	// Setup signal mask
@@ -343,7 +320,7 @@ void syncThread(Utility::param* parameters) {
 		if (signum == SIGUSR1 && info.si_pid == pid) {
 			std::cout << "Received sync signal..." << std::endl;
 
-			int valuesRead = pidAutoTuner->sync(true, ShmPTRParent);
+			int valuesRead = pidAutoTuner->sync(true, modelParamsArray);
 			std::cout << "Tensors read in parent: " << valuesRead << std::endl;
 		}
 
@@ -636,7 +613,6 @@ void detectThread(Utility::param* parameters)
 	std::string path = get_current_dir_name();
 	std::string weights = path + "/models/yolo/yolo_uno.torchscript.pt";
 	Detect::YoloDetector detector = Detect::YoloDetector(weights, class_names);
-
 	std::vector<struct Detect::DetectionData> results;
 
 	while (true) {

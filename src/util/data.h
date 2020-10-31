@@ -137,11 +137,11 @@ namespace Utility {
 
             maxTrainingSessions(1),              // Number of training sessions on model params
             maxBufferSize(1000000),              // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(64),                  // Min replay buffer size before training size.
+            minBufferSize(2000),                 // Min replay buffer size before training size.
             maxTrainingSteps(1000000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
-            batchSize(8),                        // Network batch size.
+            batchSize(128),                       // Network batch size.
             initialRandomActions(true),          // Enable random actions.
             numInitialRandomActions(20000),      // Number of random actions taken.
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
@@ -173,16 +173,13 @@ namespace Utility {
             resetAngleY(0.0),                    // Angle when reset
             
             dims({ 720, 1280 }),                 // Dimensions of frame
-            // dims({ 1080, 1920 }),                // Dimensions of frame
             maxFrameRate(120)                    // Camera capture rate
             {}
     } typedef cfg;
 
     struct Parameter {
 
-        int ShmID;
         int pid;
-
         bool isTraining;
         bool freshData;
 
