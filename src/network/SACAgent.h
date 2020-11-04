@@ -30,9 +30,6 @@ private:
 	QNetwork* _q_net1; 
 	QNetwork* _q_net2;
 
-	/*QNetwork* _target_q_network_1;
-	QNetwork* _target_q_network_2;*/
-
 	ValueNetwork* _target_value_network;
 	ValueNetwork* _value_network;
 	PolicyNetwork* _policy_net;
@@ -40,14 +37,17 @@ private:
 	torch::Tensor _log_alpha, _alpha;
 	c10::Scalar _target_entropy;
 	torch::optim::Adam* _alpha_optimizer = nullptr;
-	void _save_to(torch::nn::Module& model, std::stringstream& fd);
-	void _load_from(torch::nn::Module& model, std::stringstream& fd);
+	
 	void _transfer_params_v2(torch::nn::Module& from, torch::nn::Module& to, bool param_smoothing = false);
+	
 	int _save_to_array(torch::nn::Module& from, double* address, int index);
 	int _save_to_array(torch::Tensor& from, double* address, int index);
+	void _save_to_array(torch::nn::Module& from, Utility::sharedString* s);
+
 	int _load_from_array(torch::nn::Module& to, double* address, int index);
 	int _load_from_array(torch::Tensor& to, double* address, int index);
-
+	void _load_from_array(torch::nn::Module& to, Utility::sharedString* s);
+	
 public:
 	SACAgent(int num_inputs, int num_hidden, int num_actions, double action_max, double action_min, bool alphaAdjuster = true, double gamma = 0.99, double tau = 5e-3, double alpha = 0.2, double q_lr = 3e-4, double policy_lr = 3e-4, double a_lr = 3e-4, torch::DeviceType device = torch::kCPU);
 	~SACAgent();
@@ -58,6 +58,10 @@ public:
 
 	void save_checkpoint();
 	bool load_checkpoint();
-
+	void load_policy(); 
+	void save_policy();
+	void load_policy(Utility::sharedString* s);
+	void save_policy(Utility::sharedString* s);
+	
 };
 

@@ -18,7 +18,7 @@ struct PIDState {
 		state[1] = d;
 		state[2] = e;
 		state[3] = din;
-		// state[4] = dt;
+		state[4] = dt;
 	}
 
 

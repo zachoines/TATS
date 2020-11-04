@@ -9,11 +9,12 @@
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/containers/vector.hpp>
 #include <boost/interprocess/allocators/allocator.hpp>
+#include <boost/interprocess/containers/string.hpp>
 #include "../pid/PID.h"
 
 namespace Utility {
     #define NUM_SERVOS 2
-    #define NUM_INPUT 5
+    #define NUM_INPUT 6
     #define NUM_ACTIONS 3
     #define NUM_HIDDEN 256
     
@@ -46,8 +47,8 @@ namespace Utility {
         double obj;
 
         void getStateArray(double state[NUM_INPUT]) {
-            pidStateData.getStateArray(state); // first 4 elems will be filled
-            state[4] = lastAngle - currentAngle;
+            pidStateData.getStateArray(state); // first 5 elems will be filled
+            state[5] = lastAngle - currentAngle;
         }
 
     } typedef SD;
@@ -72,6 +73,8 @@ namespace Utility {
     } typedef SR;
 
     typedef boost::interprocess::allocator<TD, boost::interprocess::managed_shared_memory::segment_manager> ShmemAllocator;
+    typedef boost::interprocess::allocator<char, boost::interprocess::managed_shared_memory::segment_manager> CharAllocator;
+    typedef boost::interprocess::basic_string<char, std::char_traits<char>, CharAllocator> sharedString;
     typedef boost::interprocess::vector<TD, ShmemAllocator> SharedBuffer;
     typedef std::vector<TD> TrainBuffer;
 
@@ -141,16 +144,16 @@ namespace Utility {
             maxTrainingSteps(1000000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
-            batchSize(128),                       // Network batch size.
+            batchSize(512),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
             numInitialRandomActions(20000),      // Number of random actions taken.
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
 
-            recheckFrequency(60),                // Num frames in-between revalidations of tracking quality
+            recheckFrequency(15),                // Num frames in-between revalidations of tracking quality
             lossCountMax(2),                     // Max number of rechecks before episode is considered over
-            updateRate(7),                       // Servo updates, commands per second
-            trainRate(1.0),					     // Network updates, sessions per second
+            updateRate(5),                       // Servo updates, commands per second
+            trainRate(.5),					     // Network updates, sessions per second
             invertX(false),                      // Flip output angles for pan
             invertY(false),						 // Flip output angles for tilt
             disableX(false),                     // Disable the pan servo
@@ -158,20 +161,20 @@ namespace Utility {
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(true),					 // Use openCV tracker instead of face detection
-            draw(false),						 // Draw target bounding box and center on frame
-            showVideo(false),					 // Show camera feed
+            draw(true),						     // Draw target bounding box and center on frame
+            showVideo(true),					 // Show camera feed
             cascadeDetector(true),				 // Use faster cascade face detector 
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
-            actionHigh(0.1),                     // Max output to of policy network's logits
+            actionHigh(0.7),                     // Max output to of policy network's logits
             actionLow(0.0),                      // Min output to of policy network's logits        
-            pidOutputHigh(65.0),                 // Max output allowed for PID's
-            pidOutputLow(-65.0),				 // Min output allowed for PID's
+            pidOutputHigh(60.0),                 // Max output allowed for PID's
+            pidOutputLow(-60.0),				 // Min output allowed for PID's
             defaultGains({ 0.05, 0.04, 0.001 }), // Gains fed to pids when initialized
-            angleHigh(65.0),                     // Max allowable output angle to servos
-            angleLow(-65.0),                     // Min allowable output angle to servos
+            angleHigh(60.0),                     // Max allowable output angle to servos
+            angleLow(-60.0),                     // Min allowable output angle to servos
             resetAngleX(0.0),                    // Angle when reset
-            resetAngleY(0.0),                    // Angle when reset
-            
+            resetAngleY(15.0),                   // Angle when reset
+            // dims({ 2464, 3280 }),
             dims({ 720, 1280 }),                 // Dimensions of frame
             maxFrameRate(120)                    // Camera capture rate
             {}

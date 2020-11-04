@@ -252,13 +252,6 @@ namespace Utility {
 
 	// Scale from -1.0 to 1.0 to low to high
 	static double rescaleAction(double action, double min, double max) {
-
-		/*double scale_factor = (max - min) / 2.0;
-		double reloc_factor = max - scale_factor;
-		action = (action * scale_factor) + reloc_factor; */
 		return (min + (0.5 * (action + 1.0) * (max - min)));
-		// return std::clamp<double>(action, min, max);
-		// return std::clamp<double>(action * ((max - min) / 2.0) + ((max + min) / 2.0), min, max);
-		// return action;
 	}
 }

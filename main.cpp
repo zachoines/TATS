@@ -82,7 +82,7 @@ volatile sig_atomic_t sig_value1;
 int main(int argc, char** argv)
 {
 	
-	// Kill child if parent dies
+	// Kill child if parent dies :(
 	prctl(PR_SET_PDEATHSIG, SIGKILL); 
 
 	using namespace Utility;
@@ -94,12 +94,15 @@ int main(int argc, char** argv)
     servos = new TATS::Env();
 
 	// Create a shared memory buffer for experiance replay
-	int numParams = 70000;
+	int numParams = 558298; // size of policy network! Will change if anything is edited in defaults
 	boost::interprocess::shared_memory_object::remove("SharedMemorySegment");
-	boost::interprocess::managed_shared_memory segment(boost::interprocess::create_only, "SharedMemorySegment", (sizeof(TD) * config->maxBufferSize + 1) + sizeof(double) * numParams);
+	boost::interprocess::managed_shared_memory segment(boost::interprocess::create_only, "SharedMemorySegment", (sizeof(TD) * config->maxBufferSize + 1) + (sizeof(char) * numParams + 1));
 	const ShmemAllocator alloc_inst(segment.get_segment_manager());
 	SharedBuffer* sharedTrainingBuffer = segment.construct<SharedBuffer>("SharedBuffer")(alloc_inst);
-	double* modelParamsArray = segment.construct<double>("ModelParams")[numParams](0.0);
+  	Utility::sharedString *s = segment.construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
+
+	// double* modelParamsArray = segment.construct<double>("ModelParams")[numParams](0.0);
+
 
     // Setup stats files
     std::string avePath = get_current_dir_name() + statFileName;
@@ -122,21 +125,24 @@ int main(int argc, char** argv)
 	parameters->freshData = false;
 
     // Parent process is image recognition PID/servo controller, second is SAC Servo autotuner
-    pid = fork();
+    pid = fork(); 
 	if (pid > 0) {
 
         parameters->pid = pid;
 
-		// Init camera
-		std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1, format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
-		// std::string pipeline = "nvarguscamerasrc sensor-id=0 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=30/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
+		// Init camera 3280 x 2464
+		// std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1, format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
+		// ! videobalance contrast=1.3 brightness=-.2 saturation=1.2
+		// width=3280, height=2464
+		// std::string pipeline = "nvarguscamerasrc sensor-id=0 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
 		// std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
-		// std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! appsink";
+		// ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! 
+		std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
 		camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
 
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
-
+		
 		// std::thread syncT(syncThread, parameters);
 		std::thread panTiltT(panTiltThread, parameters);
 		std::thread detectT(detectThread, parameters);
@@ -171,13 +177,16 @@ int main(int argc, char** argv)
 		double rate = config->trainRate;
 
         // Retrieve the training buffer from shared memory
-		boost::interprocess::managed_shared_memory _segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
-		SharedBuffer* trainingBuffer = _segment.find<SharedBuffer>("SharedBuffer").first;
+		boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
+		SharedBuffer* trainingBuffer = segment.find<SharedBuffer>("SharedBuffer").first;
 		ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer);
 
-		// Retrieve model params shared memory 
-		std::pair<double*, std::size_t> pair  = _segment.find<double>("ModelParams");
-		double *modelParamsArray = pair.first;
+		// Retrieve model params array from shared memory 
+		// std::pair<double*, std::size_t> pair  = segment.find<double>("ModelParams");
+		// double *modelParamsArray = pair.first;
+		
+		Utility::sharedString *s = segment.find_or_construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
+		
 
         // Setup signal mask
 		struct sigaction sig_action;
@@ -259,9 +268,8 @@ int main(int argc, char** argv)
 					}
 
 					// Write values to shared memory for parent to read
-					int valuesWritten = pidAutoTunerChild->sync(false, modelParamsArray);
-					std::cout << "Tensors written in child: " << valuesWritten << std::endl;
-
+					pidAutoTunerChild->save_policy(s);
+					
 					// Inform parent new params are available
 					std::cout << "Sync signal sent..." << std::endl;
 					kill(getppid(), SIGUSR1);
@@ -278,14 +286,15 @@ int main(int argc, char** argv)
 void syncThread(Utility::param* parameters) {
 	using namespace Utility;
 	Utility::Config* config = new Utility::Config();
-	
-	boost::interprocess::managed_shared_memory _segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
-	std::pair<double*, std::size_t> pair  = _segment.find<double>("ModelParams");
-	double *modelParamsArray = pair.first;
 
-	if (!modelParamsArray) {
-		std::cout << "Issue finding model params shared array" << std::endl;
-	}
+	// Retrieve model params array from shared memory 
+	boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
+	Utility::sharedString *s = segment.find_or_construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
+	// std::pair<double*, std::size_t> pair  = segment.find<double>("ModelParams");
+	// double *modelParamsArray = pair.first;
+	// if (!modelParamsArray) {
+	// 	std::cout << "Issue finding model params shared array" << std::endl;
+	// }
 
 	// Setup signal mask
 	sigset_t  mask;
@@ -320,8 +329,7 @@ void syncThread(Utility::param* parameters) {
 		if (signum == SIGUSR1 && info.si_pid == pid) {
 			std::cout << "Received sync signal..." << std::endl;
 
-			int valuesRead = pidAutoTuner->sync(true, modelParamsArray);
-			std::cout << "Tensors read in parent: " << valuesRead << std::endl;
+			pidAutoTuner->load_policy(s);
 		}
 
 		// Break when on SIGINT
@@ -353,8 +361,8 @@ void panTiltThread(Utility::param* parameters) {
 	Utility::Config* config = new Utility::Config();
 
     // Retrieve the training buffer from shared memory
-	boost::interprocess::managed_shared_memory _segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
-	SharedBuffer* trainingBuffer = _segment.find<SharedBuffer>("SharedBuffer").first;
+	boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
+	SharedBuffer* trainingBuffer = segment.find<SharedBuffer>("SharedBuffer").first;
 	ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer);
 
 	// Training options and record keeping
@@ -600,19 +608,22 @@ void detectThread(Utility::param* parameters)
 		throw std::runtime_error("cannot initialize camera");
 	}
 
-	/*
-	std::string path = get_current_dir_name();
-	Detect::CascadeDetector detector("./models/haar/haarcascade_frontalface_alt2.xml");
-	*/
+	Detect::ObjectDetector* detector;
 
 	// load the network
-	std::vector<std::string> class_names = {
-		"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
-	};
+	if (cascadeDetector) {
+		detector = new Detect::CascadeDetector ("./models/haar/haarcascade_frontalface_alt2.xml");
+	} else {
+		
+		std::vector<std::string> class_names = {
+			"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
+		};
 
-	std::string path = get_current_dir_name();
-	std::string weights = path + "/models/yolo/yolo_uno.torchscript.pt";
-	Detect::YoloDetector detector = Detect::YoloDetector(weights, class_names);
+		std::string path = get_current_dir_name();
+		std::string weights = path + "/models/yolo/yolo_uno.torchscript.pt";
+		detector = new Detect::YoloDetector(weights, class_names);
+	}
+
 	std::vector<struct Detect::DetectionData> results;
 
 	while (true) {
@@ -719,7 +730,7 @@ void detectThread(Utility::param* parameters)
 
 			detect:
 				try {
-					std::vector<struct Detect::DetectionData> out = detector.detect(frame, draw, 1);
+					std::vector<struct Detect::DetectionData> out = detector->detect(frame, draw, 1);
 					results = out;
 				} catch (const std::exception& e)
 				{

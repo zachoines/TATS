@@ -117,6 +117,7 @@ double PID::getWindupGaurd()
 	return _windup_guard;
 }
 
+// A nonbinding, 'What if', update call to PID. Returns internal PID state variables.
 state PID::mockUpdate(double input, double sleep, bool normalize)
 {
 	std::chrono::steady_clock::time_point currTime = std::chrono::steady_clock::now();
