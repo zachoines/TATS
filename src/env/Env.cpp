@@ -30,11 +30,11 @@ namespace TATS {
 
 		_servos->initServo({
 			.servoNum = 0,
-			.minAngle = -60.0,
-			.maxAngle = 60.0,
-			.minMs = 0.750,
-			.maxMs = 2.250,
-			.resetAngle = 15.0
+			.minAngle = -65.0,
+			.maxAngle = 65.0,
+			.minMs = 0.9,
+			.maxMs = 2.1,
+			.resetAngle = 0.0
 		});
 
 		_servos->initServo({
@@ -107,7 +107,7 @@ namespace TATS {
 			}
 			
 			lck.unlock();
-			_cond.notify_one();
+			_cond.notify_all();
 		}
 		catch(const std::exception& e)
 		{

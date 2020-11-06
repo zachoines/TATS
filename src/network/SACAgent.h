@@ -1,10 +1,10 @@
 #pragma 
 #include <torch/torch.h>
-#include "../util/util.h"
-#include "../util/data.h"
 #include "PolicyNetwork.h"
 #include "QNetwork.h"
 #include "ValueNetwork.h"
+#include "../util/util.h"
+#include "../util/data.h"
 
 class SACAgent
 {
@@ -62,6 +62,5 @@ public:
 	void save_policy();
 	void load_policy(Utility::sharedString* s);
 	void save_policy(Utility::sharedString* s);
-	
 };
 

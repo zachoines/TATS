@@ -61,6 +61,10 @@
 void panTiltThread(Utility::param* parameters);
 void detectThread(Utility::param* parameters);
 void syncThread(Utility::param* parameters);
+void autoTuneThread(Utility::param* parameters);
+
+pthread_cond_t trainCond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t trainLock = PTHREAD_MUTEX_INITIALIZER;
 
 pid_t pid;
 
@@ -101,9 +105,6 @@ int main(int argc, char** argv)
 	SharedBuffer* sharedTrainingBuffer = segment.construct<SharedBuffer>("SharedBuffer")(alloc_inst);
   	Utility::sharedString *s = segment.construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
 
-	// double* modelParamsArray = segment.construct<double>("ModelParams")[numParams](0.0);
-
-
     // Setup stats files
     std::string avePath = get_current_dir_name() + statFileName;
 	std::string lossPath = get_current_dir_name() + lossFileName;
@@ -125,7 +126,12 @@ int main(int argc, char** argv)
 	parameters->freshData = false;
 
     // Parent process is image recognition PID/servo controller, second is SAC Servo autotuner
-    pid = fork(); 
+	if (config->multiProcess) {
+		pid = fork(); 
+	} else {
+		pid = getpid();
+	}
+	
 	if (pid > 0) {
 
         parameters->pid = pid;
@@ -147,19 +153,29 @@ int main(int argc, char** argv)
 		std::thread panTiltT(panTiltThread, parameters);
 		std::thread detectT(detectThread, parameters);
 
-		panTiltT.detach();
-		detectT.detach();
-		syncThread(parameters);
+		
+		// If autotuning is to be performed in this process
+		if (config->multiProcess) {
+			panTiltT.detach();
+			detectT.detach();
+			syncThread(parameters);
 
-		// Terminate Child processes
-		kill(-pid, SIGQUIT);
-		if (wait(NULL) != -1) {
-			return 0;
-		}
-		else {
-			return -1;
-		}
+			// Terminate Child processes
+			kill(-pid, SIGQUIT);
+			if (wait(NULL) != -1) {
+				return 0;
+			}
+			else {
+				return -1;
+			}
 
+		} else {
+			std::thread autoTuneT(autoTuneThread, parameters);
+			autoTuneT.join();
+			panTiltT.join();
+			detectT.join();
+		}
+		
     } else {
 		
         
@@ -180,12 +196,7 @@ int main(int argc, char** argv)
 		boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
 		SharedBuffer* trainingBuffer = segment.find<SharedBuffer>("SharedBuffer").first;
 		ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer);
-
-		// Retrieve model params array from shared memory 
-		// std::pair<double*, std::size_t> pair  = segment.find<double>("ModelParams");
-		// double *modelParamsArray = pair.first;
-		
-		Utility::sharedString *s = segment.find_or_construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
+		sharedString *s = segment.find_or_construct<sharedString>("SharedString")("", segment.get_segment_manager());
 		
 
         // Setup signal mask
@@ -230,7 +241,6 @@ int main(int argc, char** argv)
 				std::cout << "Train signal received..." << std::endl;
 				bool isTraining = true;
 
-
 				// Annealed ERE (Emphasizing Recent Experience)
 				// https://arxiv.org/pdf/1906.04009.pdf
 				double N0 = 0.996;
@@ -265,6 +275,12 @@ int main(int argc, char** argv)
 
 						TrainBuffer batch = replayBuffer->ere_sample(batchSize, startingRange);
 						pidAutoTunerChild->update(batch.size(), &batch);
+
+						std::cout << "Training update:" << std::endl;
+						std::cout << "Buffer Size: " << std::to_string(replayBuffer->size()) << std::endl;
+						std::cout << "Starting range: " << std::to_string(startingRange) << std::endl;
+						std::cout << "Current steps: " << std::to_string(currentSteps) << std::endl;
+
 					}
 
 					// Write values to shared memory for parent to read
@@ -290,11 +306,6 @@ void syncThread(Utility::param* parameters) {
 	// Retrieve model params array from shared memory 
 	boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
 	Utility::sharedString *s = segment.find_or_construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
-	// std::pair<double*, std::size_t> pair  = segment.find<double>("ModelParams");
-	// double *modelParamsArray = pair.first;
-	// if (!modelParamsArray) {
-	// 	std::cout << "Issue finding model params shared array" << std::endl;
-	// }
 
 	// Setup signal mask
 	sigset_t  mask;
@@ -363,7 +374,7 @@ void panTiltThread(Utility::param* parameters) {
     // Retrieve the training buffer from shared memory
 	boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
 	SharedBuffer* trainingBuffer = segment.find<SharedBuffer>("SharedBuffer").first;
-	ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer);
+	ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer, config->multiProcess);
 
 	// Training options and record keeping
 	double episodeAverageRewards = 0.0;
@@ -456,6 +467,7 @@ void panTiltThread(Utility::param* parameters) {
 
 				if (config->trainMode) {;
 					
+					bool updated = false;
 					for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
 						if (disableServo[servo]) {
@@ -469,45 +481,56 @@ void panTiltThread(Utility::param* parameters) {
 						if (replayBuffer->size() <= config->maxBufferSize) {
 							replayBuffer->add(trainData[servo]);
 						}
-					}
+					
 
-					if (!trainData[1].done) {
-						episodeSteps += 1.0;
-						episodeRewards += trainData[1].reward;
-					}
-					else {
-						numEpisodes += 1;
+						if (!trainData[servo].done && !updated) {
+							episodeSteps += 1.0;
+							episodeRewards += trainData[1].reward;
+							updated = true;
+						}
+						else {
 
+							updated = true;
+							numEpisodes += 1;
 
-						// EMA of steps and rewards (With 30% weight to new episodes; or 5 episode averaging)
-						double percentage = (1.0 / 3.0);
-						double timePeriods = (2.0 / percentage) - 1.0;
-						double emaWeight = (2.0 / (timePeriods + 1.0));
+							// EMA of steps and rewards (With 30% weight to new episodes; or 5 episode averaging)
+							double percentage = (1.0 / 3.0);
+							double timePeriods = (2.0 / percentage) - 1.0;
+							double emaWeight = (2.0 / (timePeriods + 1.0));
 
-						episodeAverageRewards = (episodeRewards - episodeAverageRewards) * emaWeight + episodeAverageRewards;
-						episodeAverageSteps = (episodeSteps - episodeAverageSteps) * emaWeight + episodeAverageSteps;
+							episodeAverageRewards = (episodeRewards - episodeAverageRewards) * emaWeight + episodeAverageRewards;
+							episodeAverageSteps = (episodeSteps - episodeAverageSteps) * emaWeight + episodeAverageSteps;
 
-						// Log Episode averages
-						std::string avePath = get_current_dir_name() + statFileName;
-						std::string episodeData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
-												 (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
-												+ std::to_string(numEpisodes) + ','
-												+ std::to_string(episodeRewards) + ','
-												+ std::to_string(episodeSteps) + ','
-												+ std::to_string(episodeAverageRewards) + ','
-												+ std::to_string(episodeAverageSteps);
-						appendLineToFile(avePath, episodeData);
+							// Log Episode averages
+							std::string avePath = get_current_dir_name() + statFileName;
+							std::string episodeData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
+													(std::chrono::system_clock::now().time_since_epoch()).count()) + ','
+													+ std::to_string(numEpisodes) + ','
+													+ std::to_string(episodeRewards) + ','
+													+ std::to_string(episodeSteps) + ','
+													+ std::to_string(episodeAverageRewards) + ','
+													+ std::to_string(episodeAverageSteps);
+							appendLineToFile(avePath, episodeData);
 
-						episodeSteps = 0.0;
-						episodeRewards = 0.0;
+							episodeSteps = 0.0;
+							episodeRewards = 0.0;
+						}
 					}
 
 					// Inform child process to start training
-                    if (!isTraining && replayBuffer->size() > config->minBufferSize) {
-						std::cout << "Sending train signal..." << std::endl;
-						isTraining = true;
-                        kill(parameters->pid, SIGUSR1);
-                    } 
+					if (config->multiProcess) {
+						if (!isTraining && replayBuffer->size() > config->minBufferSize) {
+							std::cout << "Sending train signal..." << std::endl;
+							isTraining = true;
+							kill(parameters->pid, SIGUSR1);
+						} 
+					} else if (!isTraining && replayBuffer->size() > config->minBufferSize) {
+						// Inform autotune thread start training 
+						pthread_mutex_lock(&trainLock);
+						pthread_cond_broadcast(&trainCond);
+						pthread_mutex_unlock(&trainLock);
+					}
+                    
 				}
 			}
 			else {
@@ -883,6 +906,83 @@ void detectThread(Utility::param* parameters)
 	}
 }
 
+void autoTuneThread(Utility::param* parameters)
+{
+
+	using namespace TATS;
+	using namespace Utility;
+	Utility::Config* config = new Utility::Config();
+
+	// Variables for training
+	int batchSize = config->batchSize;
+	long maxTrainingSteps = config->maxTrainingSteps;
+	long currentSteps = 0;
+	int minBufferSize = config->minBufferSize;
+	int maxBufferSize = config->maxBufferSize;
+	int sessions = config->maxTrainingSessions;
+	int numUpdates = config->numUpdates;
+	double rate = config->trainRate;
+
+
+	// Annealed ERE (Emphasizing Recent Experience)
+	// https://arxiv.org/pdf/1906.04009.pdf
+	double N0 = 0.996;
+	double NT = 1.0;
+	double T = maxTrainingSteps;
+	double t_i = 0;
+	
+	// Retrieve the training buffer from shared memory
+	boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
+	SharedBuffer* trainingBuffer = segment.find<SharedBuffer>("SharedBuffer").first;
+	ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer, ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer, config->multiProcess);
+
+start:
+
+	parameters->freshData = false;
+	replayBuffer->clear();
+	
+	if (sessions <= 0) {
+		std::cout << "Training session over!!" << std::endl;
+		return;
+	}
+	
+	// Wait for the buffer to fill
+	pthread_mutex_lock(&trainLock);
+	while (!parameters->freshData) {
+		pthread_cond_wait(&trainCond, &trainLock);
+	}
+	pthread_mutex_unlock(&trainLock);
+
+	while (true) {
+
+		double N = static_cast<double>(replayBuffer->size());
+		t_i += 1;
+		double n_i = N0 + (NT - N0) * (t_i / T);
+		int cmin = N - ( minBufferSize );
+		
+		// Check if training is over
+		if (currentSteps >= maxTrainingSteps) {
+			currentSteps = 0;
+			sessions--;
+			replayBuffer->clear();
+			t_i = 0;
+			goto start;
+		}
+		else {
+			currentSteps += 1;
+		}
+
+		for (int k = 0; k < numUpdates; k += 1) {
+			int startingRange = std::min<int>( N - N * std::pow(n_i, static_cast<double>(k) * (1000.0 / numUpdates)), cmin);
+
+			TrainBuffer batch = replayBuffer->ere_sample(batchSize, startingRange);
+			pidAutoTuner->update(batch.size(), &batch);
+		}
+
+		long milis = static_cast<long>(1000.0 / rate);
+		Utility::msleep(milis);
+	}
+}
 
 // g++ -o test /home/zachoines/Documents/repos/test/pytorch/test.cpp -std=gnu++17 -Wl,--no-as-needed -g -I/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6/torch/include -I/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6/torch/include/torch/csrc/api/include -L/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6/torch/lib -lc10_cuda -lc10 -ltorch -ltorch_cuda -ltorch_cpu
 // cmake -DCMAKE_PREFIX_PATH=/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6/

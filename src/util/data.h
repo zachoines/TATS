@@ -131,6 +131,7 @@ namespace Utility {
         // Other 
         int dims[2];
         int maxFrameRate;
+        bool multiProcess;
     
         Config() :
 
@@ -139,14 +140,14 @@ namespace Utility {
             numInput(NUM_INPUT),                 // Number of elements in policy/value network's input vectors
 
             maxTrainingSessions(1),              // Number of training sessions on model params
-            maxBufferSize(1000000),              // Max size of buffer. When full, oldest elements are kicked out.
+            maxBufferSize(500000),               // Max size of buffer. When full, oldest elements are kicked out.
             minBufferSize(2000),                 // Min replay buffer size before training size.
-            maxTrainingSteps(1000000),			 // Max training steps agent takes.
+            maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
-            batchSize(512),                      // Network batch size.
+            batchSize(256),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
-            numInitialRandomActions(20000),      // Number of random actions taken.
+            numInitialRandomActions(10000),      // Number of random actions taken.
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
 
@@ -160,12 +161,12 @@ namespace Utility {
             disableY(true),                      // Disable the tilt servo
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
-            useTracking(true),					 // Use openCV tracker instead of face detection
-            draw(true),						     // Draw target bounding box and center on frame
-            showVideo(true),					 // Show camera feed
+            useTracking(false),					 // Use openCV tracker instead of face detection
+            draw(false),						 // Draw target bounding box and center on frame
+            showVideo(false),					 // Show camera feed
             cascadeDetector(true),				 // Use faster cascade face detector 
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
-            actionHigh(0.7),                     // Max output to of policy network's logits
+            actionHigh(.10),                     // Max output to of policy network's logits
             actionLow(0.0),                      // Min output to of policy network's logits        
             pidOutputHigh(60.0),                 // Max output allowed for PID's
             pidOutputLow(-60.0),				 // Min output allowed for PID's
@@ -176,7 +177,8 @@ namespace Utility {
             resetAngleY(15.0),                   // Angle when reset
             // dims({ 2464, 3280 }),
             dims({ 720, 1280 }),                 // Dimensions of frame
-            maxFrameRate(120)                    // Camera capture rate
+            maxFrameRate(120),                   // Camera capture rate
+            multiProcess(false)                  // Enables autotuning in a seperate process. Otherwise its a thread.
             {}
     } typedef cfg;
 

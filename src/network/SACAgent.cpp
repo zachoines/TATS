@@ -435,7 +435,14 @@ int SACAgent::sync(bool parent, double* data)
 }
 
 void SACAgent::load_policy(Utility::sharedString* s) {
-	this->_load_from_array(*_policy_net, s);
+	if (pthread_mutex_lock(&_policyNetLock) == 0) {
+		// Load from stream
+		this->_load_from_array(*_policy_net, s);
+	}
+	else {
+		pthread_mutex_unlock(&_policyNetLock);
+		throw std::runtime_error("could not obtain lock when loading policy from disk");
+	}
 }
 
 void SACAgent::save_policy(Utility::sharedString* s) { 
@@ -459,12 +466,13 @@ void SACAgent::_save_to_array(torch::nn::Module& from, Utility::sharedString* s)
 }
 
 void SACAgent::_load_from_array(torch::nn::Module& to, Utility::sharedString* s) {
-	
+
 	// Load from stream
 	std::istringstream stream(std::string(s->begin(), s->end()));
 	torch::serialize::InputArchive archive;
 	archive.load_from(stream, device);
 	to.load(archive);
+	pthread_mutex_unlock(&_policyNetLock);
 }
 
 int SACAgent::_save_to_array(torch::nn::Module& from, double* address, int index) {
