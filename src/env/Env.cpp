@@ -3,6 +3,8 @@
 namespace TATS {
 	Env::Env()
 	{
+
+		// TODO fix constructor to support any number of servos
 		_config = new Utility::Config();
 
 		_pids[0] = new PID(_config->defaultGains[0], _config->defaultGains[1], _config->defaultGains[2], _config->pidOutputLow, _config->pidOutputHigh, static_cast<double>(_config->dims[0]) / 2.0);

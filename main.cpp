@@ -74,9 +74,10 @@ TATS::Env* servos = nullptr;
 cv::VideoCapture* camera = nullptr;
 
 // Log files
-std::string statFileName = "/stat/episodeAverages.txt";
-std::string lossFileName = "/stat/trainingLoss.txt";
-std::string stateDir = "/stat";
+std::string logs[2] = {
+	"/episodeAverages.txt",
+	"/episodeStepRewards.txt"
+};
 
 // Signal handlers
 static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* context);
@@ -106,24 +107,23 @@ int main(int argc, char** argv)
   	Utility::sharedString *s = segment.construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
 
     // Setup stats files
-    std::string avePath = get_current_dir_name() + statFileName;
-	std::string lossPath = get_current_dir_name() + lossFileName;
-	std::string statPath = get_current_dir_name() + stateDir;
-
+	std::string path = get_current_dir_name();
+	std::string statDir = "/stat/";
+	std::string statPath = path + statDir;
 	mkdir(statPath.c_str(), 0755);
+	for (int servo = 0; servo < NUM_SERVOS; servo++) {
+		std::string servoPath = statPath + std::to_string(servo);
+		mkdir(servoPath.c_str(), 0755);
 
-	// Remove old logs
-	if (fileExists(avePath)) {
-		std::remove(avePath.c_str());
-	}
+		for (int log = 0; log < 2; log++) {
+			// Remove old logs
+			std::string logPath = servoPath + logs[log];
 
-	if (fileExists(lossPath)) {
-		std::remove(lossPath.c_str());
+			if (fileExists(logPath)) {
+				std::remove(logPath.c_str());
+			}
+		}
 	}
-    
-    // Setup pids
-	parameters->isTraining = false;
-	parameters->freshData = false;
 
     // Parent process is image recognition PID/servo controller, second is SAC Servo autotuner
 	if (config->multiProcess) {
@@ -144,18 +144,19 @@ int main(int argc, char** argv)
 		// std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
 		// ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! 
 		std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
-		camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
+		// camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
+		camera = new cv::VideoCapture(0, cv::CAP_ANY);
+		camera->set(3, config->dims[1]);
+		camera->set(4, config->dims[0]);
 
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 		
-		// std::thread syncT(syncThread, parameters);
-		std::thread panTiltT(panTiltThread, parameters);
-		std::thread detectT(detectThread, parameters);
-
-		
 		// If autotuning is to be performed in this process
 		if (config->multiProcess) {
+			std::thread panTiltT(panTiltThread, parameters);
+			std::thread detectT(detectThread, parameters);
+			
 			panTiltT.detach();
 			detectT.detach();
 			syncThread(parameters);
@@ -170,10 +171,13 @@ int main(int argc, char** argv)
 			}
 
 		} else {
+			std::thread panTiltT(panTiltThread, parameters);
 			std::thread autoTuneT(autoTuneThread, parameters);
+			std::thread detectT(detectThread, parameters);
+			detectT.join();
 			autoTuneT.join();
 			panTiltT.join();
-			detectT.join();
+			/// detectThread(parameters);
 		}
 		
     } else {
@@ -376,12 +380,13 @@ void panTiltThread(Utility::param* parameters) {
 	SharedBuffer* trainingBuffer = segment.find<SharedBuffer>("SharedBuffer").first;
 	ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer, config->multiProcess);
 
-	// Training options and record keeping
-	double episodeAverageRewards = 0.0;
-	double episodeAverageSteps = 0.0;
-	int numEpisodes = 0;
-	double episodeRewards = 0.0;
-	double episodeSteps = 0.0;
+	// Train records
+	int numEpisodes[NUM_SERVOS] = { 0 };
+	double episodeAverageRewards[NUM_SERVOS] = { 0.0 };
+	double stepAverageRewards[NUM_SERVOS] = { 0.0 };
+	double episodeAverageSteps[NUM_SERVOS] = { 0.0 };
+	double episodeRewards[NUM_SERVOS] = { 0.0 };
+	double episodeSteps[NUM_SERVOS] = { 0.0 };
 
 	// training state variables
 	bool initialRandomActions = config->initialRandomActions;
@@ -421,7 +426,7 @@ void panTiltThread(Utility::param* parameters) {
 						if (initialRandomActions && numInitialRandomActions >= 0) {
 
 							numInitialRandomActions--;
-							// std::cout << "Random action count: " << numInitialRandomActions << std::endl;
+
 							for (int a = 0; a < config->numActions; a++) {
 								predictedActions[i][a] = std::uniform_real_distribution<double>{ config->actionLow, config->actionHigh }(eng);;
 							}
@@ -481,39 +486,46 @@ void panTiltThread(Utility::param* parameters) {
 						if (replayBuffer->size() <= config->maxBufferSize) {
 							replayBuffer->add(trainData[servo]);
 						}
-					
 
-						if (!trainData[servo].done && !updated) {
-							episodeSteps += 1.0;
-							episodeRewards += trainData[1].reward;
-							updated = true;
+						// EMA of steps and rewards (With 30% weight to new episodes; or 5 episode averaging)
+						std::string path = get_current_dir_name();
+						double percentage = (1.0 / 3.0);
+						double timePeriods = (2.0 / percentage) - 1.0;
+						double emaWeight = (2.0 / (timePeriods + 1.0));
+					
+						if (!trainData[servo].done) {
+
+							// Average reward in a step
+							episodeSteps[servo] += 1.0;						
+							episodeRewards[servo] += trainData[servo].reward;
+							stepAverageRewards[servo] = (trainData[servo].reward - stepAverageRewards[servo]) * emaWeight + stepAverageRewards[servo];
+
+							std::string stepData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
+													(std::chrono::system_clock::now().time_since_epoch()).count()) + ','
+													+ std::to_string(trainData[servo].reward) + ',' 
+													+ std::to_string(stepAverageRewards[servo]);
+
+							appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[1], stepData);
 						}
 						else {
-
-							updated = true;
-							numEpisodes += 1;
-
-							// EMA of steps and rewards (With 30% weight to new episodes; or 5 episode averaging)
-							double percentage = (1.0 / 3.0);
-							double timePeriods = (2.0 / percentage) - 1.0;
-							double emaWeight = (2.0 / (timePeriods + 1.0));
-
-							episodeAverageRewards = (episodeRewards - episodeAverageRewards) * emaWeight + episodeAverageRewards;
-							episodeAverageSteps = (episodeSteps - episodeAverageSteps) * emaWeight + episodeAverageSteps;
+							
+							numEpisodes[servo] += 1;
+							episodeAverageRewards[servo] = (episodeRewards[servo] - episodeAverageRewards[servo]) * emaWeight + episodeAverageRewards[servo];
+							episodeAverageSteps[servo] = (episodeSteps[servo] - episodeAverageSteps[servo]) * emaWeight + episodeAverageSteps[servo];
 
 							// Log Episode averages
-							std::string avePath = get_current_dir_name() + statFileName;
 							std::string episodeData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
 													(std::chrono::system_clock::now().time_since_epoch()).count()) + ','
-													+ std::to_string(numEpisodes) + ','
-													+ std::to_string(episodeRewards) + ','
-													+ std::to_string(episodeSteps) + ','
-													+ std::to_string(episodeAverageRewards) + ','
-													+ std::to_string(episodeAverageSteps);
-							appendLineToFile(avePath, episodeData);
+													+ std::to_string(numEpisodes[servo]) + ','
+													+ std::to_string(episodeRewards[servo]) + ','
+													+ std::to_string(episodeSteps[servo]) + ','
+													+ std::to_string(episodeAverageRewards[servo]) + ','
+													+ std::to_string(episodeAverageSteps[servo]);
+							
+							appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[0], episodeData);
 
-							episodeSteps = 0.0;
-							episodeRewards = 0.0;
+							episodeSteps[servo] = 0.0;
+							episodeRewards[servo] = 0.0;
 						}
 					}
 
@@ -934,11 +946,10 @@ void autoTuneThread(Utility::param* parameters)
 	// Retrieve the training buffer from shared memory
 	boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
 	SharedBuffer* trainingBuffer = segment.find<SharedBuffer>("SharedBuffer").first;
-	ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer, ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer, config->multiProcess);
+	ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer, config->multiProcess);
 
 start:
 
-	parameters->freshData = false;
 	replayBuffer->clear();
 	
 	if (sessions <= 0) {
@@ -948,7 +959,7 @@ start:
 	
 	// Wait for the buffer to fill
 	pthread_mutex_lock(&trainLock);
-	while (!parameters->freshData) {
+	while (replayBuffer->size() <= config->minBufferSize) {
 		pthread_cond_wait(&trainCond, &trainLock);
 	}
 	pthread_mutex_unlock(&trainLock);

@@ -141,36 +141,36 @@ namespace Utility {
 
             maxTrainingSessions(1),              // Number of training sessions on model params
             maxBufferSize(500000),               // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(2000),                 // Min replay buffer size before training size.
+            minBufferSize(5000),                 // Min replay buffer size before training size.
             maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
             batchSize(256),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
-            numInitialRandomActions(10000),      // Number of random actions taken.
+            numInitialRandomActions(5000),       // Number of random actions taken.
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
 
             recheckFrequency(15),                // Num frames in-between revalidations of tracking quality
             lossCountMax(2),                     // Max number of rechecks before episode is considered over
             updateRate(5),                       // Servo updates, commands per second
-            trainRate(.5),					     // Network updates, sessions per second
+            trainRate(1.0),					     // Network updates, sessions per second
             invertX(false),                      // Flip output angles for pan
-            invertY(false),						 // Flip output angles for tilt
+            invertY(true),						 // Flip output angles for tilt
             disableX(false),                     // Disable the pan servo
-            disableY(true),                      // Disable the tilt servo
+            disableY(false),                     // Disable the tilt servo
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(false),					 // Use openCV tracker instead of face detection
-            draw(false),						 // Draw target bounding box and center on frame
-            showVideo(false),					 // Show camera feed
+            draw(true),						     // Draw target bounding box and center on frame
+            showVideo(true),					 // Show camera feed
             cascadeDetector(true),				 // Use faster cascade face detector 
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
-            actionHigh(.10),                     // Max output to of policy network's logits
+            actionHigh(0.08),                    // Max output to of policy network's logits
             actionLow(0.0),                      // Min output to of policy network's logits        
             pidOutputHigh(60.0),                 // Max output allowed for PID's
             pidOutputLow(-60.0),				 // Min output allowed for PID's
-            defaultGains({ 0.05, 0.04, 0.001 }), // Gains fed to pids when initialized
+            defaultGains({ 0.09, 0.08, 0.002 }), // Gains fed to pids when initialized
             angleHigh(60.0),                     // Max allowable output angle to servos
             angleLow(-60.0),                     // Min allowable output angle to servos
             resetAngleX(0.0),                    // Angle when reset

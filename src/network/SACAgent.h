@@ -39,13 +39,7 @@ private:
 	torch::optim::Adam* _alpha_optimizer = nullptr;
 	
 	void _transfer_params_v2(torch::nn::Module& from, torch::nn::Module& to, bool param_smoothing = false);
-	
-	int _save_to_array(torch::nn::Module& from, double* address, int index);
-	int _save_to_array(torch::Tensor& from, double* address, int index);
 	void _save_to_array(torch::nn::Module& from, Utility::sharedString* s);
-
-	int _load_from_array(torch::nn::Module& to, double* address, int index);
-	int _load_from_array(torch::Tensor& to, double* address, int index);
 	void _load_from_array(torch::nn::Module& to, Utility::sharedString* s);
 	
 public:
@@ -53,7 +47,6 @@ public:
 	~SACAgent();
 
 	void update(int batchSize, Utility::TrainBuffer* replayBuffer);
-	int sync(bool parent, double* data);
 	torch::Tensor get_action(torch::Tensor state, bool trainMode = true);
 
 	void save_checkpoint();

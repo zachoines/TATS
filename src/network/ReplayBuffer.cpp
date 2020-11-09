@@ -18,7 +18,6 @@ ReplayBuffer::ReplayBuffer(int maxBufferSize, Utility::SharedBuffer* buffer, boo
 	_mutex = new boost::interprocess::named_mutex(boost::interprocess::open_or_create, "ReplayBufferMutex");
 	_maxBufferSize = maxBufferSize;
 	_multiprocess = multiprocess;
-	_trainBufferLock = PTHREAD_MUTEX_INITIALIZER;
 }
 
 ReplayBuffer::~ReplayBuffer() {
@@ -35,9 +34,9 @@ int ReplayBuffer::_draw(int min, int max)
 
 Utility::TrainBuffer ReplayBuffer::ere_sample(int batchSize, int startingIndex)
 {
-	if (_multiprocess) {
-		Utility::TrainBuffer batch;
+	Utility::TrainBuffer batch;
 
+	if (_multiprocess) {
 		if (batchSize > _trainingBuffer->size()) {
 			throw std::runtime_error("Batch size cannot be larger than buffer size");
 		}
@@ -48,28 +47,23 @@ Utility::TrainBuffer ReplayBuffer::ere_sample(int batchSize, int startingIndex)
 
 			batch.push_back(_trainingBuffer->at(number));
 		}
-		
-		return batch;
 	} else {
-		TrainBuffer batch;
-
 		if (batchSize > _trainingBuffer->size()) {
 			throw std::runtime_error("Batch size cannot be larger than buffer size");
 		}
 
-		if (pthread_mutex_lock(&_trainBufferLock) == 0) {
+		std::unique_lock<std::mutex> lck(_lock);
 
-			for (int i = 0; i < batchSize; i++) {
-				int number = _draw(startingIndex, _trainingBuffer->size() - 1);
+		for (int i = 0; i < batchSize; i++) {
+			int number = _draw(startingIndex, _trainingBuffer->size() - 1);
 
-				batch.push_back(_trainingBuffer->at(number));
-			}
+			batch.push_back(_trainingBuffer->at(number));
 		}
 
-		pthread_mutex_unlock(&_trainBufferLock);
-		return batch;
+		lck.unlock();	
 	}
 	
+	return batch;
 }
 
 
@@ -85,17 +79,17 @@ void ReplayBuffer::add(Utility::TD data)
 			_trainingBuffer->push_back(data);
 		}
 	} else {
-		if (pthread_mutex_lock(&_trainBufferLock) == 0) {
-			if (_trainingBuffer->size() == _maxBufferSize) {
-				_trainingBuffer->erase(_trainingBuffer->begin());	
-				_trainingBuffer->push_back(data);
-			}
-			else {
-				_trainingBuffer->push_back(data);
-			}
+		std::unique_lock<std::mutex> lck(_lock);
+		
+		if (_trainingBuffer->size() == _maxBufferSize) {
+			_trainingBuffer->erase(_trainingBuffer->begin());	
+			_trainingBuffer->push_back(data);
+		}
+		else {
+			_trainingBuffer->push_back(data);
 		}
 
-		pthread_mutex_unlock(&_trainBufferLock);
+		lck.unlock();
 	}
 	
 }
@@ -106,13 +100,11 @@ int ReplayBuffer::size() {
 		return _trainingBuffer->size();
 	} else {
 		
-		if (pthread_mutex_lock(&_trainBufferLock) == 0) {
-			return _trainingBuffer->size();
-		}
-
-		pthread_mutex_unlock(&_trainBufferLock);
+		std::unique_lock<std::mutex> lck(_lock);
+		int size = _trainingBuffer->size();
+		lck.unlock();
+		return size;
 	}
-	
 }
 
 void ReplayBuffer::clear() {
@@ -121,11 +113,9 @@ void ReplayBuffer::clear() {
 		_trainingBuffer->clear();
 		_bufferIndex = -1;
 	} else {
-		if (pthread_mutex_lock(&_trainBufferLock) == 0) {
-			_trainingBuffer->clear();
-		}
+		std::unique_lock<std::mutex> lck(_lock);
+		_trainingBuffer->clear();
 		_bufferIndex = -1;
-		
-		pthread_mutex_unlock(&_trainBufferLock);
+		lck.unlock();
 	}
 }

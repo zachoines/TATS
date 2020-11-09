@@ -17,6 +17,9 @@
 #include "../util/util.h"
 #include "../util/data.h"
 
+#include <condition_variable>
+#include <mutex>
+
 class ReplayBuffer
 {
 private:
@@ -27,7 +30,7 @@ private:
 
 	// Create a random device and use it to generate a random seed
 	std::mt19937 eng{ std::random_device{}() };
-	pthread_mutex_t _trainBufferLock;
+	std::mutex _lock;
 	boost::interprocess::named_mutex* _mutex;
 
 public:
