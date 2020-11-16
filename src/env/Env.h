@@ -2,6 +2,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <mutex>
+#include <bits/stdc++.h>
 
 #include "../util/data.h"
 #include "../util/util.h"
@@ -33,6 +34,12 @@ namespace TATS {
 		double _resetAngles[NUM_SERVOS];
 		double _currentAngles[NUM_SERVOS];
 		double _lastAngles[NUM_SERVOS];
+		int _currentSteps; 
+
+		// Counters for alternation of servos
+		int _alternateCounter;
+		int _numAlternations;
+		int _currentServo;
 
 		PID* _pids[NUM_SERVOS];
 

@@ -25,7 +25,6 @@ namespace Utility {
 	static double mapOutput(double x, double in_min, double in_max, double out_min, double out_max) {
 		return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 	}
-
    
     static bool fileExists(std::string fileName){
 		std::ifstream test(fileName);
@@ -133,19 +132,20 @@ namespace Utility {
 		double errorOldScaled = std::fabs(center - std::fabs(o)) / center;
 		double errorNewScaled = std::fabs(center - std::fabs(n)) / center;
 
-		// Reward R1
-		if (done) {
-			r1 += -1.0;
-		} else if (errorNewScaled <= errorThreshold) {
-			r1 += 1.0;
-		} 
-
-		// Reward R2
-		r2 = errorThreshold - errorNewScaled;
-
-		// Rewards R3
+		// If marginal transitional rewards are considered
 		if (alt) {
-			
+
+			// Reward R1
+			if (done) {
+				r1 += -1.0;
+			} else if (errorNewScaled <= errorThreshold) {
+				r1 += 1.0;
+			} 
+
+			// Reward R2
+			r2 = errorThreshold - errorNewScaled;
+
+			// Rewards R3
 			bool direction_old = false;
 			bool direction_new = false;
 
@@ -230,9 +230,25 @@ namespace Utility {
 			}
 
 			return (w1 * r1) + (w2 * r2) + (w3 * r3);
-		}
 
-		return (w1 * r1) + (w2 * r2);
+		} else {
+			
+			if (errorNewScaled < threshold) {
+				r1 = 0.0; 
+			}
+			else {
+				r1 = threshold - errorNewScaled;
+			}
+
+			if (errorNewScaled <= errorOldScaled) {
+				r2 = 0.0;
+			}
+			else {
+				r2 = errorNewScaled - errorOldScaled;
+			}
+
+			return (w1 * r1) + (w2 * r2) + ( done ? -1.0 : 0.0);
+		}	
 	}
 
 	// Scale from -1.0 to 1.0 to low to high

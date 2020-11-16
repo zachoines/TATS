@@ -3,27 +3,27 @@
 namespace TATS {
 	Env::Env()
 	{
-
-		// TODO fix constructor to support any number of servos
+		
 		_config = new Utility::Config();
+		for (int servo = 0; servo < NUM_SERVOS; servo++) {
+			_pids[servo] = new PID(	_config->defaultGains[0], 
+									_config->defaultGains[1], 
+									_config->defaultGains[2], 
+									_config->pidOutputLow, 
+									_config->pidOutputHigh, 
+									static_cast<double>(_config->dims[servo]) / 2.0);
+			
+			_resetAngles[servo] = _config->resetAngles[servo];
+			_disableServo[servo] = _config->disableServo[servo];
+			_invert[servo] = _config->invertServo[servo];
+			_currentAngles[servo] = _config->resetAngles[servo];
+			_lastAngles[servo] = _config->resetAngles[servo];
+		}
 
-		_pids[0] = new PID(_config->defaultGains[0], _config->defaultGains[1], _config->defaultGains[2], _config->pidOutputLow, _config->pidOutputHigh, static_cast<double>(_config->dims[0]) / 2.0);
-		_pids[1] = new PID(_config->defaultGains[0], _config->defaultGains[1], _config->defaultGains[2], _config->pidOutputLow, _config->pidOutputHigh, static_cast<double>(_config->dims[1]) / 2.0);
-
-		_resetAngles[0] = _config->resetAngleY;
-		_resetAngles[1] = _config->resetAngleX;
-
-		_disableServo[0] = _config->disableY;
-		_disableServo[1] = _config->disableX;
-
-		_currentAngles[0] = 0.0;
-		_currentAngles[1] = 0.0;
-
-		_lastAngles[0] = 0.0;
-		_lastAngles[1] = 0.0;
-
-		_invert[0] = _config->invertY;
-		_invert[1] = _config->invertX;
+		_currentSteps = 0;
+		_alternateCounter = 0;
+		_numAlternations = 0;
+		_currentServo = 0;
 
 		// Setup I2C and PWM
 		_wire = new control::Wire();
@@ -32,17 +32,17 @@ namespace TATS {
 
 		_servos->initServo({
 			.servoNum = 0,
-			.minAngle = -65.0,
-			.maxAngle = 65.0,
-			.minMs = 0.9,
-			.maxMs = 2.1,
+			.minAngle = -72.0,
+			.maxAngle = 72.0,
+			.minMs = 0.750,
+			.maxMs = 2.250,
 			.resetAngle = 0.0
 		});
 
 		_servos->initServo({
 			.servoNum = 1,
-			.minAngle = -60.0,
-			.maxAngle = 60.0,
+			.minAngle = -72.0,
+			.maxAngle = 72.0,
 			.minMs = 0.750,
 			.maxMs = 2.250,
 			.resetAngle = 0.0
@@ -99,7 +99,6 @@ namespace TATS {
 		std::unique_lock<std::mutex> lck(_lock);
 		try
 		{
-			// std::lock_guard<std::mutex> lck(_lock);
 			for (int servo = 0; servo < NUM_SERVOS; servo++) {
 				if (_disableServo[servo]) {
 					continue;
@@ -158,9 +157,10 @@ namespace TATS {
 				continue;
 			}
 
-			_observation[servo].pidStateData = _pids[servo]->mockUpdate(_currentData[servo].obj);
-			_observation[servo].lastAngle = _lastAngles[servo];
-			_observation[servo].currentAngle = _currentAngles[servo];
+			_observation[servo].pidStateData = _pids[servo]->getState(true);
+			_observation[servo].obj = (_currentData[servo].frame > 0) ? _currentData[servo].obj / _currentData[servo].frame : 0.0;
+			_observation[servo].lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
+			_observation[servo].currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
 			data.servos[servo] = _observation[servo];
 		}
 
@@ -171,14 +171,44 @@ namespace TATS {
 	// Note: SR[servo].currentState is always null. Retrieve currentState from previous 'step' or 'reset' call.
 	Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale)
 	{
+		_currentSteps = (_currentSteps + 1) % INT_MAX; 
+		
 		Utility::SR stepResults;
 
 		double randChance = static_cast<float>(rand()) / static_cast <float> (RAND_MAX);
 		
 		for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
+			// If alternation is enabled, and current servo is off now
+			if (_config->alternateServos && _currentServo != servo) {
+
+				// Max steps with current servo
+				if (_alternateCounter > _config->alternateSteps) {
+					_alternateCounter = 0;
+					_currentServo = servo;
+					_numAlternations++;
+
+					// Stop alternating
+					if (_numAlternations > _config->alternateStop) {
+						_config->alternateServos = false;
+					}
+
+				} else {
+					continue;
+				}
+			} else {
+				_alternateCounter++;
+			}
+
 			if (_disableServo[servo]) {
-				continue;
+				
+				// Turn on both axis' after set amount of time
+				// Used when tuning PIDs
+				if (_config->stepsDeactivated[servo] != -1 && _currentSteps > _config->stepsDeactivated[servo]) {
+					_disableServo[servo] = false;
+				} else {
+					continue;
+				}
 			}
 
 			// Scale PID actions if configured
@@ -191,7 +221,7 @@ namespace TATS {
 			}
 
 			// Print out the PID gains
-			if (0.01 >= randChance) {
+			if (0.005 >= randChance) {
 				std::cout << "Here are the new actions(s): ";
 				for (int a = 0; a < _config->numActions; a++) {
 					std::cout << actions[servo][a] << ", ";
@@ -208,13 +238,16 @@ namespace TATS {
 				newAngle = _pids[servo]->update(_currentData[servo].obj, 1000.0 / static_cast<double>(_config->updateRate));
 			}
 
-			newAngle = Utility::mapOutput(newAngle, _config->pidOutputLow, _config->pidOutputHigh, _config->angleLow, _config->angleHigh);
-			if (_invert[servo]) { newAngle = _config->angleHigh - newAngle; }
+			// newAngle = Utility::mapOutput(newAngle, _config->pidOutputLow, _config->pidOutputHigh, _config->angleLow, _config->angleHigh);
+			if (_invert[servo]) { 
+				newAngle = newAngle * -1.0; 
+			}
+
 			_lastAngles[servo] = _currentAngles[servo];
 			_currentAngles[servo] = newAngle;
 
 			// Print out the angles
-			if (0.01 >= randChance) {
+			if (0.005 >= randChance) {
 				std::cout << "Here are the angles: ";
 				std::cout << newAngle << std::endl;
 				std::cout << "For servo: ";
@@ -228,6 +261,10 @@ namespace TATS {
 
 		for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
+			if (_config->alternateServos && _currentServo != servo) {
+				continue;
+			}
+
 			if (_disableServo[servo]) {
 				continue;
 			}
@@ -239,7 +276,7 @@ namespace TATS {
 				throw std::runtime_error("State must represent a complete transition");
 			}
 			else {
-				stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.02, true);
+				stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, false);
 			}
 
 			// Fill out the step results
@@ -248,13 +285,14 @@ namespace TATS {
 				stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
 			}
 			else {
-				stepResults.servos[servo].nextState.pidStateData = _pids[servo]->mockUpdate(currentError);
+				stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
 			}
 
 			stepResults.servos[servo].nextState.obj = _currentData[servo].obj / _currentData[servo].frame;
-			stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo] / _config->angleHigh;
-			stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _config->angleHigh;
+			stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
+			stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
 			stepResults.servos[servo].done = _currentData[servo].done;
+			stepResults.servos[servo].empty = false;
 			_observation[servo] = stepResults.servos[servo].nextState;
 		}
 

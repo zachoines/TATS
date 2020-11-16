@@ -381,6 +381,7 @@ void panTiltThread(Utility::param* parameters) {
 	ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer, config->multiProcess);
 
 	// Train records
+	unsigned int totalSteps = 0;
 	int numEpisodes[NUM_SERVOS] = { 0 };
 	double episodeAverageRewards[NUM_SERVOS] = { 0.0 };
 	double stepAverageRewards[NUM_SERVOS] = { 0.0 };
@@ -399,10 +400,6 @@ void panTiltThread(Utility::param* parameters) {
 	TD trainData[NUM_SERVOS];
 	ED eventData[NUM_SERVOS];
 	RD resetResults;
-	bool disableServo[NUM_SERVOS] = {
-		config->disableY,
-		config->disableX
-	};
 
 	try {
 		resetResults = servos->reset();	
@@ -466,6 +463,7 @@ void panTiltThread(Utility::param* parameters) {
 
 				try {
 					stepResults = servos->step(predictedActions);
+					totalSteps = (totalSteps + 1) % INT_MAX; 
 				} catch (...) {
 					throw std::runtime_error("cannot step with servos");
 				}
@@ -475,9 +473,10 @@ void panTiltThread(Utility::param* parameters) {
 					bool updated = false;
 					for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
-						if (disableServo[servo]) {
+						// If servo is disabled, null record
+						if (trainData[servo].empty) {
 							continue;
-						}	
+						}
 
 						trainData[servo] = stepResults.servos[servo];
 						trainData[servo].currentState = currentState[servo];
@@ -501,9 +500,10 @@ void panTiltThread(Utility::param* parameters) {
 							stepAverageRewards[servo] = (trainData[servo].reward - stepAverageRewards[servo]) * emaWeight + stepAverageRewards[servo];
 
 							std::string stepData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
-													(std::chrono::system_clock::now().time_since_epoch()).count()) + ','
-													+ std::to_string(trainData[servo].reward) + ',' 
-													+ std::to_string(stepAverageRewards[servo]);
+												 (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
+											     + std::to_string(totalSteps) + ','
+												 + std::to_string(trainData[servo].reward) + ',' 
+												 + std::to_string(stepAverageRewards[servo]);
 
 							appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[1], stepData);
 						}
@@ -542,7 +542,6 @@ void panTiltThread(Utility::param* parameters) {
 						pthread_cond_broadcast(&trainCond);
 						pthread_mutex_unlock(&trainLock);
 					}
-                    
 				}
 			}
 			else {

@@ -336,7 +336,7 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
 			throw std::runtime_error("could not obtain lock");
 		}
 
-		/*c
+		/*
 		// Determine policy advantage and calc loss
 		torch::Tensor advantage = torch::min(qf1_pi, qf2_pi) - value_predictions.detach();
 		torch::Tensor policy_loss = (_alpha * log_pi_t - advantage).mean();

@@ -13,12 +13,16 @@ struct PIDState {
 	double dt; // Delta time
 	double de; // Delta error
 
-	void getStateArray(double state[5]) {
+	void getStateArray(double state[2]) {
+		
 		state[0] = i;
-		state[1] = d;
-		state[2] = e;
-		state[3] = din;
-		state[4] = dt;
+		state[1] = din;
+
+		// state[0] = i;
+		// state[1] = d;
+		// state[2] = e;
+		// state[3] = din;
+		// state[4] = dt;
 	}
 
 

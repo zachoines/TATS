@@ -162,15 +162,15 @@ state PID::getState(bool normalize)
 	g.e = _cP;
 
 	// Integral of error with respect to time
-	g.i = _cI;
+	g.i = _integral;
 
 	// Delta input
 	g.din = _deltaInput;
 
 	// Negative Derivative of input with respect to time.
-	g.d = (_deltaTime > 0.0) ? -1.0 * (_cD * _deltaInput) : 0.0;
+	g.d = _cD * _deltaInput;
 
-	// Just divide by the max possible values, preserve sign
+	// Just divide by the ~max possible values, preserve sign
 	if (normalize) {
 		g.e /= _setpoint;
 		g.din /= 2.0 * _setpoint;
