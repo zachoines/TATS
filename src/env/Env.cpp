@@ -3,8 +3,13 @@
 namespace TATS {
 	Env::Env()
 	{
-		
+		// Setup I2C and PWM
+		_wire = new control::Wire();
+		_pwm = new control::PCA9685(0x40, _wire);
+		_servos = new control::ServoKit(_pwm);
 		_config = new Utility::Config();
+		_currentSteps = 0;
+
 		for (int servo = 0; servo < NUM_SERVOS; servo++) {
 			_pids[servo] = new PID(	_config->defaultGains[0], 
 									_config->defaultGains[1], 
@@ -18,35 +23,16 @@ namespace TATS {
 			_invert[servo] = _config->invertServo[servo];
 			_currentAngles[servo] = _config->resetAngles[servo];
 			_lastAngles[servo] = _config->resetAngles[servo];
+
+			_servos->initServo({
+				.servoNum = servo,
+				.minAngle = -72.0, 
+				.maxAngle = 72.0,
+				.minMs = 0.750,
+				.maxMs = 2.250,
+				.resetAngle = _resetAngles[servo]
+			});
 		}
-
-		_currentSteps = 0;
-		_alternateCounter = 0;
-		_numAlternations = 0;
-		_currentServo = 0;
-
-		// Setup I2C and PWM
-		_wire = new control::Wire();
-		_pwm = new control::PCA9685(0x40, _wire);
-		_servos = new control::ServoKit(_pwm);
-
-		_servos->initServo({
-			.servoNum = 0,
-			.minAngle = -72.0,
-			.maxAngle = 72.0,
-			.minMs = 0.750,
-			.maxMs = 2.250,
-			.resetAngle = 0.0
-		});
-
-		_servos->initServo({
-			.servoNum = 1,
-			.minAngle = -72.0,
-			.maxAngle = 72.0,
-			.minMs = 0.750,
-			.maxMs = 2.250,
-			.resetAngle = 0.0
-		});
 	}
 
 	Env::~Env() {
@@ -135,9 +121,6 @@ namespace TATS {
 	{
 
 		for (int servo = 0; servo < NUM_SERVOS; servo++) {
-			if (_disableServo[servo]) {
-				continue;
-			}
 			_servos->setAngle(servo, _resetAngles[servo]);
 			_lastAngles[servo] = _resetAngles[servo];
 			_currentAngles[servo] = _resetAngles[servo];
@@ -153,14 +136,14 @@ namespace TATS {
 		Utility::RD data;
 
 		for (int servo = 0; servo < NUM_SERVOS; servo++) {
-			if (_disableServo[servo]) {
-				continue;
-			}
-
-			_observation[servo].pidStateData = _pids[servo]->getState(true);
-			_observation[servo].obj = (_currentData[servo].frame > 0) ? _currentData[servo].obj / _currentData[servo].frame : 0.0;
-			_observation[servo].lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
-			_observation[servo].currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
+			_observation[servo].pidStateData = _pids[servo]->getState(false);
+			// _observation[servo].obj = (_currentData[servo].frame > 0) ? _currentData[servo].obj / _currentData[servo].frame : 0.0;
+			// _observation[servo].lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
+			// _observation[servo].currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
+			_observation[servo].obj = _currentData[servo].obj;
+			_observation[servo].frame = _currentData[servo].frame;
+			_observation[servo].lastAngle = _lastAngles[servo];
+			_observation[servo].currentAngle = _currentAngles[servo];
 			data.servos[servo] = _observation[servo];
 		}
 
@@ -179,36 +162,10 @@ namespace TATS {
 		
 		for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
-			// If alternation is enabled, and current servo is off now
-			if (_config->alternateServos && _currentServo != servo) {
-
-				// Max steps with current servo
-				if (_alternateCounter > _config->alternateSteps) {
-					_alternateCounter = 0;
-					_currentServo = servo;
-					_numAlternations++;
-
-					// Stop alternating
-					if (_numAlternations > _config->alternateStop) {
-						_config->alternateServos = false;
-					}
-
-				} else {
-					continue;
-				}
-			} else {
-				_alternateCounter++;
-			}
-
 			if (_disableServo[servo]) {
 				
-				// Turn on both axis' after set amount of time
 				// Used when tuning PIDs
-				if (_config->stepsDeactivated[servo] != -1 && _currentSteps > _config->stepsDeactivated[servo]) {
-					_disableServo[servo] = false;
-				} else {
-					continue;
-				}
+				continue;
 			}
 
 			// Scale PID actions if configured
@@ -261,13 +218,9 @@ namespace TATS {
 
 		for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
-			if (_config->alternateServos && _currentServo != servo) {
-				continue;
-			}
-
 			if (_disableServo[servo]) {
 				continue;
-			}
+			}		
 
 			double lastError = _lastData[servo].obj;
 			double currentError = _currentData[servo].obj;
@@ -282,20 +235,36 @@ namespace TATS {
 			// Fill out the step results
 			if (!_config->usePIDs) {
 				_pids[servo]->update(currentError, 1000.0 / static_cast<double>(_config->updateRate));
-				stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
+				stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(false);
 			}
 			else {
-				stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
+				stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(false);
 			}
 
-			stepResults.servos[servo].nextState.obj = _currentData[servo].obj / _currentData[servo].frame;
-			stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
-			stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
+			// stepResults.servos[servo].nextState.obj = _currentData[servo].obj / _currentData[servo].frame;
+			// stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
+			// stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
+			stepResults.servos[servo].nextState.obj = _currentData[servo].obj;
+			stepResults.servos[servo].nextState.frame = _currentData[servo].frame;
+			stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo];
+			stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo];
 			stepResults.servos[servo].done = _currentData[servo].done;
 			stepResults.servos[servo].empty = false;
 			_observation[servo] = stepResults.servos[servo].nextState;
 		}
 
 		return stepResults;
+	}
+
+	void Env::getDisabled(bool servos[NUM_SERVOS]) {
+		for (int servo = 0; servo < NUM_SERVOS; servo++) {
+			servos[servo] = _disableServo[servo];
+		}
+	}
+	
+	void Env::setDisabled(bool servos[NUM_SERVOS]) {
+		for (int servo = 0; servo < NUM_SERVOS; servo++) {
+			_disableServo[servo] = servos[servo];
+		}
 	}
 };

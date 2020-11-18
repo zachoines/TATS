@@ -393,6 +393,20 @@ void panTiltThread(Utility::param* parameters) {
 	bool initialRandomActions = config->initialRandomActions;
 	int numInitialRandomActions = config->numInitialRandomActions;
 	bool isTraining = false;
+
+	// For Alternating servos while training
+	int alternateCounter = 0;
+	int numAlternations = 0;
+	int currentServo = 0;
+	bool enableAllServos[NUM_SERVOS] = {
+		false
+	};
+
+	bool currentServoMask[NUM_SERVOS] = {
+		true
+	};
+
+	currentServoMask[currentServo] = false;
 	
 	double predictedActions[NUM_SERVOS][NUM_ACTIONS];
 	double stateArray[NUM_INPUT];
@@ -416,7 +430,7 @@ void panTiltThread(Utility::param* parameters) {
 		if (config->useAutoTuning) {
 
 			if (!servos->isDone()) {
-				for (int i = 0; i < 2; i++) {
+				for (int i = 0; i < NUM_SERVOS; i++) {
 
 					// Query network and get PID gains
 					if (config->trainMode) {
@@ -429,6 +443,7 @@ void panTiltThread(Utility::param* parameters) {
 							}
 						}
 						else {
+							initialRandomActions = false;
 							currentState[i].getStateArray(stateArray);
 							at::Tensor actions = pidAutoTuner->get_action(torch::from_blob(stateArray, { 1, config->numInput }, options), true);
 							actions.to(torch::kCPU);
@@ -462,13 +477,56 @@ void panTiltThread(Utility::param* parameters) {
 				SR stepResults;
 
 				try {
-					stepResults = servos->step(predictedActions);
+
+					if (config->trainMode) {
+
+						// If we are alternating servos
+						if (config->alternateServos) {
+
+							// if generating training samples
+							if (initialRandomActions) {
+								servos->setDisabled(enableAllServos);								
+							} 
+							else {
+								
+								servos->setDisabled(currentServoMask);	
+
+								// Max steps with current servo
+								if (alternateCounter == 0 || alternateCounter > config->alternateSteps) {
+									
+									// Switch disabled servo
+									currentServoMask[currentServo] = true;
+									currentServo = (currentServo + 1) % NUM_SERVOS;
+									currentServoMask[currentServo] = false;
+									numAlternations += 1;
+									alternateCounter = 0;
+
+									// Stop alternating, reset back to default
+									if (numAlternations > config->alternateStop) {
+										config->alternateServos = false;
+										servos->setDisabled(config->disableServo);	
+									} else {
+										servos->setDisabled(currentServoMask);	
+									}
+
+									std::cout <<"Switch servo to " << std::to_string(currentServo) << std::endl;
+									alternateCounter++;
+									goto reset;
+								} else {
+									alternateCounter++;
+								}
+							}	
+						}
+					}
+
+					stepResults = servos->step(predictedActions);		
 					totalSteps = (totalSteps + 1) % INT_MAX; 
+
 				} catch (...) {
 					throw std::runtime_error("cannot step with servos");
 				}
 
-				if (config->trainMode) {;
+				if (config->trainMode) {
 					
 					bool updated = false;
 					for (int servo = 0; servo < NUM_SERVOS; servo++) {
@@ -546,11 +604,12 @@ void panTiltThread(Utility::param* parameters) {
 			}
 			else {
 				
-				try {
+				// try {
+				reset:
 					resetResults = servos->reset();
-				} catch (...) {
-					throw std::runtime_error("cannot reset servos");
-				}
+				// } catch (...) {
+				// 	throw std::runtime_error("cannot reset servos");
+				// }
 				
 				for (int servo = 0; servo < NUM_SERVOS; servo++) {
 					currentState[servo] = resetResults.servos[servo];

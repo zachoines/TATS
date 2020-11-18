@@ -14,7 +14,7 @@
 
 namespace Utility {
     #define NUM_SERVOS 2
-    #define NUM_INPUT 5
+    #define NUM_INPUT 6
     #define NUM_ACTIONS 3
     #define NUM_HIDDEN 256
     
@@ -45,15 +45,14 @@ namespace Utility {
         double currentAngle;
         double lastAngle;
         double obj;
+        double frame;
 
         void getStateArray(double state[NUM_INPUT]) {
             pidStateData.getStateArray(state); // first 'n' elems filled
             state[2] = obj;
-            state[3] = lastAngle;
-            state[4] = currentAngle;
-
-            // state[5] = lastAngle - currentAngle;
-            // state[6] = obj;
+            state[3] = frame;
+            state[4] = lastAngle;
+            state[5] = currentAngle;
         }
 
     } typedef SD;
@@ -159,7 +158,7 @@ namespace Utility {
 
             batchSize(512),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
-            numInitialRandomActions(5000),       // Number of random actions taken.
+            numInitialRandomActions(10),         // Number of random actions taken.
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
 
@@ -173,16 +172,15 @@ namespace Utility {
             resetAngles({ 0.0, 0.0 }),           // Angle when reset
             anglesHigh({ 60.0, 60.0 }),          // Max allowable output angle to servos
             anglesLow({ -60.0, -60.0 }),         // Min allowable output angle to servos
-            stepsDeactivated({-1, -1}),          // number of steps servo is deactivated for, when disableServo[servo] = true, -1 means perminat deactivation
             
             alternateServos(true),               // Whether to alternate servos at the start of training (starts with Y)
-            alternateSteps(10000),               // Steps per servo
+            alternateSteps(5),                   // Steps per servo
             alternateStop(20),                   // Number of alternations before activating both
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(false),					 // Use openCV tracker instead of face detection
-            draw(true),						     // Draw target bounding box and center on frame
-            showVideo(true),					 // Show camera feed
+            draw(false),						 // Draw target bounding box and center on frame
+            showVideo(false),					 // Show camera feed
             cascadeDetector(true),				 // Use faster cascade face detector 
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
             actionHigh(0.1),                     // Max output to of policy network's logits
@@ -191,7 +189,7 @@ namespace Utility {
             pidOutputLow(-60.0),				 // Min output allowed for PID's
             defaultGains({ 0.05, 0.04, 0.001 }), // Gains fed to pids when initialized             
             // dims({ 2464, 3280 }),
-            dims({ 720, 720 }),                  // Dimensions of frame
+            dims({ 720, 1280 }),                 // Dimensions of frame
             maxFrameRate(120),                   // Camera capture rate
             multiProcess(false)                  // Enables autotuning in a seperate process. Otherwise its a thread.
             {}

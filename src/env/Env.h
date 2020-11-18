@@ -35,11 +35,7 @@ namespace TATS {
 		double _currentAngles[NUM_SERVOS];
 		double _lastAngles[NUM_SERVOS];
 		int _currentSteps; 
-
-		// Counters for alternation of servos
-		int _alternateCounter;
-		int _numAlternations;
-		int _currentServo;
+		bool _forceEnable;
 
 		PID* _pids[NUM_SERVOS];
 
@@ -56,7 +52,8 @@ namespace TATS {
 		~Env();
 
 		bool isDone();
-
+		void setDisabled(bool servos[NUM_SERVOS]);
+		void getDisabled(bool servos[NUM_SERVOS]);
 		Utility::RD reset();  // Steps with actions and waits for Env to update, then returns the current state.
 		Utility::SR step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale = true);  // Steps with actions and waits for Env to update, then returns the current state.
 		void update(Utility::ED eventDataArray[NUM_SERVOS]); // Called from another thread to update state variables

@@ -14,7 +14,6 @@ struct PIDState {
 	double de; // Delta error
 
 	void getStateArray(double state[2]) {
-		
 		state[0] = i;
 		state[1] = din;
 
