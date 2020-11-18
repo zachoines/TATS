@@ -1,8 +1,8 @@
   
 #pragma once
 /*
-	This file should contain data formats, structs, unions, and typedefs.
-	Keeps main.cpp cleaner.
+    This file should contain data formats, structs, unions, and typedefs.
+    Keeps main.cpp cleaner.
 */
 #include <vector>
 #include <string>

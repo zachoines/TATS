@@ -23,23 +23,23 @@
 class ReplayBuffer
 {
 private:
-	Utility::SharedBuffer* _trainingBuffer;
-	int _maxBufferSize;
-	int _bufferIndex = -1;
-	bool _multiprocess;
+    Utility::SharedBuffer* _trainingBuffer;
+    int _maxBufferSize;
+    int _bufferIndex = -1;
+    bool _multiprocess;
 
-	// Create a random device and use it to generate a random seed
-	std::mt19937 eng{ std::random_device{}() };
-	std::mutex _lock;
-	boost::interprocess::named_mutex* _mutex;
+    // Create a random device and use it to generate a random seed
+    std::mt19937 eng{ std::random_device{}() };
+    std::mutex _lock;
+    boost::interprocess::named_mutex* _mutex;
 
 public:
-	ReplayBuffer(int maxBufferSize, Utility::SharedBuffer* buffer, bool multiprocess = false);
-	~ReplayBuffer();
-	Utility::TrainBuffer ere_sample(int batchSize = 32, int startingIndex = 0);
-	void add(Utility::TD data);
-	int size();
-	void clear();
-	int _draw(int min, int max);
+    ReplayBuffer(int maxBufferSize, Utility::SharedBuffer* buffer, bool multiprocess = false);
+    ~ReplayBuffer();
+    Utility::TrainBuffer ere_sample(int batchSize = 32, int startingIndex = 0);
+    void add(Utility::TD data);
+    int size();
+    void clear();
+    int _draw(int min, int max);
 };
 

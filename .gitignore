@@ -6,3 +6,4 @@ detect_cuda_version.cc
 Makefile
 models/*
 images/*
+TATS
