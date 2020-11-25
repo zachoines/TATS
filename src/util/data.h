@@ -162,7 +162,7 @@ namespace Utility {
 
             recheckFrequency(15),                // Num frames in-between revalidations of t
             lossCountMax(2),                     // Max number of rechecks before episode is considered over
-            updateRate(5),                       // Servo updates, commands per second
+            updateRate(10),                      // Servo updates, commands per second
             trainRate(1.0),					     // Network updates, sessions per second
             
             disableServo({ false, false }),      // Disable the { Y, X } servos

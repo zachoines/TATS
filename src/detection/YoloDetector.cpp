@@ -65,11 +65,11 @@ namespace Detect {
                 int baseline=0;
                 auto s_size = cv::getTextSize(s, font_face, font_scale, thickness, &baseline);
 
-                cv::circle(
-					image,
-					detection.center,
-					(int)(detection.boundingBox.width + detection.boundingBox.height) / 2 / 10,
-					cv::Scalar(255), 2, 8, 0);
+                // cv::circle(
+				// 	image,
+				// 	detection.center,
+				// 	(int)(detection.boundingBox.width + detection.boundingBox.height) / 2 / 10,
+				// 	cv::Scalar(255), 2, 8, 0);
 
                 cv::rectangle(image,
                         cv::Point(box.tl().x, box.tl().y - s_size.height - 5),
