@@ -396,6 +396,7 @@ void panTiltThread(Utility::param* parameters) {
 
     // For Alternating servos while training
     int alternateCounter = 0;
+    int alternationMode = 0;
     int numAlternations = 0;
     int currentServo = 0;
     bool enableAllServos[NUM_SERVOS] = {
@@ -483,39 +484,43 @@ void panTiltThread(Utility::param* parameters) {
                         // If we are alternating servos
                         if (config->alternateServos) {
 
-                            // if generating training samples
-                            if (initialRandomActions) {
-                                servos->setDisabled(enableAllServos);								
-                            } 
-                            else {
+                            // Max steps with current servo
+                            if (alternateCounter == 0 || alternateCounter > config->alternateSteps) {
                                 
-                                servos->setDisabled(currentServoMask);	
+                                // Switch disabled servo
+                                alternationMode = (alternationMode + 1) % 2;
+                                
+                                if (!initialRandomActions) {
+                                    numAlternations += 1;
+                                }
+                                
+                                alternateCounter = 0;
 
-                                // Max steps with current servo
-                                if (alternateCounter == 0 || alternateCounter > config->alternateSteps) {
-                                    
-                                    // Switch disabled servo
+                                // Stop alternating, reset back to default
+                                if (numAlternations > config->alternateStop) {
+                                    config->alternateServos = false;
+                                    servos->setDisabled(config->disableServo);	
+                                }
+                                
+                                // Set all on
+                                else if (alternationMode == 1) {
+                                    servos->setDisabled(enableAllServos);
+                                } 
+                                
+                                // Turn one axis off
+                                else {
                                     currentServoMask[currentServo] = true;
                                     currentServo = (currentServo + 1) % NUM_SERVOS;
                                     currentServoMask[currentServo] = false;
-                                    numAlternations += 1;
-                                    alternateCounter = 0;
-
-                                    // Stop alternating, reset back to default
-                                    if (numAlternations > config->alternateStop) {
-                                        config->alternateServos = false;
-                                        servos->setDisabled(config->disableServo);	
-                                    } else {
-                                        servos->setDisabled(currentServoMask);	
-                                    }
-
-                                    std::cout <<"Switch servo to " << std::to_string(currentServo) << std::endl;
-                                    alternateCounter++;
-                                    goto reset;
-                                } else {
-                                    alternateCounter++;
+                                    servos->setDisabled(currentServoMask);	
                                 }
-                            }	
+
+                                alternateCounter++;
+                                goto reset;
+
+                            } else {
+                                alternateCounter++;
+                            }
                         }
                     }
 
@@ -531,12 +536,13 @@ void panTiltThread(Utility::param* parameters) {
                     bool updated = false;
                     for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
+                        trainData[servo] = stepResults.servos[servo];
+                        
                         // If servo is disabled, null record
                         if (trainData[servo].empty) {
                             continue;
                         }
 
-                        trainData[servo] = stepResults.servos[servo];
                         trainData[servo].currentState = currentState[servo];
                         currentState[servo] = trainData[servo].nextState;
 
@@ -567,6 +573,11 @@ void panTiltThread(Utility::param* parameters) {
                         }
                         else {
                             
+                            // If we are alternating, prevent premature ending of episode next time around
+                            if (config->alternateServos && episodeSteps[servo] >= static_cast<double>(config->alternateSteps)) {
+                                config->alternateSteps *= 2;
+                            }
+
                             numEpisodes[servo] += 1;
                             episodeAverageRewards[servo] = (episodeRewards[servo] - episodeAverageRewards[servo]) * emaWeight + episodeAverageRewards[servo];
                             episodeAverageSteps[servo] = (episodeSteps[servo] - episodeAverageSteps[servo]) * emaWeight + episodeAverageSteps[servo];
@@ -603,13 +614,8 @@ void panTiltThread(Utility::param* parameters) {
                 }
             }
             else {
-                
-                // try {
                 reset:
                     resetResults = servos->reset();
-                // } catch (...) {
-                // 	throw std::runtime_error("cannot reset servos");
-                // }
                 
                 for (int servo = 0; servo < NUM_SERVOS; servo++) {
                     currentState[servo] = resetResults.servos[servo];
@@ -618,7 +624,7 @@ void panTiltThread(Utility::param* parameters) {
         }
         else {
             if (!servos->isDone()) {
-                for (int i = 0; i < 2; i++) {
+                for (int i = 0; i < NUM_SERVOS ; i++) {
                     predictedActions[i][0] = config->defaultGains[0];
                     predictedActions[i][1] = config->defaultGains[1];
                     predictedActions[i][2] = config->defaultGains[2];

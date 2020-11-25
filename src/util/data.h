@@ -14,7 +14,7 @@
 
 namespace Utility {
     #define NUM_SERVOS 2
-    #define NUM_INPUT 6
+    #define NUM_INPUT 5
     #define NUM_ACTIONS 3
     #define NUM_HIDDEN 256
     
@@ -49,10 +49,8 @@ namespace Utility {
 
         void getStateArray(double state[NUM_INPUT]) {
             pidStateData.getStateArray(state); // first 'n' elems filled
-            state[2] = obj;
-            state[3] = frame;
-            state[4] = lastAngle;
-            state[5] = currentAngle;
+            state[3] = obj;
+            state[4] = lastAngle - currentAngle;
         }
 
     } typedef SD;
@@ -152,17 +150,17 @@ namespace Utility {
 
             maxTrainingSessions(1),              // Number of training sessions on model params
             maxBufferSize(500000),               // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(2000),                 // Min replay buffer size before training size.
+            minBufferSize(512),                  // Min replay buffer size before training size.
             maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
-            batchSize(512),                      // Network batch size.
-            initialRandomActions(true),          // Enable random actions.
-            numInitialRandomActions(10),         // Number of random actions taken.
-            trainMode(true),                     // When autotuning is on, 'false' means network test mode.
+            batchSize(256),                      // Network batch size.
+            initialRandomActions(false),         // Enable random actions.
+            numInitialRandomActions(10000),      // Number of random actions taken.
+            trainMode(false),                    // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
 
-            recheckFrequency(15),                // Num frames in-between revalidations of tracking quality
+            recheckFrequency(15),                // Num frames in-between revalidations of t
             lossCountMax(2),                     // Max number of rechecks before episode is considered over
             updateRate(5),                       // Servo updates, commands per second
             trainRate(1.0),					     // Network updates, sessions per second
@@ -173,22 +171,22 @@ namespace Utility {
             anglesHigh({ 60.0, 60.0 }),          // Max allowable output angle to servos
             anglesLow({ -60.0, -60.0 }),         // Min allowable output angle to servos
             
-            alternateServos(true),               // Whether to alternate servos at the start of training (starts with Y)
-            alternateSteps(5),                   // Steps per servo
-            alternateStop(20),                   // Number of alternations before activating both
+            alternateServos(false),              // Whether to alternate servos at the start of training (starts with Y)
+            alternateSteps(100),                 // Steps per servo (will increase exponentially as training proggresses (doubles threshold each time its met))
+            alternateStop(100),                  // Number of alternations before activating both
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(false),					 // Use openCV tracker instead of face detection
-            draw(false),						 // Draw target bounding box and center on frame
-            showVideo(false),					 // Show camera feed
-            cascadeDetector(true),				 // Use faster cascade face detector 
+            draw(true),						     // Draw target bounding box and center on frame
+            showVideo(true),					 // Show camera feed
+            cascadeDetector(false),				 // Use faster cascade face detector 
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
             actionHigh(0.1),                     // Max output to of policy network's logits
             actionLow(0.0),                      // Min output to of policy network's logits        
             pidOutputHigh(60.0),                 // Max output allowed for PID's
             pidOutputLow(-60.0),				 // Min output allowed for PID's
             defaultGains({ 0.05, 0.04, 0.001 }), // Gains fed to pids when initialized             
-            // dims({ 2464, 3280 }),
+            
             dims({ 720, 1280 }),                 // Dimensions of frame
             maxFrameRate(120),                   // Camera capture rate
             multiProcess(false)                  // Enables autotuning in a seperate process. Otherwise its a thread.

@@ -131,7 +131,7 @@ void SACAgent::save_checkpoint()
     // Load from file if exists
     std::string path = get_current_dir_name();
     std::string QModelFile1 = path + "/models/checkpoint/Q_Net_Checkpoint1.pt";
-    std::string QModelFile2 = path + "//models/checkpoint/Q_Net_Checkpoint2.pt";
+    std::string QModelFile2 = path + "/models/checkpoint/Q_Net_Checkpoint2.pt";
     std::string PModelFile = path + "/models/checkpoint/P_Net_Checkpoint.pt";
     std::string AlphaFile = path + "/models/checkpoint/Alpha_Checkpoint.pt";
     std::string ValueFile = path + "/models/checkpoint/Value_Checkpoint.pt";

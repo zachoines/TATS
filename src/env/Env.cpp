@@ -26,10 +26,10 @@ namespace TATS {
 
             _servos->initServo({
                 .servoNum = servo,
-                .minAngle = -72.0, 
-                .maxAngle = 72.0,
-                .minMs = 0.750,
-                .maxMs = 2.250,
+                .minAngle = -98.5, 
+                .maxAngle = 98.5,
+                .minMs = 0.553,
+                .maxMs = 2.520,
                 .resetAngle = _resetAngles[servo]
             });
         }
@@ -119,7 +119,6 @@ namespace TATS {
 
     void Env::_resetEnv()
     {
-
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             _servos->setAngle(servo, _resetAngles[servo]);
             _lastAngles[servo] = _resetAngles[servo];
@@ -136,14 +135,11 @@ namespace TATS {
         Utility::RD data;
 
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
-            _observation[servo].pidStateData = _pids[servo]->getState(false);
-            // _observation[servo].obj = (_currentData[servo].frame > 0) ? _currentData[servo].obj / _currentData[servo].frame : 0.0;
-            // _observation[servo].lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
-            // _observation[servo].currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
-            _observation[servo].obj = _currentData[servo].obj;
+            _observation[servo].pidStateData = _pids[servo]->getState(true);
+            _observation[servo].obj = (_currentData[servo].frame > 0) ? _currentData[servo].obj / _currentData[servo].frame : 0.0;
             _observation[servo].frame = _currentData[servo].frame;
-            _observation[servo].lastAngle = _lastAngles[servo];
-            _observation[servo].currentAngle = _currentAngles[servo];
+            _observation[servo].lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
+            _observation[servo].currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
             data.servos[servo] = _observation[servo];
         }
 
@@ -229,25 +225,23 @@ namespace TATS {
                 throw std::runtime_error("State must represent a complete transition");
             }
             else {
-                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, false);
+                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, true);
             }
 
             // Fill out the step results
             if (!_config->usePIDs) {
                 _pids[servo]->update(currentError, 1000.0 / static_cast<double>(_config->updateRate));
-                stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(false);
+                stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
             }
             else {
-                stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(false);
+                stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
             }
 
-            // stepResults.servos[servo].nextState.obj = _currentData[servo].obj / _currentData[servo].frame;
-            // stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
-            // stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
-            stepResults.servos[servo].nextState.obj = _currentData[servo].obj;
+            // Update states, divide by max possible values
+            stepResults.servos[servo].nextState.obj = (_currentData[servo].frame > 0) ? _currentData[servo].obj / _currentData[servo].frame : 0.0;
             stepResults.servos[servo].nextState.frame = _currentData[servo].frame;
-            stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo];
-            stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo];
+            stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
+            stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
             stepResults.servos[servo].done = _currentData[servo].done;
             stepResults.servos[servo].empty = false;
             _observation[servo] = stepResults.servos[servo].nextState;

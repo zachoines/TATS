@@ -13,7 +13,7 @@ PID::PID(double kP, double kI, double kD, double min, double max, double setpoin
     _max = max;
     _min = min;
 
-    _windup_guard = 1000; 
+    _windup_guard = setpoint * 2; 
     _setpoint = setpoint;
 
 }
@@ -65,7 +65,7 @@ double PID::update(double input, double sleep) {
     _cP = error;
 
     // Integral of error with respect to time
-    _integral += error * _deltaTime;
+    _integral += error;
     _cI += (error * (_kI * _deltaTime));
 
     // Derivative of input with respect to time
@@ -74,6 +74,13 @@ double PID::update(double input, double sleep) {
     (_deltaTime > 0.0) ? (_cD = (1.0 / _deltaTime)) : (_cD = 0.0);
 
     // Integral windup gaurd
+    if (_integral < -_windup_guard) {
+        _integral = -_windup_guard;
+    }
+    else if (_integral > _windup_guard) {
+        _integral = _windup_guard;
+    }
+
     if (_cI < -_windup_guard) {
         _cI = -_windup_guard;
     }
@@ -161,6 +168,9 @@ state PID::getState(bool normalize)
     // Error
     g.e = _cP;
 
+    // Delta error
+    g.de = _deltaError;
+
     // Integral of error with respect to time
     g.i = _integral;
 
@@ -168,14 +178,15 @@ state PID::getState(bool normalize)
     g.din = _deltaInput;
 
     // Negative Derivative of input with respect to time.
-    g.d = _cD * _deltaInput;
+    g.d = -(_cD * _deltaInput);
 
     // Just divide by the ~max possible values, preserve sign
     if (normalize) {
-        g.e /= _setpoint;
+        g.e /= 2.0 * _setpoint;
+        g.de /= 2.0 * _setpoint;
         g.din /= 2.0 * _setpoint;
         g.i /= _windup_guard;
-        g.d /= _windup_guard;
+        g.d /= 2.0 * _setpoint;
     }
 
     return g;

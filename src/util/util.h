@@ -120,8 +120,8 @@ namespace Utility {
 
 		// Relative weight to rewards/error
 		double w1 = 1.0;
-		double w2 = 1.0; 
-		double w3 = 1.0; 
+		double w2 = .25; 
+		double w3 = 2.0; 
 
 		// Rewards
 		double r1 = 0.0; // Threshhold, done rewards/error
@@ -137,7 +137,7 @@ namespace Utility {
 
 			// Reward R1
 			if (done) {
-				r1 += -1.0;
+				r1 += -2.0;
 			} else if (errorNewScaled <= errorThreshold) {
 				r1 += 1.0;
 			} 
