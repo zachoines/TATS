@@ -15,7 +15,7 @@ private:
     double _action_max, _action_min, _action_scale, _action_bias;
     int _current_update = 0;
     int _current_save_delay = 0;
-    int _max_save_delay = 100;
+    int _max_save_delay = 1000;
     int _max_delay = 2;
     unsigned long _total_update = 0;
 
@@ -34,7 +34,7 @@ private:
     ValueNetwork* _value_network;
     PolicyNetwork* _policy_net;
 
-    torch::Tensor _log_alpha, _alpha;
+    torch::Tensor _log_alpha, _alpha, _version;
     c10::Scalar _target_entropy;
     torch::optim::Adam* _alpha_optimizer = nullptr;
     
@@ -49,7 +49,7 @@ public:
     void update(int batchSize, Utility::TrainBuffer* replayBuffer);
     torch::Tensor get_action(torch::Tensor state, bool trainMode = true);
 
-    void save_checkpoint();
+    void save_checkpoint(int versionNo);
     bool load_checkpoint();
     void load_policy(); 
     void save_policy();

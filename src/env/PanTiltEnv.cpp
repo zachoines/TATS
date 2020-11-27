@@ -97,7 +97,7 @@ namespace TATS {
 
         // Push back tilt  and pan data
         for (int servo = 0; servo < _numServos; servo++) {
-            std::vector<double> pidState = _pids[Action::tilt]->getState();
+            std::vector<double> pidState = _pids[servo]->getState();
             data.insert(data.end(), pidState.begin(), pidState.end());
             data.push_back(_currentData[servo + 2] / _currentData[servo + 4]);
             data.push_back(_lastAngles[servo] / _config->anglesHigh[servo]);

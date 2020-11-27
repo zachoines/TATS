@@ -24,9 +24,11 @@ void PID::init() {
     _prevTime = _currTime;
 
     // initialize the previous error
-    _prevError = 0.0;
+    _prevError1 = 0.0;
+    _prevError2 = 0.0;
     _last_input = 0.0;
     _sumError = 0.0;
+    _d2Error = 0.0;
 
     // initialize the term result variables
     _cP = 0.0;
@@ -69,7 +71,7 @@ double PID::update(double input, double sleep) {
     _cI += (error * (_kI * _deltaTime));
 
     // Derivative of input with respect to time
-    _deltaError = error - _prevError;
+    _deltaError = error - _prevError1;
     _deltaInput = (_last_input - input);
     (_deltaTime > 0.0) ? (_cD = (1.0 / _deltaTime)) : (_cD = 0.0);
 
@@ -82,9 +84,11 @@ double PID::update(double input, double sleep) {
     }
 
     // save previous time and error
+    _d2Error = error - ( 2.0 * _prevError1 ) + _prevError2;
     _prevTime = _currTime;
     _last_input = input;
-    _prevError = error;
+    _prevError2 = _prevError1;
+    _prevError1 = error; 
 
     // Cross-mult, sum and return
     double output = (_kP * _cP) + (_cI) - (_kD * _cD * _deltaInput);
@@ -137,7 +141,7 @@ state PID::getState(bool normalize)
     state g;
 
     // Delta time
-    g.dt = _deltaTime;
+    // g.dt = _deltaTime;
 
     // Error
     g.e = _cP;
@@ -146,26 +150,34 @@ state PID::getState(bool normalize)
     g.de = _deltaError;
 
     // Integral of error with respect to time
-    g.i = _cI;
+    // g.i = _cI;
 
     // Sum of error
     g.errSum = _sumError;
 
     // Delta input
-    g.din = _deltaInput;
+    // g.din = _deltaInput;
 
     // Negative Derivative of input with respect to time.
-    g.d = -(_cD * _deltaInput);
+    // g.d = -(_cD * _deltaInput);
+
+    g.d2e = _d2Error;
 
     // Normalize and scale datapoints. 
     if (normalize) {
         double errorBound = 2.0 * _setpoint;
         g.e = Utility::normalize(g.e, -errorBound, errorBound);
-        g.de = Utility::normalize(g.de, -2.0 * errorBound, 2.0 * errorBound);
-        g.din = Utility::normalize(g.din, -2.0 * errorBound, 2.0 * errorBound);
-        g.i = Utility::normalize(g.i, -_windup_guard, _windup_guard);
-        g.d = Utility::normalize(g.d, -2.0 * errorBound, 2.0 * errorBound);
+        g.de = Utility::normalize(g.de, -errorBound, errorBound);
+        // g.din = Utility::normalize(g.din, -2.0 * errorBound, 2.0 * errorBound);
+        // g.i = Utility::normalize(g.i, -_windup_guard, _windup_guard);
+        // g.d = Utility::normalize(g.d, -2.0 * errorBound, 2.0 * errorBound);
         g.errSum = std::clamp<double>(Utility::normalize(g.errSum, -errorBound, errorBound), -1.0, 1.0);
+        g.d2e = Utility::normalize(g.d2e, -errorBound, errorBound);
+
+        // g.e = g.e / errorBound;
+        // g.de = g.de / errorBound;
+        // g.errSum = std::clamp<double>(g.errSum / errorBound, -1.0, 1.0);
+        // g.d2e = g.d2e / errorBound;
     }
 
     return g;
@@ -180,9 +192,12 @@ void PID::getWeights(double w[3])
 
 void PID::setWeights(double kP, double kI, double kD)
 {
-    _kP = kP;
-    _kI = kI;
-    _kD = kD; 
+    _kP = 0;
+    _kI = 0;
+    _kD = 0; 
+    _kP += kP;
+    _kI += kI;
+    _kD += kD; 
 }
 
 

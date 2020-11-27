@@ -26,7 +26,6 @@ namespace TATS {
         Utility::ED _eventData[NUM_SERVOS];
         Utility::ED _lastData[NUM_SERVOS];
         Utility::ED _currentData[NUM_SERVOS];
-        Utility::SD _observation[NUM_SERVOS];
 
         bool _invert[NUM_SERVOS];
         bool _disableServo[NUM_SERVOS];

@@ -50,8 +50,7 @@ namespace Utility {
 
         void getStateArray(double state[NUM_INPUT]) {
             pidStateData.getStateArray(state); // first 'n' elems filled
-            state[3] = obj / 2.0; // Current object center
-            state[4] = lastAngle - currentAngle; 
+            state[4] = Utility::normalize((lastAngle - currentAngle) / 2.0, -1.0, 1.0); // keep between -1 and 1
         }
 
     } typedef SD;
@@ -154,11 +153,11 @@ namespace Utility {
 
             maxTrainingSessions(1),              // Number of training sessions on model params
             maxBufferSize(500000),               // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(2000),                 // Min replay buffer size before training size.
+            minBufferSize(2000),                  // Min replay buffer size before training size.
             maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
-            batchSize(512),                      // Network batch size.
+            batchSize(256),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
             numInitialRandomActions(5000),       // Number of random actions taken.
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
@@ -177,17 +176,17 @@ namespace Utility {
             
             alternateServos(true),               // Whether to alternate servos at the start of training
             alternateSteps(100),                 // Steps per servo (will increase exponentially as training proggresses (doubles threshold each time its met)). Cut short by 'alternateEpisodeEndCap'
-            alternateStop(1000),                 // Number of alternations
-            alternateEpisodeEndCap(10),          // Number "end of episodes" before switching again. Prevents too much noise when both servos are enabled.
+            alternateStop(2000),                 // Number of alternations
+            alternateEpisodeEndCap(15),          // Number "end of episodes" before switching again. Prevents too much noise when both servos are enabled.
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(false),					 // Use openCV tracker instead of face detection
-            draw(true),						     // Draw target bounding box and center on frame
+            draw(false),						 // Draw target bounding box and center on frame
             showVideo(false),					 // Show camera feed
             cascadeDetector(true),				 // Use faster cascade face detector 
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
-            actionHigh(60.0),                    // Max output to of policy network's logits
-            actionLow(-60.0),                    // Min output to of policy network's logits        
+            actionHigh(0.1),                     // Max output to of policy network's logits
+            actionLow(0.0),                      // Min output to of policy network's logits        
             pidOutputHigh(60.0),                 // Max output allowed for PID's
             pidOutputLow(-60.0),				 // Min output allowed for PID's
             // defaultGains({ 0.05, 0.04, 0.001 }), // Gains fed to pids when initialized             

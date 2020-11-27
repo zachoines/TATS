@@ -13,12 +13,15 @@ struct PIDState {
     double din; // Delta input
     double dt; // Delta time
     double de; // Delta error
+    double d2e; // Second order error
     double errSum; // Sum of error
 
-    void getStateArray(double state[3]) {
+
+    void getStateArray(double state[4]) {
         state[0] = e;
         state[1] = de;
-        state[2] = errSum; 
+        state[2] = d2e; 
+        state[3] = errSum; 
     }
 
 } typedef state;
@@ -59,11 +62,13 @@ class PID
         std::chrono::steady_clock::time_point _prevTime;
         std::chrono::steady_clock::duration _deltTime;
 
-        double _prevError;
+        double _prevError1;
+        double _prevError2;
         double _sumError;
         double _deltaInput;
         double _deltaTime;
         double _deltaError;
+        double _d2Error;
 
         double _windup_guard;
         double _setpoint;

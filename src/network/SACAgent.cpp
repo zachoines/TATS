@@ -126,16 +126,23 @@ void SACAgent::load_policy() {
     }
 }
 
-void SACAgent::save_checkpoint()
+void SACAgent::save_checkpoint(int versionNo)
 {
     // Load from file if exists
     std::string path = get_current_dir_name();
-    std::string QModelFile1 = path + "/models/checkpoint/Q_Net_Checkpoint1.pt";
-    std::string QModelFile2 = path + "/models/checkpoint/Q_Net_Checkpoint2.pt";
-    std::string PModelFile = path + "/models/checkpoint/P_Net_Checkpoint.pt";
-    std::string AlphaFile = path + "/models/checkpoint/Alpha_Checkpoint.pt";
-    std::string ValueFile = path + "/models/checkpoint/Value_Checkpoint.pt";
-    std::string TargetValueFile = path + "/models/checkpoint/Target_Value_Checkpoint.pt";
+    std::string basePath = path + "/models/checkpoint/";
+    std::string fullVersionPath = basePath + std::to_string(versionNo) + "/";
+    mkdir(basePath.c_str(), 0755);
+    std::string QModelFile1 = fullVersionPath + "Q_Net_Checkpoint1.pt";
+    std::string QModelFile2 = fullVersionPath + "Q_Net_Checkpoint2.pt";
+    std::string PModelFile = fullVersionPath + "P_Net_Checkpoint.pt";
+    std::string AlphaFile = fullVersionPath + "Alpha_Checkpoint.pt";
+    std::string ValueFile = fullVersionPath + "Value_Checkpoint.pt";
+    std::string TargetValueFile = fullVersionPath + "Target_Value_Checkpoint.pt";
+    std::string VersionFile = basePath + "Version.pt";
+
+    _version = torch::tensor(versionNo);
+    torch::save(_version, VersionFile);
 
     torch::serialize::OutputArchive QModelArchive1;
     _q_net1->save(QModelArchive1);
@@ -162,15 +169,28 @@ void SACAgent::save_checkpoint()
 
 bool SACAgent::load_checkpoint()
 {
-    // Load from file if exists
+    // Load version file if exists
+    int versionNo;
     std::string path = get_current_dir_name();
-    std::string QModelFile1 = path + "/models/checkpoint/Q_Net_Checkpoint1.pt";
-    std::string QModelFile2 = path + "/models/checkpoint/Q_Net_Checkpoint2.pt";
-    std::string PModelFile = path + "/models/checkpoint/P_Net_Checkpoint.pt";
-    std::string AlphaFile = path + "/models/checkpoint/Alpha_Checkpoint.pt";
-    std::string ValueFile = path + "/models/checkpoint/Value_Checkpoint.pt";
-    std::string TargetValueFile = path + "/models/checkpoint/Target_Value_Checkpoint.pt";
-
+    std::string basePath = path + "/models/checkpoint/";
+    std::string versionFile = basePath + "Version.pt";
+    
+    if ( Utility::fileExists(versionFile) ) {
+        torch::load(_version, versionFile);
+        versionNo = _version.item().toInt();
+    } else {
+        return false;
+    }
+    
+    // Load from file if they exist
+    std::string fullVersionPath = basePath + std::to_string(versionNo) + "/";
+    mkdir(basePath.c_str(), 0755);
+    std::string QModelFile1 = fullVersionPath + "Q_Net_Checkpoint1.pt";
+    std::string QModelFile2 = fullVersionPath + "Q_Net_Checkpoint2.pt";
+    std::string PModelFile = fullVersionPath + "P_Net_Checkpoint.pt";
+    std::string AlphaFile = fullVersionPath + "Alpha_Checkpoint.pt";
+    std::string ValueFile = fullVersionPath + "Value_Checkpoint.pt";
+    std::string TargetValueFile = fullVersionPath + "Target_Value_Checkpoint.pt";
 
     if (
             Utility::fileExists(QModelFile1) && 
@@ -320,22 +340,8 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         torch::Tensor value_loss = 0.5 * torch::mean(torch::pow(value_predictions - target_value_func.detach(), 2.0));
         
         // Training the policy
-        torch::Tensor policy_loss = (_alpha * log_pi_t - torch::min(qf1_pi, qf2_pi)).mean();
-        
-        // Update Policy Network
-        if (pthread_mutex_lock(&_policyNetLock) == 0) {
-            _policy_net->optimizer->zero_grad();
-            policy_loss.backward();
-            // torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 0.5);
-            _policy_net->optimizer->step();
-            pthread_mutex_unlock(&_policyNetLock);
-        }
-        else {
-            pthread_mutex_unlock(&_policyNetLock);
-            throw std::runtime_error("could not obtain lock");
-        }
+        // torch::Tensor policy_loss = (_alpha * log_pi_t - torch::min(qf1_pi, qf2_pi)).mean();
 
-        /*
         // Determine policy advantage and calc loss
         torch::Tensor advantage = torch::min(qf1_pi, qf2_pi) - value_predictions.detach();
         torch::Tensor policy_loss = (_alpha * log_pi_t - advantage).mean();
@@ -346,7 +352,20 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
 
         torch::Tensor actor_reg = mean_reg + std_reg;
         policy_loss += actor_reg;
-        */
+        
+        // Update Policy Network
+        if (pthread_mutex_lock(&_policyNetLock) == 0) {
+            _policy_net->optimizer->zero_grad();
+            policy_loss.backward();
+            torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 0.5);
+            _policy_net->optimizer->step();
+            pthread_mutex_unlock(&_policyNetLock);
+        }
+        else {
+            pthread_mutex_unlock(&_policyNetLock);
+            throw std::runtime_error("could not obtain lock");
+        }
+
 
         // Update Q-Value networks
         _q_net1->optimizer->zero_grad();
@@ -371,7 +390,7 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
 
             if (_current_save_delay >= _max_save_delay) {
                 _current_save_delay = 0;
-                save_checkpoint();
+                save_checkpoint(_total_update);
             }	
         }
 
