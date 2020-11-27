@@ -11,12 +11,13 @@ namespace TATS {
         _currentSteps = 0;
 
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
+            double setpoint = static_cast<double>(_config->dims[servo]) / 2.0;
             _pids[servo] = new PID(	_config->defaultGains[0], 
                                     _config->defaultGains[1], 
                                     _config->defaultGains[2], 
                                     _config->pidOutputLow, 
                                     _config->pidOutputHigh, 
-                                    static_cast<double>(_config->dims[servo]) / 2.0);
+                                   setpoint);
             
             _resetAngles[servo] = _config->resetAngles[servo];
             _disableServo[servo] = _config->disableServo[servo];
@@ -105,16 +106,17 @@ namespace TATS {
 
     bool Env::isDone()
     {
+        bool done = true;
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             if (_disableServo[servo]) {
                 continue;
             }
             else {
-                return _currentData[servo].done;
+                done = _currentData[servo].done;
             }
         } 
 
-        return true;
+        return done;
     }
 
     void Env::_resetEnv()
@@ -135,12 +137,11 @@ namespace TATS {
         Utility::RD data;
 
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
-            _observation[servo].pidStateData = _pids[servo]->getState(true);
-            _observation[servo].obj = (_currentData[servo].frame > 0) ? _currentData[servo].obj / _currentData[servo].frame : 0.0;
-            _observation[servo].frame = _currentData[servo].frame;
-            _observation[servo].lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
-            _observation[servo].currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
-            data.servos[servo] = _observation[servo];
+            data.servos[servo].pidStateData = _pids[servo]->getState(true);
+            data.servos[servo].obj = (_currentData[servo].frame > 0) ? _currentData[servo].obj / _currentData[servo].frame : 0.0;
+            data.servos[servo].frame = _currentData[servo].frame;
+            data.servos[servo].lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
+            data.servos[servo].currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
         }
 
         return data;
@@ -151,16 +152,13 @@ namespace TATS {
     Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale)
     {
         _currentSteps = (_currentSteps + 1) % INT_MAX; 
-        
-        Utility::SR stepResults;
+        double rescaledActions[NUM_SERVOS][NUM_ACTIONS];
 
-        double randChance = static_cast<float>(rand()) / static_cast <float> (RAND_MAX);
+        Utility::SR stepResults;
         
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
             if (_disableServo[servo]) {
-                
-                // Used when tuning PIDs
                 continue;
             }
 
@@ -169,25 +167,16 @@ namespace TATS {
                 stepResults.servos[servo].actions[a] = actions[servo][a];
 
                 if (rescale) {
-                    actions[servo][a] = Utility::rescaleAction(actions[servo][a], _config->actionLow, _config->actionHigh);
+                    rescaledActions[servo][a] = Utility::rescaleAction(actions[servo][a], _config->actionLow, _config->actionHigh);
                 }
-            }
-
-            // Print out the PID gains
-            if (0.005 >= randChance) {
-                std::cout << "Here are the new actions(s): ";
-                for (int a = 0; a < _config->numActions; a++) {
-                    std::cout << actions[servo][a] << ", ";
-                }
-                std::cout << std::endl;
             }
 
             double newAngle = 0.0;
             if (!_config->usePIDs) {
-                newAngle = actions[servo][0];
+                newAngle = rescaledActions[servo][0];
             }
             else {
-                _pids[servo]->setWeights(actions[servo][0], actions[servo][1], actions[servo][2]);
+                _pids[servo]->setWeights(rescaledActions[servo][0], rescaledActions[servo][1], rescaledActions[servo][2]);
                 newAngle = _pids[servo]->update(_currentData[servo].obj, 1000.0 / static_cast<double>(_config->updateRate));
             }
 
@@ -198,15 +187,6 @@ namespace TATS {
 
             _lastAngles[servo] = _currentAngles[servo];
             _currentAngles[servo] = newAngle;
-
-            // Print out the angles
-            if (0.005 >= randChance) {
-                std::cout << "Here are the angles: ";
-                std::cout << newAngle << std::endl;
-                std::cout << "For servo: ";
-                std::cout << servo << std::endl;
-            }
-
             _servos->setAngle(servo, newAngle);
         }
 
@@ -225,11 +205,12 @@ namespace TATS {
                 throw std::runtime_error("State must represent a complete transition");
             }
             else {
-                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, true);
+                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, false);
             }
 
             // Fill out the step results
             if (!_config->usePIDs) {
+                // We still use PIDS for keeping track of error in ENV. Otherwise the caller supplies actions rather than PIDS
                 _pids[servo]->update(currentError, 1000.0 / static_cast<double>(_config->updateRate));
                 stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
             }
@@ -244,7 +225,6 @@ namespace TATS {
             stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
             stepResults.servos[servo].done = _currentData[servo].done;
             stepResults.servos[servo].empty = false;
-            _observation[servo] = stepResults.servos[servo].nextState;
         }
 
         return stepResults;

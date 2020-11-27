@@ -26,7 +26,7 @@ void PID::init() {
     // initialize the previous error
     _prevError = 0.0;
     _last_input = 0.0;
-    _integral = 0.0;
+    _sumError = 0.0;
 
     // initialize the term result variables
     _cP = 0.0;
@@ -65,7 +65,7 @@ double PID::update(double input, double sleep) {
     _cP = error;
 
     // Integral of error with respect to time
-    _integral += error;
+    _sumError += error;
     _cI += (error * (_kI * _deltaTime));
 
     // Derivative of input with respect to time
@@ -74,13 +74,6 @@ double PID::update(double input, double sleep) {
     (_deltaTime > 0.0) ? (_cD = (1.0 / _deltaTime)) : (_cD = 0.0);
 
     // Integral windup gaurd
-    if (_integral < -_windup_guard) {
-        _integral = -_windup_guard;
-    }
-    else if (_integral > _windup_guard) {
-        _integral = _windup_guard;
-    }
-
     if (_cI < -_windup_guard) {
         _cI = -_windup_guard;
     }
@@ -124,38 +117,19 @@ double PID::getWindupGaurd()
     return _windup_guard;
 }
 
-// A nonbinding, 'What if', update call to PID. Returns internal PID state variables.
-state PID::mockUpdate(double input, double sleep, bool normalize)
-{
-    std::chrono::steady_clock::time_point currTime = std::chrono::steady_clock::now();
-    std::chrono::steady_clock::duration deltTime = currTime - _prevTime;
-    double dTime = double(deltTime.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den;
-    state g;
+std::vector<double> PID::getState() {
+    double errorBound = 2.0 * _setpoint;
+    std::vector<double> stateData;
     
-    // Delta time
-    g.dt = dTime;
+    stateData.push_back(Utility::normalize(_cP, -errorBound, errorBound));
+    stateData.push_back(Utility::normalize(_cI, -_windup_guard, _windup_guard));
+    stateData.push_back(Utility::normalize(-(_cD * _deltaInput), -2.0 * errorBound, 2.0 * errorBound));
+    stateData.push_back(Utility::normalize(_deltaInput, -2.0 * errorBound, 2.0 * errorBound));
+    stateData.push_back(_deltaTime);
+    stateData.push_back(Utility::normalize(_deltaError, -2.0 * errorBound, 2.0 * errorBound));
+    stateData.push_back(std::clamp<double>(Utility::normalize(_sumError, -errorBound, errorBound), -1.0, 1.0));
 
-    // Error
-    g.e = input - _setpoint;
-
-    // Delta input
-    g.din = (_last_input - input);
-
-    // Integral of error with respect to time
-    g.i = _integral + (g.e * dTime);
-
-    // Negative Derivative of input with respect to time.
-    g.d = (dTime > 0.0) ? -1.0 * (g.din / dTime) : 0.0;
-
-    // Just divide by the max possible values, preserve sign
-    if (normalize) {
-        g.e /= _setpoint;
-        g.din /= 2.0 * _setpoint;
-        g.i /= _windup_guard;
-        g.d /= _windup_guard;
-    }
-    
-    return g;
+    return stateData;
 }
 
 state PID::getState(bool normalize)
@@ -172,7 +146,10 @@ state PID::getState(bool normalize)
     g.de = _deltaError;
 
     // Integral of error with respect to time
-    g.i = _integral;
+    g.i = _cI;
+
+    // Sum of error
+    g.errSum = _sumError;
 
     // Delta input
     g.din = _deltaInput;
@@ -180,13 +157,15 @@ state PID::getState(bool normalize)
     // Negative Derivative of input with respect to time.
     g.d = -(_cD * _deltaInput);
 
-    // Just divide by the ~max possible values, preserve sign
+    // Normalize and scale datapoints. 
     if (normalize) {
-        g.e /= 2.0 * _setpoint;
-        g.de /= 2.0 * _setpoint;
-        g.din /= 2.0 * _setpoint;
-        g.i /= _windup_guard;
-        g.d /= 2.0 * _setpoint;
+        double errorBound = 2.0 * _setpoint;
+        g.e = Utility::normalize(g.e, -errorBound, errorBound);
+        g.de = Utility::normalize(g.de, -2.0 * errorBound, 2.0 * errorBound);
+        g.din = Utility::normalize(g.din, -2.0 * errorBound, 2.0 * errorBound);
+        g.i = Utility::normalize(g.i, -_windup_guard, _windup_guard);
+        g.d = Utility::normalize(g.d, -2.0 * errorBound, 2.0 * errorBound);
+        g.errSum = std::clamp<double>(Utility::normalize(g.errSum, -errorBound, errorBound), -1.0, 1.0);
     }
 
     return g;

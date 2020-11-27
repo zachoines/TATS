@@ -25,6 +25,10 @@ namespace Utility {
 	static double mapOutput(double x, double in_min, double in_max, double out_min, double out_max) {
 		return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 	}
+
+	static double normalize(double x, double min, double max) {
+		return (x - min) / (max - min);
+	}
    
     static bool fileExists(std::string fileName){
 		std::ifstream test(fileName);
@@ -94,23 +98,49 @@ namespace Utility {
 	}
 
 	/* 
-		When alt 'true':
-		Reward bounds are -2.0 to +1.5:
+		####################################
+		## When alt 'true' #################
+		## Reward bounds are -2.0 to +2.0 ##
+		####################################
 
-		+.5 bonus for within 2% error
+		+1.0 bonus within { threshold }% error
 		0.0 to +1.0 reward for marginally better transitions
 
 		-1.0 punishment for done state
 		0.0 to -1.0 punishment for marginally worse transitions
 	
-		Else reward ranges from -2.0 to 0.0. 
+		######################################
+		## When alt 'false' ##################
+		## Reward bounds from -3.0 to 0.0 ####
+		######################################
+		
 		-1.0 for done state
-		0.0 to -1.0 depending on current error ('threshold' - 'error new' scaled)
+		0.0 to -1.0 - { threshold } depending on current error
 		0.0 to -1.0 for marginally worse transitions
+		0.0 reward for any improvement
+
+		#####################
+		## key differences ##
+		#####################
+		
+		* The first incorperates positive rewards
+		* The first will show a nicer episode average graph 
+			* Episode average rewards will increase exponentially. 
+			* Step rewards will be noisy and less clear improvement
+		
+		* The first only has negative rewards
+		* The second will show a nicer step rewards graph 
+			* Step error will decrease logorithmically. 
+			* Episode average rewards will decrease exponentially (accumulation of error)
+		
+		* Both will increase episode steps exponentially
+		* They both have similar loss curves 
+		* Both teach fundamentally similar skills 
+			* To favor trasitions that lead to lower error
 
 	*/
 
-	static double pidErrorToReward(double n, double o, double max, bool d, double threshold = 0.01, bool alt = true) {
+	static double pidErrorToReward(double n, double o, double max, bool d, double threshold = 0.005, bool alt = true) {
 
 
 		double absMax = max;
@@ -120,11 +150,11 @@ namespace Utility {
 
 		// Relative weight to rewards/error
 		double w1 = 1.0;
-		double w2 = .25; 
-		double w3 = 2.0; 
+		double w2 = 1.0; 
+		double w3 = 1.0; 
 
 		// Rewards
-		double r1 = 0.0; // Threshhold, done rewards/error
+		double r1 = 0.0; // Threshhold bonus, alive bonus, done rewards/error
 		double r2 = 0.0; // baseline error
 		double r3 = 0.0; // Transition rewards/error
 
@@ -143,7 +173,7 @@ namespace Utility {
 			} 
 
 			// Reward R2
-			r2 = errorThreshold - errorNewScaled;
+			// r2 = errorThreshold - errorNewScaled;
 
 			// Rewards R3
 			bool direction_old = false;
@@ -253,6 +283,6 @@ namespace Utility {
 
 	// Scale from -1.0 to 1.0 to low to high
 	static double rescaleAction(double action, double min, double max) {
-		return (min + (0.5 * (action + 1.0) * (max - min)));
+		return std::clamp<double>((min + (0.5 * (action + 1.0) * (max - min))), min, max);
 	}
 }

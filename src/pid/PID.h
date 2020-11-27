@@ -1,6 +1,7 @@
 #pragma once
 #include <chrono>
 #include <iostream>
+#include <vector>
 #include <cmath>
 #include "../util/util.h"
 
@@ -8,17 +9,17 @@
 struct PIDState {
     double e; // error
     double i; // Integral of error with respect to time
-    double d; // Derivative of error with respect to time
+    double d; // negative derivative of input with respect to time
     double din; // Delta input
     double dt; // Delta time
     double de; // Delta error
+    double errSum; // Sum of error
 
     void getStateArray(double state[3]) {
         state[0] = e;
         state[1] = de;
-        state[2] = i;
+        state[2] = errSum; 
     }
-
 
 } typedef state;
 
@@ -33,11 +34,10 @@ class PID
         void getPID(double w[3]);
         void setWindupGaurd(double guard);
         double getWindupGaurd();
-        state mockUpdate(double input, double sleep = 0.0, bool normalize = true); // Non-binding "what if" update call, returning copies of internal pid variables
         
-        // Normalize: Scale from ~ -1 to ~ 1 
         // Get current internal variable state. Call after update().
-        state getState(bool normalize = true); 
+        state getState(bool normalize); 
+        std::vector<double> getState(); // Default normalized
 
     private:
         double _max;
@@ -60,7 +60,7 @@ class PID
         std::chrono::steady_clock::duration _deltTime;
 
         double _prevError;
-        double _integral;
+        double _sumError;
         double _deltaInput;
         double _deltaTime;
         double _deltaError;

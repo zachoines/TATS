@@ -8,7 +8,6 @@
 #include "../util/util.h"
 #include "../servo/PCA9685.h"
 #include "../servo/ServoKit.h"
-#include "../servo/ServoKit.h"
 #include "../wire/Wire.h"
 #include "../pid/PID.h"
 

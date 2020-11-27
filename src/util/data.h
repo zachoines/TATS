@@ -17,6 +17,7 @@ namespace Utility {
     #define NUM_INPUT 5
     #define NUM_ACTIONS 3
     #define NUM_HIDDEN 256
+
     
     struct EventData { 
 
@@ -49,8 +50,8 @@ namespace Utility {
 
         void getStateArray(double state[NUM_INPUT]) {
             pidStateData.getStateArray(state); // first 'n' elems filled
-            state[3] = obj;
-            state[4] = lastAngle - currentAngle;
+            state[3] = obj / 2.0; // Current object center
+            state[4] = lastAngle - currentAngle; 
         }
 
     } typedef SD;
@@ -101,11 +102,9 @@ namespace Utility {
         int minBufferSize;
         int updateRate;
         int maxTrainingSessions;
-        int numFrameSkip;
         int batchSize;
         int numInitialRandomActions;
         bool trainMode;
-        bool frameSkip;
         bool initialRandomActions;
         double numUpdates;
         double trainRate;
@@ -132,10 +131,15 @@ namespace Utility {
         double resetAngles[NUM_SERVOS];
         double anglesHigh[NUM_SERVOS];
         double anglesLow[NUM_SERVOS];
-        int stepsDeactivated[NUM_SERVOS];
+
+        // Servo alternation options
+        // Used only in training. 
+        // Reduces noise significantly.
+        // Faster convergence if enabled generally
         bool alternateServos;
         int alternateSteps;
         int alternateStop;
+        int alternateEpisodeEndCap;
 
         // Other 
         int dims[2];
@@ -150,19 +154,19 @@ namespace Utility {
 
             maxTrainingSessions(1),              // Number of training sessions on model params
             maxBufferSize(500000),               // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(512),                  // Min replay buffer size before training size.
+            minBufferSize(2000),                 // Min replay buffer size before training size.
             maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
-            batchSize(256),                      // Network batch size.
-            initialRandomActions(false),         // Enable random actions.
-            numInitialRandomActions(10000),      // Number of random actions taken.
-            trainMode(false),                    // When autotuning is on, 'false' means network test mode.
+            batchSize(512),                      // Network batch size.
+            initialRandomActions(true),          // Enable random actions.
+            numInitialRandomActions(5000),       // Number of random actions taken.
+            trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
 
             recheckFrequency(15),                // Num frames in-between revalidations of t
             lossCountMax(2),                     // Max number of rechecks before episode is considered over
-            updateRate(10),                      // Servo updates, commands per second
+            updateRate(5),                       // Servo updates, commands per second
             trainRate(1.0),					     // Network updates, sessions per second
             
             disableServo({ false, false }),      // Disable the { Y, X } servos
@@ -171,21 +175,23 @@ namespace Utility {
             anglesHigh({ 60.0, 60.0 }),          // Max allowable output angle to servos
             anglesLow({ -60.0, -60.0 }),         // Min allowable output angle to servos
             
-            alternateServos(false),              // Whether to alternate servos at the start of training (starts with Y)
-            alternateSteps(100),                 // Steps per servo (will increase exponentially as training proggresses (doubles threshold each time its met))
-            alternateStop(100),                  // Number of alternations before activating both
+            alternateServos(true),               // Whether to alternate servos at the start of training
+            alternateSteps(100),                 // Steps per servo (will increase exponentially as training proggresses (doubles threshold each time its met)). Cut short by 'alternateEpisodeEndCap'
+            alternateStop(1000),                 // Number of alternations
+            alternateEpisodeEndCap(10),          // Number "end of episodes" before switching again. Prevents too much noise when both servos are enabled.
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(false),					 // Use openCV tracker instead of face detection
             draw(true),						     // Draw target bounding box and center on frame
-            showVideo(true),					 // Show camera feed
-            cascadeDetector(false),				 // Use faster cascade face detector 
+            showVideo(false),					 // Show camera feed
+            cascadeDetector(true),				 // Use faster cascade face detector 
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
-            actionHigh(0.1),                     // Max output to of policy network's logits
-            actionLow(0.0),                      // Min output to of policy network's logits        
+            actionHigh(60.0),                    // Max output to of policy network's logits
+            actionLow(-60.0),                    // Min output to of policy network's logits        
             pidOutputHigh(60.0),                 // Max output allowed for PID's
             pidOutputLow(-60.0),				 // Min output allowed for PID's
-            defaultGains({ 0.05, 0.04, 0.001 }), // Gains fed to pids when initialized             
+            // defaultGains({ 0.05, 0.04, 0.001 }), // Gains fed to pids when initialized             
+            defaultGains({ 1.0, 1.0, 1.0 }), 
             
             dims({ 720, 1280 }),                 // Dimensions of frame
             maxFrameRate(120),                   // Camera capture rate

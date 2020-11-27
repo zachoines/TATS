@@ -298,7 +298,6 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
             alpha_loss.backward();
             _alpha_optimizer->step();
             _alpha = torch::exp(_log_alpha);
-            std::cout << "Current alpha: " << _alpha << std::endl;
         }
 
         // Estimated Q-Values
@@ -388,7 +387,8 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
                 + std::to_string(policy_loss.item().toDouble()) + ','
                 + std::to_string(value_loss.item().toDouble()) + ','
                 + std::to_string(q_value_loss1.item().toDouble()) + ','
-                + std::to_string(q_value_loss2.item().toDouble());
+                + std::to_string(q_value_loss2.item().toDouble()) + ','
+                + std::to_string(_alpha.item().toDouble());
 
             Utility::appendLineToFile(_lossPath, episodeData);
 

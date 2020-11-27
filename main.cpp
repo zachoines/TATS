@@ -104,7 +104,7 @@ int main(int argc, char** argv)
     boost::interprocess::managed_shared_memory segment(boost::interprocess::create_only, "SharedMemorySegment", (sizeof(TD) * config->maxBufferSize + 1) + (sizeof(char) * numParams + 1));
     const ShmemAllocator alloc_inst(segment.get_segment_manager());
     SharedBuffer* sharedTrainingBuffer = segment.construct<SharedBuffer>("SharedBuffer")(alloc_inst);
-      Utility::sharedString *s = segment.construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
+    Utility::sharedString *s = segment.construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
 
     // Setup stats files
     std::string path = get_current_dir_name();
@@ -177,7 +177,6 @@ int main(int argc, char** argv)
             detectT.join();
             autoTuneT.join();
             panTiltT.join();
-            /// detectThread(parameters);
         }
         
     } else {
@@ -388,6 +387,7 @@ void panTiltThread(Utility::param* parameters) {
     double episodeAverageSteps[NUM_SERVOS] = { 0.0 };
     double episodeRewards[NUM_SERVOS] = { 0.0 };
     double episodeSteps[NUM_SERVOS] = { 0.0 };
+    int episodeEndCounts = 0.0;
 
     // training state variables
     bool initialRandomActions = config->initialRandomActions;
@@ -440,11 +440,16 @@ void panTiltThread(Utility::param* parameters) {
                             numInitialRandomActions--;
 
                             for (int a = 0; a < config->numActions; a++) {
-                                predictedActions[i][a] = std::uniform_real_distribution<double>{ config->actionLow, config->actionHigh }(eng);;
+                                predictedActions[i][a] = std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);;
                             }
                         }
                         else {
-                            initialRandomActions = false;
+
+                            if (initialRandomActions) {
+                                initialRandomActions = false;
+                                std::cout << "WARNING: Done generating initial random actions" << std::endl;
+                            }
+                            
                             currentState[i].getStateArray(stateArray);
                             at::Tensor actions = pidAutoTuner->get_action(torch::from_blob(stateArray, { 1, config->numInput }, options), true);
                             actions.to(torch::kCPU);
@@ -484,20 +489,22 @@ void panTiltThread(Utility::param* parameters) {
                         // If we are alternating servos
                         if (config->alternateServos) {
 
-                            // Max steps with current servo
-                            if (alternateCounter == 0 || alternateCounter > config->alternateSteps) {
+                            // Max steps with current servo or met the 'End of Episodes' max for current servo mask
+                            if (alternateCounter == 0 || alternateCounter > config->alternateSteps || episodeEndCounts > config->alternateEpisodeEndCap) {
                                 
-                                // Switch disabled servo
+                                // Switch disabled servo and reset counters
                                 alternationMode = (alternationMode + 1) % 2;
                                 
                                 if (!initialRandomActions) {
                                     numAlternations += 1;
                                 }
                                 
+                                episodeEndCounts = 0;
                                 alternateCounter = 0;
 
-                                // Stop alternating, reset back to default
+                                // Stop alternating, reset back to default servo mask
                                 if (numAlternations > config->alternateStop) {
+                                    std::cout << "WARNING: Done alternating between servos" << std::endl;
                                     config->alternateServos = false;
                                     servos->setDisabled(config->disableServo);	
                                 }
@@ -527,7 +534,8 @@ void panTiltThread(Utility::param* parameters) {
                     stepResults = servos->step(predictedActions);		
                     totalSteps = (totalSteps + 1) % INT_MAX; 
 
-                } catch (...) {
+                } catch(const std::exception& e) {
+                    std::cerr << e.what() << '\n';
                     throw std::runtime_error("cannot step with servos");
                 }
 
@@ -614,6 +622,8 @@ void panTiltThread(Utility::param* parameters) {
                 }
             }
             else {
+                episodeEndCounts += 1;
+
                 reset:
                     resetResults = servos->reset();
                 
@@ -729,7 +739,7 @@ void detectThread(Utility::param* parameters)
 
         if (isSearching) {
             // TODO:: Perform better search ruetine
-            // For now servo thread detects when done and sends a reset commman to servos
+            // For now servo thread detects when done and sends a reset command to servos
         }
 
         try
@@ -984,10 +994,19 @@ void detectThread(Utility::param* parameters)
 
 void autoTuneThread(Utility::param* parameters)
 {
-
     using namespace TATS;
     using namespace Utility;
     Utility::Config* config = new Utility::Config();
+    
+    // Setup replay buff logging
+    std::string path = get_current_dir_name();
+    std::string statDir = "/stat/";
+    std::string statPath = path + statDir;
+    std::string logPath = statPath + "/replayBuffStats.txt";
+
+    if (fileExists(logPath)) {
+        std::remove(logPath.c_str());
+    }
 
     // Variables for training
     int batchSize = config->batchSize;
@@ -998,7 +1017,6 @@ void autoTuneThread(Utility::param* parameters)
     int sessions = config->maxTrainingSessions;
     int numUpdates = config->numUpdates;
     double rate = config->trainRate;
-
 
     // Annealed ERE (Emphasizing Recent Experience)
     // https://arxiv.org/pdf/1906.04009.pdf
@@ -1052,6 +1070,14 @@ start:
 
             TrainBuffer batch = replayBuffer->ere_sample(batchSize, startingRange);
             pidAutoTuner->update(batch.size(), &batch);
+            
+            std::string stepData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
+                                                 (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
+                                                 + std::to_string(currentSteps) + ','
+                                                 + std::to_string(startingRange) + ',' 
+                                                 + std::to_string(N);
+
+            appendLineToFile(logPath, stepData);
         }
 
         long milis = static_cast<long>(1000.0 / rate);
