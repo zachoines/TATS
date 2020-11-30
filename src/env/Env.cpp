@@ -205,7 +205,7 @@ namespace TATS {
                 throw std::runtime_error("State must represent a complete transition");
             }
             else {
-                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.005, false);
+                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.005, true);
             }
 
             // Fill out the step results

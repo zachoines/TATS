@@ -132,7 +132,7 @@ void SACAgent::save_checkpoint(int versionNo)
     std::string path = get_current_dir_name();
     std::string basePath = path + "/models/checkpoint/";
     std::string fullVersionPath = basePath + std::to_string(versionNo) + "/";
-    mkdir(basePath.c_str(), 0755);
+    mkdir(fullVersionPath.c_str(), 0755);
     std::string QModelFile1 = fullVersionPath + "Q_Net_Checkpoint1.pt";
     std::string QModelFile2 = fullVersionPath + "Q_Net_Checkpoint2.pt";
     std::string PModelFile = fullVersionPath + "P_Net_Checkpoint.pt";

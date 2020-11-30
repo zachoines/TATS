@@ -153,11 +153,11 @@ namespace Utility {
 
             maxTrainingSessions(1),              // Number of training sessions on model params
             maxBufferSize(500000),               // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(2000),                  // Min replay buffer size before training size.
+            minBufferSize(2000),                 // Min replay buffer size before training size.
             maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
 
-            batchSize(256),                      // Network batch size.
+            batchSize(512),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
             numInitialRandomActions(5000),       // Number of random actions taken.
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
@@ -166,7 +166,7 @@ namespace Utility {
             recheckFrequency(15),                // Num frames in-between revalidations of t
             lossCountMax(2),                     // Max number of rechecks before episode is considered over
             updateRate(5),                       // Servo updates, commands per second
-            trainRate(1.0),					     // Network updates, sessions per second
+            trainRate(0.5),					     // Network updates, sessions per second
             
             disableServo({ false, false }),      // Disable the { Y, X } servos
             invertServo({ false, false }),       // Flip output angles { Y, X } servos
@@ -176,13 +176,13 @@ namespace Utility {
             
             alternateServos(true),               // Whether to alternate servos at the start of training
             alternateSteps(100),                 // Steps per servo (will increase exponentially as training proggresses (doubles threshold each time its met)). Cut short by 'alternateEpisodeEndCap'
-            alternateStop(2000),                 // Number of alternations
+            alternateStop(3000),                 // Number of alternations
             alternateEpisodeEndCap(15),          // Number "end of episodes" before switching again. Prevents too much noise when both servos are enabled.
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
             useTracking(false),					 // Use openCV tracker instead of face detection
-            draw(false),						 // Draw target bounding box and center on frame
-            showVideo(false),					 // Show camera feed
+            draw(true),						     // Draw target bounding box and center on frame
+            showVideo(true),					 // Show camera feed
             cascadeDetector(true),				 // Use faster cascade face detector 
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
             actionHigh(0.1),                     // Max output to of policy network's logits
@@ -192,7 +192,7 @@ namespace Utility {
             // defaultGains({ 0.05, 0.04, 0.001 }), // Gains fed to pids when initialized             
             defaultGains({ 1.0, 1.0, 1.0 }), 
             
-            dims({ 720, 1280 }),                 // Dimensions of frame
+            dims({ 720, 720 }),                  // Dimensions of frame
             maxFrameRate(120),                   // Camera capture rate
             multiProcess(false)                  // Enables autotuning in a seperate process. Otherwise its a thread.
             {}

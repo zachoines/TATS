@@ -143,11 +143,11 @@ int main(int argc, char** argv)
         // std::string pipeline = "nvarguscamerasrc sensor-id=0 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
         // std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
         // ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! 
-        std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
+        // std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
         // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
         camera = new cv::VideoCapture(0, cv::CAP_ANY);
-        camera->set(3, config->dims[1]);
-        camera->set(4, config->dims[0]);
+        camera->set(3, 1280);
+        camera->set(4, 720);
 
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
@@ -399,16 +399,11 @@ void panTiltThread(Utility::param* parameters) {
     int alternationMode = 0;
     int numAlternations = 0;
     int currentServo = 0;
-    bool enableAllServos[NUM_SERVOS] = {
-        false
-    };
-
-    bool currentServoMask[NUM_SERVOS] = {
-        true
-    };
-
+    bool enableAllServos[NUM_SERVOS] = { false };
+    bool currentServoMask[NUM_SERVOS] = { true };
     currentServoMask[currentServo] = false;
     
+    // Training data
     double predictedActions[NUM_SERVOS][NUM_ACTIONS];
     double stateArray[NUM_INPUT];
     SD currentState[NUM_SERVOS];
@@ -510,9 +505,9 @@ void panTiltThread(Utility::param* parameters) {
                                 }
                                 
                                 // Set all on
-                                else if (alternationMode == 1) {
-                                    servos->setDisabled(enableAllServos);
-                                } 
+                                // else if (alternationMode == 1) {
+                                //     servos->setDisabled(enableAllServos);
+                                // } 
                                 
                                 // Turn one axis off
                                 else {
@@ -745,7 +740,13 @@ void detectThread(Utility::param* parameters)
         try
         {
             try {
+                // crop the image to generate equal setpoints for PIDs
                 frame = GetImageFromCamera(camera);
+                int cropSize = config->dims[0];
+                int offsetW = (frame.cols - cropSize) / 2;
+                int offsetH = (frame.rows - cropSize) / 2;
+                cv::Rect roi(offsetW, offsetH, cropSize, cropSize);
+                frame = frame(roi).clone();
             } catch (const std::exception& e)
             {
                 std::cerr << e.what();
