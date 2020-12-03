@@ -46,6 +46,7 @@ public:
     SACAgent(int num_inputs, int num_hidden, int num_actions, double action_max, double action_min, bool alphaAdjuster = true, double gamma = 0.99, double tau = 5e-3, double alpha = 0.2, double q_lr = 3e-4, double policy_lr = 3e-4, double a_lr = 3e-4, torch::DeviceType device = torch::kCPU);
     ~SACAgent();
 
+    void eval();
     void update(int batchSize, Utility::TrainBuffer* replayBuffer);
     torch::Tensor get_action(torch::Tensor state, bool trainMode = true);
 

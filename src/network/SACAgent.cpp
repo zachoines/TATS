@@ -86,6 +86,10 @@ SACAgent::~SACAgent() {
     delete _target_value_network;
 }
 
+void SACAgent::eval() {
+    _policy_net->eval(); 
+}
+
 void SACAgent::_transfer_params_v2(torch::nn::Module& from, torch::nn::Module& to, bool param_smoothing) {
     auto to_params = to.named_parameters(true);
     auto from_params = from.named_parameters(true);
@@ -143,6 +147,7 @@ void SACAgent::save_checkpoint(int versionNo)
 
     _version = torch::tensor(versionNo);
     torch::save(_version, VersionFile);
+    torch::save(_version, fullVersionPath + "Version.pt");
 
     torch::serialize::OutputArchive QModelArchive1;
     _q_net1->save(QModelArchive1);
@@ -300,6 +305,7 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         torch::Tensor rewards_t = torch::from_blob(rewards, { batchSize }, optionsDouble);
         torch::Tensor dones_t = torch::from_blob(dones, { batchSize }, optionsDouble);
 
+        
         // Sample from Policy
         torch::Tensor current = _policy_net->sample(states_t, batchSize);
         torch::Tensor reshapedResult = current.view({ 5, batchSize, _num_actions });
@@ -366,19 +372,21 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
             throw std::runtime_error("could not obtain lock");
         }
 
-
         // Update Q-Value networks
         _q_net1->optimizer->zero_grad();
         q_value_loss1.backward();
+        torch::nn::utils::clip_grad_norm_(_q_net1->parameters(), 0.5);
         _q_net1->optimizer->step();
 
         _q_net2->optimizer->zero_grad();
         q_value_loss2.backward();
+        torch::nn::utils::clip_grad_norm_(_q_net2->parameters(), 0.5);
         _q_net2->optimizer->step();
 
         // Update Value network
         _value_network->zero_grad();
         value_loss.backward();
+        torch::nn::utils::clip_grad_norm_(_value_network->parameters(), 0.5);
         _value_network->optimizer->step();
         
         // Delay update of Target Value and Policy Networks

@@ -43,15 +43,15 @@ namespace TATS {
         delete _config;
     }
 
-    void Env::_sleep()
+    void Env::_sleep(double rate)
     {
-        int milli = 1000 / _config->updateRate;
+        int milli = static_cast<int>(1000.0 / rate);
         std::this_thread::sleep_for(std::chrono::milliseconds(milli));
     }
 
-    void Env::_syncEnv()
+    void Env::_syncEnv(double rate)
     {
-        _sleep();
+        _sleep(rate);
 
         std::unique_lock<std::mutex> lck(_lock);
 
@@ -149,7 +149,7 @@ namespace TATS {
 
     // Using action, take step and return observation, reward, done, and actions for every servo. 
     // Note: SR[servo].currentState is always null. Retrieve currentState from previous 'step' or 'reset' call.
-    Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale)
+    Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, double rate)
     {
         _currentSteps = (_currentSteps + 1) % INT_MAX; 
         double rescaledActions[NUM_SERVOS][NUM_ACTIONS];
@@ -177,7 +177,7 @@ namespace TATS {
             }
             else {
                 _pids[servo]->setWeights(rescaledActions[servo][0], rescaledActions[servo][1], rescaledActions[servo][2]);
-                newAngle = _pids[servo]->update(_currentData[servo].obj, 1000.0 / static_cast<double>(_config->updateRate));
+                newAngle = _pids[servo]->update(_currentData[servo].obj, 1000.0 / rate);
             }
 
             // newAngle = Utility::mapOutput(newAngle, _config->pidOutputLow, _config->pidOutputHigh, _config->angleLow, _config->angleHigh);
@@ -189,8 +189,8 @@ namespace TATS {
             _currentAngles[servo] = newAngle;
             _servos->setAngle(servo, newAngle);
         }
-
-        _syncEnv();
+        
+        _syncEnv(rate);        
 
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
@@ -205,13 +205,13 @@ namespace TATS {
                 throw std::runtime_error("State must represent a complete transition");
             }
             else {
-                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.005, true);
+                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.001, true);
             }
 
             // Fill out the step results
             if (!_config->usePIDs) {
                 // We still use PIDS for keeping track of error in ENV. Otherwise the caller supplies actions rather than PIDS
-                _pids[servo]->update(currentError, 1000.0 / static_cast<double>(_config->updateRate));
+                _pids[servo]->update(currentError, 1000.0 / rate);
                 stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
             }
             else {

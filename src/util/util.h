@@ -102,8 +102,10 @@ namespace Utility {
 		## When alt 'true' #################
 		## Reward bounds are -2.0 to +2.0 ##
 		####################################
+		
+		Basline error/rewards between -0.5 and 0.5 baased on total current error
 
-		+1.0 bonus within { threshold }% error
+		+.25 bonus within { threshold }% error
 		0.0 to +1.0 reward for marginally better transitions
 
 		-1.0 punishment for done state
@@ -165,15 +167,16 @@ namespace Utility {
 		// If marginal transitional rewards are considered
 		if (alt) {
 
-			// Reward R1
 			if (done) {
-				r1 += -2.0;
-			} else if (errorNewScaled <= errorThreshold) {
-				r1 += 1.0;
+				r1 = -1.0;
 			} 
-
-			// Reward R2
-			// r2 = errorThreshold - errorNewScaled;
+			
+			// // Reward R2
+			// if (errorNewScaled <= errorThreshold) {
+			// 	// r2 += 0.25;
+			// }
+			
+			r2 += Utility::mapOutput(1.0 - errorNewScaled, 0.0, 1.0, -0.50, 0.50);
 
 			// Rewards R3
 			bool direction_old = false;
@@ -260,9 +263,10 @@ namespace Utility {
 			}
 
 			return (w1 * r1) + (w2 * r2) + (w3 * r3);
-
+	
 		} else {
 			
+			// Another varient with only negative rewards
 			if (errorNewScaled < threshold) {
 				r1 = 0.0; 
 			}
@@ -276,8 +280,10 @@ namespace Utility {
 			else {
 				r2 = errorNewScaled - errorOldScaled;
 			}
-
-			return (w1 * r1) + (w2 * r2) + ( done ? -1.0 : 0.0);
+			
+			// Punish done, scale and clamp from -1 to 1
+			return std::clamp<double>((w1 * r1) + (w2 * r2) + ( done ? -1.0 : 0.0), -3.0, 0.0);
+	
 		}	
 	}
 

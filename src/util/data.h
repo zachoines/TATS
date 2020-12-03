@@ -14,8 +14,8 @@
 
 namespace Utility {
     #define NUM_SERVOS 2
-    #define NUM_INPUT 5
-    #define NUM_ACTIONS 3
+    #define NUM_INPUT 7
+    #define NUM_ACTIONS 1
     #define NUM_HIDDEN 256
 
     
@@ -50,8 +50,9 @@ namespace Utility {
 
         void getStateArray(double state[NUM_INPUT]) {
             pidStateData.getStateArray(state); // first 'n' elems filled
-            state[4] = Utility::normalize((lastAngle - currentAngle) / 2.0, -1.0, 1.0); // keep between -1 and 1
-        }
+            state[5] = Utility::normalize((lastAngle - currentAngle) / 2.0, -1.0, 1.0); // keep between -1 and 1
+            state[6] = currentAngle;
+        } 
 
     } typedef SD;
 
@@ -105,6 +106,8 @@ namespace Utility {
         int numInitialRandomActions;
         bool trainMode;
         bool initialRandomActions;
+        bool episodeEndCap;
+        int maxStepsPerEpisode;
         double numUpdates;
         double trainRate;
         
@@ -156,17 +159,19 @@ namespace Utility {
             minBufferSize(2000),                 // Min replay buffer size before training size.
             maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
+            episodeEndCap(false),                // End episode early
+            maxStepsPerEpisode(500),             // Max number of steps in an episode
 
-            batchSize(512),                      // Network batch size.
-            initialRandomActions(true),          // Enable random actions.
+            batchSize(256),                      // Network batch size.
+            initialRandomActions(false),         // Enable random actions.
             numInitialRandomActions(5000),       // Number of random actions taken.
-            trainMode(true),                     // When autotuning is on, 'false' means network test mode.
+            trainMode(false),                    // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
 
             recheckFrequency(15),                // Num frames in-between revalidations of t
             lossCountMax(2),                     // Max number of rechecks before episode is considered over
-            updateRate(5),                       // Servo updates, commands per second
-            trainRate(0.5),					     // Network updates, sessions per second
+            updateRate(7),                       // Servo updates, update commands per second
+            trainRate(1.0),					     // Network updates, sessions per second
             
             disableServo({ false, false }),      // Disable the { Y, X } servos
             invertServo({ false, false }),       // Flip output angles { Y, X } servos
@@ -174,7 +179,7 @@ namespace Utility {
             anglesHigh({ 60.0, 60.0 }),          // Max allowable output angle to servos
             anglesLow({ -60.0, -60.0 }),         // Min allowable output angle to servos
             
-            alternateServos(true),               // Whether to alternate servos at the start of training
+            alternateServos(false),              // Whether to alternate servos at the start of training
             alternateSteps(100),                 // Steps per servo (will increase exponentially as training proggresses (doubles threshold each time its met)). Cut short by 'alternateEpisodeEndCap'
             alternateStop(3000),                 // Number of alternations
             alternateEpisodeEndCap(15),          // Number "end of episodes" before switching again. Prevents too much noise when both servos are enabled.
@@ -183,10 +188,10 @@ namespace Utility {
             useTracking(false),					 // Use openCV tracker instead of face detection
             draw(true),						     // Draw target bounding box and center on frame
             showVideo(true),					 // Show camera feed
-            cascadeDetector(true),				 // Use faster cascade face detector 
-            usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
-            actionHigh(0.1),                     // Max output to of policy network's logits
-            actionLow(0.0),                      // Min output to of policy network's logits        
+            cascadeDetector(false),				 // Use faster cascade face detector
+            usePIDs(false),                      // Network outputs PID gains, or network outputs angle directly
+            actionHigh(60.0),                    // Max output to of policy network's logits
+            actionLow(-60.0),                    // Min output to of policy network's logits        
             pidOutputHigh(60.0),                 // Max output allowed for PID's
             pidOutputLow(-60.0),				 // Min output allowed for PID's
             // defaultGains({ 0.05, 0.04, 0.001 }), // Gains fed to pids when initialized             

@@ -16,12 +16,12 @@ struct PIDState {
     double d2e; // Second order error
     double errSum; // Sum of error
 
-
-    void getStateArray(double state[4]) {
+    void getStateArray(double state[5]) {
         state[0] = e;
         state[1] = de;
         state[2] = d2e; 
         state[3] = errSum; 
+        state[4] = dt; 
     }
 
 } typedef state;

@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include <random>
 #include <condition_variable>
 #include <mutex>
 #include <bits/stdc++.h>
@@ -37,8 +38,8 @@ namespace TATS {
 
         PID* _pids[NUM_SERVOS];
 
-        void _sleep();
-        void _syncEnv();
+        void _sleep(double rate=5);
+        void _syncEnv(double rate=5);
         void _resetEnv(); // Resets servos and re-inits PID's. Call only once manually.
 
         control::Wire* _wire;
@@ -53,7 +54,7 @@ namespace TATS {
         void setDisabled(bool servos[NUM_SERVOS]);
         void getDisabled(bool servos[NUM_SERVOS]);
         Utility::RD reset();  // Steps with actions and waits for Env to update, then returns the current state.
-        Utility::SR step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale = true);  // Steps with actions and waits for Env to update, then returns the current state.
+        Utility::SR step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale = true, double rate = 5);  // Steps with actions and waits for Env to update, then returns the current state.
         void update(Utility::ED eventDataArray[NUM_SERVOS]); // Called from another thread to update state variables
     };
 };

@@ -151,6 +151,9 @@ int main(int argc, char** argv)
 
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
+        if (!config->trainMode) {
+            pidAutoTuner->eval();
+        }
         
         // If autotuning is to be performed in this process
         if (config->multiProcess) {
@@ -180,8 +183,7 @@ int main(int argc, char** argv)
         }
         
     } else {
-        
-        
+    
         // Create the SAC agent for training
         SACAgent* pidAutoTunerChild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
@@ -200,7 +202,6 @@ int main(int argc, char** argv)
         SharedBuffer* trainingBuffer = segment.find<SharedBuffer>("SharedBuffer").first;
         ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer);
         sharedString *s = segment.find_or_construct<sharedString>("SharedString")("", segment.get_segment_manager());
-        
 
         // Setup signal mask
         struct sigaction sig_action;
@@ -278,12 +279,6 @@ int main(int argc, char** argv)
 
                         TrainBuffer batch = replayBuffer->ere_sample(batchSize, startingRange);
                         pidAutoTunerChild->update(batch.size(), &batch);
-
-                        std::cout << "Training update:" << std::endl;
-                        std::cout << "Buffer Size: " << std::to_string(replayBuffer->size()) << std::endl;
-                        std::cout << "Starting range: " << std::to_string(startingRange) << std::endl;
-                        std::cout << "Current steps: " << std::to_string(currentSteps) << std::endl;
-
                     }
 
                     // Write values to shared memory for parent to read
@@ -366,11 +361,15 @@ static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* co
     sig_value1 = sig_number;
 }
 
+// TODO: Seperate panTiltThread into a trainManager and servoControl class....
 void panTiltThread(Utility::param* parameters) {
     using namespace TATS;
     using namespace Utility;
     std::mt19937 eng{ std::random_device{}() };
     torch::Device device(torch::kCPU);
+    std::default_random_engine _generator;
+    std::normal_distribution<double> _distribution;
+
     auto options = torch::TensorOptions().dtype(torch::kDouble).device(device);
     Utility::Config* config = new Utility::Config();
 
@@ -382,11 +381,11 @@ void panTiltThread(Utility::param* parameters) {
     // Train records
     unsigned int totalSteps = 0;
     int numEpisodes[NUM_SERVOS] = { 0 };
-    double episodeAverageRewards[NUM_SERVOS] = { 0.0 };
+    double emaEpisodeRewardSum[NUM_SERVOS] = { 0.0 };
     double stepAverageRewards[NUM_SERVOS] = { 0.0 };
-    double episodeAverageSteps[NUM_SERVOS] = { 0.0 };
-    double episodeRewards[NUM_SERVOS] = { 0.0 };
-    double episodeSteps[NUM_SERVOS] = { 0.0 };
+    double emaEpisodeStepSum[NUM_SERVOS] = { 0.0 };
+    double totalEpisodeRewards[NUM_SERVOS] = { 0.0 };
+    double totalEpisodeSteps[NUM_SERVOS] = { 0.0 };
     int episodeEndCounts = 0.0;
 
     // training state variables
@@ -480,7 +479,7 @@ void panTiltThread(Utility::param* parameters) {
                 try {
 
                     if (config->trainMode) {
-
+                        
                         // If we are alternating servos
                         if (config->alternateServos) {
 
@@ -526,24 +525,41 @@ void panTiltThread(Utility::param* parameters) {
                         }
                     }
 
-                    stepResults = servos->step(predictedActions);		
+                    // Vary env sync rate to simulate slowdowns, high latency configurations, and other unique systems.
+                    double rate = static_cast<double>(config->updateRate);
+                    if (config->trainMode) {
+                        rate -= 1.0;
+                        _distribution = std::normal_distribution<double>(0.5, 0.1); 
+                        rate = std::clamp<double>(2.0 * rate * _distribution(_generator) + 1.0, 1.0, 2.0 * rate + 1.0); 
+                    }
+
+                    stepResults = servos->step(predictedActions, true, rate);		
+                    
                     totalSteps = (totalSteps + 1) % INT_MAX; 
 
                 } catch(const std::exception& e) {
                     std::cerr << e.what() << '\n';
                     throw std::runtime_error("cannot step with servos");
                 }
+                
+                bool reset = false;
+                bool updated = false;
+                for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
-                if (config->trainMode) {
+                    trainData[servo] = stepResults.servos[servo];
+                    currentState[servo] = stepResults.servos[servo].nextState;
                     
-                    bool updated = false;
-                    for (int servo = 0; servo < NUM_SERVOS; servo++) {
-
-                        trainData[servo] = stepResults.servos[servo];
-                        
+                    if (config->trainMode) {
                         // If servo is disabled, null record
                         if (trainData[servo].empty) {
                             continue;
+                        }
+
+                        if (config->episodeEndCap) {
+                            if (totalEpisodeSteps[servo] >= config->maxStepsPerEpisode - 1) {
+                                stepResults.servos[servo].done = true;
+                                reset = true;
+                            }
                         }
 
                         trainData[servo].currentState = currentState[servo];
@@ -562,57 +578,65 @@ void panTiltThread(Utility::param* parameters) {
                         if (!trainData[servo].done) {
 
                             // Average reward in a step
-                            episodeSteps[servo] += 1.0;						
-                            episodeRewards[servo] += trainData[servo].reward;
+                            totalEpisodeSteps[servo] += 1.0;						
+                            totalEpisodeRewards[servo] += trainData[servo].reward;
                             stepAverageRewards[servo] = (trainData[servo].reward - stepAverageRewards[servo]) * emaWeight + stepAverageRewards[servo];
 
                             std::string stepData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
-                                                 (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
-                                                 + std::to_string(totalSteps) + ','
-                                                 + std::to_string(trainData[servo].reward) + ',' 
-                                                 + std::to_string(stepAverageRewards[servo]);
+                                                (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
+                                                + std::to_string(totalSteps) + ','
+                                                + std::to_string(trainData[servo].reward) + ',' 
+                                                + std::to_string(stepAverageRewards[servo]);
 
                             appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[1], stepData);
                         }
                         else {
                             
                             // If we are alternating, prevent premature ending of episode next time around
-                            if (config->alternateServos && episodeSteps[servo] >= static_cast<double>(config->alternateSteps)) {
+                            if (config->alternateServos && totalEpisodeSteps[servo] >= static_cast<double>(config->alternateSteps)) {
                                 config->alternateSteps *= 2;
                             }
 
                             numEpisodes[servo] += 1;
-                            episodeAverageRewards[servo] = (episodeRewards[servo] - episodeAverageRewards[servo]) * emaWeight + episodeAverageRewards[servo];
-                            episodeAverageSteps[servo] = (episodeSteps[servo] - episodeAverageSteps[servo]) * emaWeight + episodeAverageSteps[servo];
+                            emaEpisodeRewardSum[servo] = (totalEpisodeRewards[servo] - emaEpisodeRewardSum[servo]) * emaWeight + emaEpisodeRewardSum[servo];
+                            emaEpisodeStepSum[servo] = (totalEpisodeSteps[servo] - emaEpisodeStepSum[servo]) * emaWeight + emaEpisodeStepSum[servo];
 
                             // Log Episode averages
                             std::string episodeData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
                                                     (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
                                                     + std::to_string(numEpisodes[servo]) + ','
-                                                    + std::to_string(episodeRewards[servo]) + ','
-                                                    + std::to_string(episodeSteps[servo]) + ','
-                                                    + std::to_string(episodeAverageRewards[servo]) + ','
-                                                    + std::to_string(episodeAverageSteps[servo]);
+                                                    + std::to_string(totalEpisodeRewards[servo] / totalEpisodeSteps[servo]) + ','
+                                                    + std::to_string(totalEpisodeSteps[servo]) + ','
+                                                    + std::to_string(emaEpisodeRewardSum[servo] / emaEpisodeStepSum[servo]) + ','
+                                                    + std::to_string(emaEpisodeStepSum[servo]);
                             
                             appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[0], episodeData);
 
-                            episodeSteps[servo] = 0.0;
-                            episodeRewards[servo] = 0.0;
+                            totalEpisodeSteps[servo] = 0.0;
+                            totalEpisodeRewards[servo] = 0.0;
                         }
+
+                        if (reset) {
+                            reset = false;
+                            goto reset;
+                        }        
                     }
 
-                    // Inform child process to start training
-                    if (config->multiProcess) {
-                        if (!isTraining && replayBuffer->size() > config->minBufferSize) {
-                            std::cout << "Sending train signal..." << std::endl;
-                            isTraining = true;
-                            kill(parameters->pid, SIGUSR1);
-                        } 
-                    } else if (!isTraining && replayBuffer->size() > config->minBufferSize) {
-                        // Inform autotune thread start training 
-                        pthread_mutex_lock(&trainLock);
-                        pthread_cond_broadcast(&trainCond);
-                        pthread_mutex_unlock(&trainLock);
+
+                    if (config->trainMode) {
+                        // Inform child process to start training
+                        if (config->multiProcess) {
+                            if (!isTraining && replayBuffer->size() > config->minBufferSize) {
+                                std::cout << "Sending train signal..." << std::endl;
+                                isTraining = true;
+                                kill(parameters->pid, SIGUSR1);
+                            } 
+                        } else if (!isTraining && replayBuffer->size() > config->minBufferSize) {
+                            // Inform autotune thread start training 
+                            pthread_mutex_lock(&trainLock);
+                            pthread_cond_broadcast(&trainCond);
+                            pthread_mutex_unlock(&trainLock);
+                        }
                     }
                 }
             }

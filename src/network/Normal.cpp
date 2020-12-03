@@ -24,7 +24,6 @@ torch::Tensor Normal::rsample() {
 
 torch::Tensor Normal::log_prob(torch::Tensor value)
 {
-
     torch::Tensor var = torch::pow(scale, 2.0);
     torch::Tensor log_scale = torch::log(scale);
 

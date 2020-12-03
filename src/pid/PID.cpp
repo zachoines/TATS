@@ -47,18 +47,7 @@ double PID::update(double input, double sleep) {
     // Delta time
     _currTime = std::chrono::steady_clock::now();
     _deltTime = _currTime - _prevTime;
-
-    _deltaTime = double(_deltTime.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den;
-
-    // Delay execution to rate
-    if (sleep > _deltaTime * 1000.0) {
-        double diff = sleep - _deltaTime;
-        _prevTime = _currTime;
-        Utility::msleep(static_cast<long>(diff));
-        _currTime = std::chrono::steady_clock::now();
-        _deltTime = _currTime - _prevTime;
-        _deltaTime = double(_deltTime.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den;
-    }
+    _deltaTime = std::clamp<double>(double(_deltTime.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
 
     // Error
     double error = input - _setpoint;
@@ -141,7 +130,7 @@ state PID::getState(bool normalize)
     state g;
 
     // Delta time
-    // g.dt = _deltaTime;
+    g.dt = _deltaTime;
 
     // Error
     g.e = _cP;
@@ -149,11 +138,14 @@ state PID::getState(bool normalize)
     // Delta error
     g.de = _deltaError;
 
-    // Integral of error with respect to time
-    // g.i = _cI;
+    // Second order error diff
+    g.d2e = _d2Error;
 
     // Sum of error
     g.errSum = _sumError;
+
+    // Integral of error with respect to time
+    // g.i = _cI;
 
     // Delta input
     // g.din = _deltaInput;
@@ -161,23 +153,18 @@ state PID::getState(bool normalize)
     // Negative Derivative of input with respect to time.
     // g.d = -(_cD * _deltaInput);
 
-    g.d2e = _d2Error;
 
     // Normalize and scale datapoints. 
     if (normalize) {
         double errorBound = 2.0 * _setpoint;
         g.e = Utility::normalize(g.e, -errorBound, errorBound);
         g.de = Utility::normalize(g.de, -errorBound, errorBound);
+        g.d2e = Utility::normalize(g.d2e, -errorBound, errorBound);
         // g.din = Utility::normalize(g.din, -2.0 * errorBound, 2.0 * errorBound);
         // g.i = Utility::normalize(g.i, -_windup_guard, _windup_guard);
         // g.d = Utility::normalize(g.d, -2.0 * errorBound, 2.0 * errorBound);
         g.errSum = std::clamp<double>(Utility::normalize(g.errSum, -errorBound, errorBound), -1.0, 1.0);
-        g.d2e = Utility::normalize(g.d2e, -errorBound, errorBound);
-
-        // g.e = g.e / errorBound;
-        // g.de = g.de / errorBound;
-        // g.errSum = std::clamp<double>(g.errSum / errorBound, -1.0, 1.0);
-        // g.d2e = g.d2e / errorBound;
+        g.dt = std::clamp<double>(_deltaTime, 0, 1.0);
     }
 
     return g;
