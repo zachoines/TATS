@@ -11,11 +11,12 @@
 #include <boost/interprocess/allocators/allocator.hpp>
 #include <boost/interprocess/containers/string.hpp>
 #include "../pid/PID.h"
+#include "../servo/ServoKit.h"
 
 namespace Utility {
     #define NUM_SERVOS 2
-    #define NUM_INPUT 7
-    #define NUM_ACTIONS 1
+    #define NUM_INPUT 8
+    #define NUM_ACTIONS 3
     #define NUM_HIDDEN 256
 
     
@@ -50,8 +51,9 @@ namespace Utility {
 
         void getStateArray(double state[NUM_INPUT]) {
             pidStateData.getStateArray(state); // first 'n' elems filled
-            state[5] = Utility::normalize((lastAngle - currentAngle) / 2.0, -1.0, 1.0); // keep between -1 and 1
-            state[6] = currentAngle;
+            state[5] = (lastAngle - currentAngle) / 2.0; // keep between -1 and 1
+            state[6] = currentAngle; 
+            state[7] = obj / 2.0;
         } 
 
     } typedef SD;
@@ -128,6 +130,7 @@ namespace Utility {
         double defaultGains[3];
 
         // Servo options
+        struct control::Servo servoConfigurations[NUM_SERVOS];
         bool invertServo[NUM_SERVOS];
         bool disableServo[NUM_SERVOS];
         double resetAngles[NUM_SERVOS];
@@ -163,21 +166,26 @@ namespace Utility {
             maxStepsPerEpisode(500),             // Max number of steps in an episode
 
             batchSize(256),                      // Network batch size.
-            initialRandomActions(false),         // Enable random actions.
+            initialRandomActions(true),          // Enable random actions.
             numInitialRandomActions(5000),       // Number of random actions taken.
-            trainMode(false),                    // When autotuning is on, 'false' means network test mode.
+            trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
 
             recheckFrequency(15),                // Num frames in-between revalidations of t
             lossCountMax(2),                     // Max number of rechecks before episode is considered over
-            updateRate(7),                       // Servo updates, update commands per second
+            updateRate(5),                       // Servo updates, update commands per second
             trainRate(1.0),					     // Network updates, sessions per second
             
-            disableServo({ false, false }),      // Disable the { Y, X } servos
+            disableServo({ false, true }),       // Disable the { Y, X } servos
             invertServo({ false, false }),       // Flip output angles { Y, X } servos
             resetAngles({ 0.0, 0.0 }),           // Angle when reset
-            anglesHigh({ 60.0, 60.0 }),          // Max allowable output angle to servos
-            anglesLow({ -60.0, -60.0 }),         // Min allowable output angle to servos
+            anglesHigh({ 70.0, 70.0 }),          // Max allowable output angle to servos
+            anglesLow({ -70.0, -70.0 }),         // Min allowable output angle to servos
+
+            servoConfigurations({                // Hardware settings for individual servos
+                { 0, -98.5, 98.5, 0.553, 2.520, 0.0 }, 
+                { 1, -99.0, 99.0, 0.750, 2.250, 0.0 } 
+            }),
             
             alternateServos(false),              // Whether to alternate servos at the start of training
             alternateSteps(100),                 // Steps per servo (will increase exponentially as training proggresses (doubles threshold each time its met)). Cut short by 'alternateEpisodeEndCap'
@@ -189,13 +197,12 @@ namespace Utility {
             draw(true),						     // Draw target bounding box and center on frame
             showVideo(true),					 // Show camera feed
             cascadeDetector(false),				 // Use faster cascade face detector
-            usePIDs(false),                      // Network outputs PID gains, or network outputs angle directly
-            actionHigh(60.0),                    // Max output to of policy network's logits
-            actionLow(-60.0),                    // Min output to of policy network's logits        
-            pidOutputHigh(60.0),                 // Max output allowed for PID's
-            pidOutputLow(-60.0),				 // Min output allowed for PID's
-            // defaultGains({ 0.05, 0.04, 0.001 }), // Gains fed to pids when initialized             
-            defaultGains({ 1.0, 1.0, 1.0 }), 
+            usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
+            actionHigh(0.1),                     // Max output to of policy network's logits
+            actionLow(0.0),                      // Min output to of policy network's logits        
+            pidOutputHigh(70.0),                 // Max output allowed for PID's
+            pidOutputLow(-70.0),				 // Min output allowed for PID's
+            defaultGains({ 1.0, 1.0, 1.0 }),     // Gains fed to pids when initialized             
             
             dims({ 720, 720 }),                  // Dimensions of frame
             maxFrameRate(120),                   // Camera capture rate

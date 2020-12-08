@@ -5,7 +5,7 @@ PID::PID(double kP, double kI, double kD, double min, double max, double setpoin
     _kP = kP;
     _kI = kI;
     _kD = kD;
-
+ 
     _init_kP = kP;
     _init_kI = kI;
     _init_kD = kD;
@@ -65,12 +65,7 @@ double PID::update(double input, double sleep) {
     (_deltaTime > 0.0) ? (_cD = (1.0 / _deltaTime)) : (_cD = 0.0);
 
     // Integral windup gaurd
-    if (_cI < -_windup_guard) {
-        _cI = -_windup_guard;
-    }
-    else if (_cI > _windup_guard) {
-        _cI = _windup_guard;
-    }
+    _cI = std::clamp<double>(_cI, -_windup_guard, _windup_guard);
 
     // save previous time and error
     _d2Error = error - ( 2.0 * _prevError1 ) + _prevError2;
@@ -83,14 +78,7 @@ double PID::update(double input, double sleep) {
     double output = (_kP * _cP) + (_cI) - (_kD * _cD * _deltaInput);
 
     // Enforce PID gain bounds
-    if (output > _max) {
-        output = _max;
-    }
-    else if (output < _min) {
-        output = _min;
-    }
-
-    return output;
+    return std::clamp<double>(output, _min, _max);
 }
 
 void PID::getPID(double w[3])
@@ -110,20 +98,20 @@ double PID::getWindupGaurd()
     return _windup_guard;
 }
 
-std::vector<double> PID::getState() {
-    double errorBound = 2.0 * _setpoint;
-    std::vector<double> stateData;
+// std::vector<double> PID::getState() {
+//     double errorBound = 2.0 * _setpoint;
+//     std::vector<double> stateData;
     
-    stateData.push_back(Utility::normalize(_cP, -errorBound, errorBound));
-    stateData.push_back(Utility::normalize(_cI, -_windup_guard, _windup_guard));
-    stateData.push_back(Utility::normalize(-(_cD * _deltaInput), -2.0 * errorBound, 2.0 * errorBound));
-    stateData.push_back(Utility::normalize(_deltaInput, -2.0 * errorBound, 2.0 * errorBound));
-    stateData.push_back(_deltaTime);
-    stateData.push_back(Utility::normalize(_deltaError, -2.0 * errorBound, 2.0 * errorBound));
-    stateData.push_back(std::clamp<double>(Utility::normalize(_sumError, -errorBound, errorBound), -1.0, 1.0));
+//     stateData.push_back(Utility::normalize(_cP, -errorBound, errorBound));
+//     stateData.push_back(Utility::normalize(_cI, -_windup_guard, _windup_guard));
+//     stateData.push_back(Utility::normalize(-(_cD * _deltaInput), -2.0 * errorBound, 2.0 * errorBound));
+//     stateData.push_back(Utility::normalize(_deltaInput, -2.0 * errorBound, 2.0 * errorBound));
+//     stateData.push_back(_deltaTime);
+//     stateData.push_back(Utility::normalize(_deltaError, -2.0 * errorBound, 2.0 * errorBound));
+//     stateData.push_back(std::clamp<double>(Utility::normalize(_sumError, -errorBound, errorBound), -1.0, 1.0));
 
-    return stateData;
-}
+//     return stateData;
+// }
 
 state PID::getState(bool normalize)
 {
@@ -144,15 +132,6 @@ state PID::getState(bool normalize)
     // Sum of error
     g.errSum = _sumError;
 
-    // Integral of error with respect to time
-    // g.i = _cI;
-
-    // Delta input
-    // g.din = _deltaInput;
-
-    // Negative Derivative of input with respect to time.
-    // g.d = -(_cD * _deltaInput);
-
 
     // Normalize and scale datapoints. 
     if (normalize) {
@@ -160,11 +139,8 @@ state PID::getState(bool normalize)
         g.e = Utility::normalize(g.e, -errorBound, errorBound);
         g.de = Utility::normalize(g.de, -errorBound, errorBound);
         g.d2e = Utility::normalize(g.d2e, -errorBound, errorBound);
-        // g.din = Utility::normalize(g.din, -2.0 * errorBound, 2.0 * errorBound);
-        // g.i = Utility::normalize(g.i, -_windup_guard, _windup_guard);
-        // g.d = Utility::normalize(g.d, -2.0 * errorBound, 2.0 * errorBound);
-        g.errSum = std::clamp<double>(Utility::normalize(g.errSum, -errorBound, errorBound), -1.0, 1.0);
-        g.dt = std::clamp<double>(_deltaTime, 0, 1.0);
+        g.errSum = std::clamp<double>(Utility::normalize(g.errSum, -_windup_guard, _windup_guard), -1.0, 1.0);
+        g.dt = std::clamp<double>(_deltaTime, 0.0, 1.0);
     }
 
     return g;

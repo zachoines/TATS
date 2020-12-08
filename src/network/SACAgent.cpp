@@ -304,7 +304,6 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         torch::Tensor actions_t = torch::from_blob(actions, { batchSize, _num_actions }, optionsDouble);
         torch::Tensor rewards_t = torch::from_blob(rewards, { batchSize }, optionsDouble);
         torch::Tensor dones_t = torch::from_blob(dones, { batchSize }, optionsDouble);
-
         
         // Sample from Policy
         torch::Tensor current = _policy_net->sample(states_t, batchSize);
@@ -318,7 +317,6 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
 
         // Update alpha temperature
         if (_self_adjusting_alpha) {
-
             torch::Tensor alpha_loss = (-1.0 * _log_alpha * (log_pi_t + _target_entropy).detach()).mean();
             _alpha_optimizer->zero_grad();
             alpha_loss.backward();
@@ -345,79 +343,87 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         torch::Tensor target_value_func = q_value_predictions - _alpha * log_pi_t;
         torch::Tensor value_loss = 0.5 * torch::mean(torch::pow(value_predictions - target_value_func.detach(), 2.0));
         
-        // Training the policy
-        // torch::Tensor policy_loss = (_alpha * log_pi_t - torch::min(qf1_pi, qf2_pi)).mean();
-
-        // Determine policy advantage and calc loss
-        torch::Tensor advantage = torch::min(qf1_pi, qf2_pi) - value_predictions.detach();
-        torch::Tensor policy_loss = (_alpha * log_pi_t - advantage).mean();
-
-        // Policy Regularization
-        torch::Tensor mean_reg = 1e-3 * torch::mean(mean.sum(1, true).pow(2.0));
-        torch::Tensor std_reg = 1e-3 * torch::mean(std.sum(1, true).pow(2.0));
-
-        torch::Tensor actor_reg = mean_reg + std_reg;
-        policy_loss += actor_reg;
         
-        // Update Policy Network
-        if (pthread_mutex_lock(&_policyNetLock) == 0) {
-            _policy_net->optimizer->zero_grad();
-            policy_loss.backward();
-            torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 0.5);
-            _policy_net->optimizer->step();
-            pthread_mutex_unlock(&_policyNetLock);
+        torch::Tensor policy_loss;
+
+        // Training the policy
+        // Delay update of Target Value and Policy Networks
+        if (_current_update > _max_delay) {
+
+            policy_loss = (_alpha * log_pi_t - torch::min(qf1_pi, qf2_pi)).mean();
+
+            // Determine policy advantage and calc loss
+            // torch::Tensor advantage = torch::min(qf1_pi, qf2_pi) - value_predictions.detach();
+            // policy_loss = (_alpha * log_pi_t - advantage).mean();
+
+            // // Policy Regularization
+            // torch::Tensor mean_reg = 1e-3 * torch::mean(mean.sum(1, true).pow(2.0));
+            // torch::Tensor std_reg = 1e-3 * torch::mean(std.sum(1, true).pow(2.0));
+
+            // torch::Tensor actor_reg = mean_reg + std_reg;
+            // policy_loss += actor_reg;
+
+
+             // Update Policy Network
+            if (pthread_mutex_lock(&_policyNetLock) == 0) {
+                _policy_net->optimizer->zero_grad();
+                policy_loss.backward();
+                // torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 0.5);
+                _policy_net->optimizer->step();
+                pthread_mutex_unlock(&_policyNetLock);
+
+                // Copy over network params with averaging
+                _transfer_params_v2(*_value_network, *_target_value_network, true);
+            }
+            else {
+                pthread_mutex_unlock(&_policyNetLock);
+                throw std::runtime_error("could not obtain lock");
+            }
         }
-        else {
-            pthread_mutex_unlock(&_policyNetLock);
-            throw std::runtime_error("could not obtain lock");
-        }
+       
 
         // Update Q-Value networks
         _q_net1->optimizer->zero_grad();
         q_value_loss1.backward();
-        torch::nn::utils::clip_grad_norm_(_q_net1->parameters(), 0.5);
+        // torch::nn::utils::clip_grad_norm_(_q_net1->parameters(), 0.5);
         _q_net1->optimizer->step();
 
         _q_net2->optimizer->zero_grad();
         q_value_loss2.backward();
-        torch::nn::utils::clip_grad_norm_(_q_net2->parameters(), 0.5);
+        // torch::nn::utils::clip_grad_norm_(_q_net2->parameters(), 0.5);
         _q_net2->optimizer->step();
 
         // Update Value network
         _value_network->zero_grad();
         value_loss.backward();
-        torch::nn::utils::clip_grad_norm_(_value_network->parameters(), 0.5);
+        // torch::nn::utils::clip_grad_norm_(_value_network->parameters(), 0.5);
         _value_network->optimizer->step();
         
-        // Delay update of Target Value and Policy Networks
-        if (_current_update >= _max_delay) {
+        // Update counters
+        if (_current_update > _max_delay) {
+            
+            // Write loss info to log
+            std::string episodeData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
+                    (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
+                    + std::to_string(_total_update) + ','
+                    + std::to_string(policy_loss.item().toDouble()) + ','
+                    + std::to_string(value_loss.item().toDouble()) + ','
+                    + std::to_string(q_value_loss1.item().toDouble()) + ','
+                    + std::to_string(q_value_loss2.item().toDouble()) + ','
+                    + std::to_string(_alpha.item().toDouble());
+
+            Utility::appendLineToFile(_lossPath, episodeData);
+
             _current_update = 0;
-
-            // Copy over network params with averaging
-            _transfer_params_v2(*_value_network, *_target_value_network, true);
-
             if (_current_save_delay >= _max_save_delay) {
                 _current_save_delay = 0;
                 save_checkpoint(_total_update);
             }	
         }
 
-        // Update counters
         _current_save_delay++;
         _current_update++;
         _total_update++;
-
-        // Write loss info to log
-        std::string episodeData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
-                (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
-                + std::to_string(_total_update) + ','
-                + std::to_string(policy_loss.item().toDouble()) + ','
-                + std::to_string(value_loss.item().toDouble()) + ','
-                + std::to_string(q_value_loss1.item().toDouble()) + ','
-                + std::to_string(q_value_loss2.item().toDouble()) + ','
-                + std::to_string(_alpha.item().toDouble());
-
-            Utility::appendLineToFile(_lossPath, episodeData);
 
     } catch (const c10::Error& e) {   
         throw std::runtime_error("could not update model: " + e.msg());

@@ -83,6 +83,33 @@ std::string logs[2] = {
 static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* context);
 volatile sig_atomic_t sig_value1;
 
+float Brightness;
+float Contrast ;
+float Saturation;
+float Gain;
+
+int B;
+int C;
+int S;
+int G;
+
+char winName[20]="Live";
+cv::Mat testImage;
+
+
+void onTrackbar_changed(int, void*)
+{
+    Brightness =float(B)/100;
+    Contrast   =float(C)/100;
+    Saturation =float(S)/100;
+    Gain       =float(G)/100;
+
+    camera->set(cv::CAP_PROP_BRIGHTNESS,Brightness);
+    camera->set(cv::CAP_PROP_CONTRAST, Contrast);
+    camera->set(cv::CAP_PROP_SATURATION, Saturation);
+    camera->set(cv::CAP_PROP_GAIN, Gain);
+
+}
 
 int main(int argc, char** argv)
 {
@@ -148,6 +175,48 @@ int main(int argc, char** argv)
         camera = new cv::VideoCapture(0, cv::CAP_ANY);
         camera->set(3, 1280);
         camera->set(4, 720);
+
+
+        using namespace cv;
+
+        Brightness = camera->get(cv::CAP_PROP_BRIGHTNESS);
+        Contrast   = camera->get(cv::CAP_PROP_CONTRAST );
+        Saturation = camera->get(cv::CAP_PROP_SATURATION);
+        Gain       = camera->get(cv::CAP_PROP_GAIN);
+
+        // camera->set(cv::CAP_PROP_AUTOFOCUS, 1);
+        camera->set(cv::CAP_PROP_BRIGHTNESS,Brightness / 3.0);
+        camera->set(cv::CAP_PROP_CONTRAST, Contrast);
+        camera->set(cv::CAP_PROP_SATURATION, Saturation);
+        camera->set(cv::CAP_PROP_GAIN, Gain);
+
+        // namedWindow(winName);
+
+        // B=int(Brightness*100);
+        // C=int(Contrast*100);
+        // S=int(Saturation*100);
+        // G=int(Gain*100);
+
+        // createTrackbar( "Brightness",winName, &B, 100, onTrackbar_changed );
+        // createTrackbar( "Contrast",winName, &C, 100,onTrackbar_changed );
+        // createTrackbar( "Saturation",winName, &S, 100,onTrackbar_changed);
+        // createTrackbar( "Gain",winName, &G, 100,onTrackbar_changed);
+
+        // int i=0;
+        // char name[10];
+        // for(;;)
+        // {
+
+        //     testImage = GetImageFromCamera(camera);; // get a new frame from camera
+        //     imshow(winName, testImage);
+        //     char c=waitKey(30);
+
+        //     if(c=='s') {
+        //         sprintf(name,"%d.jpg",i++);
+        //         imwrite(name,testImage);
+        //     }
+        //     if( c== 27) break;
+        // }
 
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
@@ -766,6 +835,7 @@ void detectThread(Utility::param* parameters)
             try {
                 // crop the image to generate equal setpoints for PIDs
                 frame = GetImageFromCamera(camera);
+
                 int cropSize = config->dims[0];
                 int offsetW = (frame.cols - cropSize) / 2;
                 int offsetH = (frame.rows - cropSize) / 2;
@@ -776,11 +846,6 @@ void detectThread(Utility::param* parameters)
                 std::cerr << e.what();
                 camera->release();
                 throw std::runtime_error("could not get image from camera");
-            }
-
-            if (frame.empty())
-            {
-                continue;
             }
 
             if (!useTracking) {

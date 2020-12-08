@@ -168,15 +168,14 @@ namespace Utility {
 		if (alt) {
 
 			if (done) {
-				r1 = -1.0;
-			} 
-			
-			// // Reward R2
-			// if (errorNewScaled <= errorThreshold) {
-			// 	// r2 += 0.25;
+				return -1.0;
+			}
+			// } else if (errorNewScaled <= errorThreshold) {
+			// 	r1 = 0.0;
 			// }
 			
 			r2 += Utility::mapOutput(1.0 - errorNewScaled, 0.0, 1.0, -0.50, 0.50);
+			// r2 += 1.0 - errorNewScaled, 0.0;
 
 			// Rewards R3
 			bool direction_old = false;
@@ -231,22 +230,8 @@ namespace Utility {
 
 				}
 
-				// Frame center has overshot target. Old to the right and new to the left, situation #3
-				else if (direction_old && !direction_new) {
-
-					double error_old_corrected = std::fabs(std::fabs(targetCenterOld) - center);
-					double error_new_corrected = std::fabs(std::fabs(targetCenterNew) - center);
-					double difference = std::fabs(error_new_corrected - error_old_corrected);
-					double reward = difference / center;
-
-					if (error_old_corrected > error_new_corrected) {  // If move has resulted in a marginally lower error (closer to center)
-						r3 = reward;
-					}
-					else {
-						r3 = -reward;
-					}
-				}
-				else { // old left and new right, situation #4
+				// Frame center has overshot target. Old is oposite sides of center to new, situation #3
+				else  { 
 
 					double error_old_corrected = std::fabs(std::fabs(targetCenterOld) - center);
 					double error_new_corrected = std::fabs(std::fabs(targetCenterNew) - center);
@@ -262,17 +247,20 @@ namespace Utility {
 				}
 			}
 
-			return (w1 * r1) + (w2 * r2) + (w3 * r3);
+			return (w2 * r2) + (w3 * r3);
 	
 		} else {
 			
+			if ( done ) { return  -1.0; }
+			
 			// Another varient with only negative rewards
-			if (errorNewScaled < threshold) {
-				r1 = 0.0; 
-			}
-			else {
-				r1 = threshold - errorNewScaled;
-			}
+			// if (errorNewScaled < errorThreshold) {
+			// 	r1 = 0.0;
+			// } else {
+			// 	r1 = errorThreshold - errorNewScaled;
+			// }
+
+			r1 = -errorNewScaled;
 
 			if (errorNewScaled <= errorOldScaled) {
 				r2 = 0.0;
@@ -282,8 +270,7 @@ namespace Utility {
 			}
 			
 			// Punish done, scale and clamp from -1 to 1
-			return std::clamp<double>((w1 * r1) + (w2 * r2) + ( done ? -1.0 : 0.0), -3.0, 0.0);
-	
+			return std::clamp<double>((w1 * r1) + (w2 * r2), -1.0, 0.0);	
 		}	
 	}
 

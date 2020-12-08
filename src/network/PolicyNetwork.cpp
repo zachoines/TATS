@@ -61,7 +61,6 @@ torch::Tensor PolicyNetwork::forward(torch::Tensor state, int batchSize, bool ev
     X = torch::relu(linear1->forward(state));
     X = torch::relu(linear2->forward(X)); 
     mean = mean_Linear->forward(X);
-
     log_std = torch::tanh(log_std_linear->forward(X));
     log_std = log_std_min + 0.5 * (log_std_max - log_std_min) * (log_std + 1.0);
 
@@ -87,3 +86,35 @@ torch::Tensor PolicyNetwork::sample(torch::Tensor state, int batchSize, double e
     log_probs = log_probs - torch::log(1.0 - torch::pow(action, 2.0) + epsilon);
     return torch::cat({ { action }, { log_probs }, { torch::tanh(mean) }, { std }, { z } }, 0);
 }
+
+// torch::Tensor PolicyNetwork::forward(torch::Tensor state, int batchSize, bool eval) {
+//     torch::Tensor X, mean, log_std, test;
+
+//     X = torch::relu(linear1->forward(state));
+//     X = torch::relu(linear2->forward(X)); 
+//     mean = mean_Linear->forward(X);
+//     log_std = log_std_linear->forward(X);
+//     log_std = torch::clamp(log_std, log_std_min, log_std_max);
+
+//     return torch::cat({ { mean }, { log_std } }, 0);
+// }
+
+
+// torch::Tensor PolicyNetwork::sample(torch::Tensor state, int batchSize, double epsilon, bool eval) {
+
+//     at::Tensor result = this->forward(state, batchSize, eval);
+//     at::Tensor reshapedResult = result.view({ 2, batchSize, num_actions });
+
+//     torch::Tensor mean = reshapedResult[0];
+//     torch::Tensor log_std = reshapedResult[1];
+//     torch::Tensor std = torch::exp(log_std);
+                                                                                                                  
+//     Normal normal = Normal(mean, std); 
+//     torch::Tensor z = normal.rsample(); // Reparameterization
+//     torch::Tensor action = torch::tanh(z);
+//     // torch::Tensor log_probs = normal.log_prob(z, log_std, mean);
+//     torch::Tensor log_probs = normal.log_prob(z);
+
+//     log_probs = log_probs - torch::log(1.0 - torch::pow(action, 2.0) + epsilon);
+//     return torch::cat({ { action }, { log_probs }, { torch::tanh(mean) }, { std }, { z } }, 0);
+// }

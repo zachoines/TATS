@@ -40,7 +40,7 @@ class PID
         
         // Get current internal variable state. Call after update().
         state getState(bool normalize); 
-        std::vector<double> getState(); // Default normalized
+        // std::vector<double> getState(); // Default normalized
 
     private:
         double _max;

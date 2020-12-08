@@ -10,12 +10,21 @@ namespace control {
         Contains defaults which fit to most servos
     */
     struct Servo {
-        int servoNum = -1;
-        double minAngle = -90;
-        double maxAngle = 90;
-        double minMs = 1.0;
-        double maxMs = 2.0;
-        double resetAngle = 0.0;
+        int servoNum;
+        double minAngle;
+        double maxAngle;
+        double minMs;
+        double maxMs;
+        double resetAngle;
+        Servo() { }
+        Servo(int servoNum, double minAngle, double maxAngle, double minMs, double maxMs, double resetAngle) {
+            this->servoNum = servoNum;
+            this->minAngle = minAngle;
+            this->maxAngle = maxAngle;
+            this->minMs = minMs;
+            this->maxMs = maxMs;
+            this->resetAngle = resetAngle;
+        } 
     };
 
     class ServoKit

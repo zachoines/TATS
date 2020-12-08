@@ -25,14 +25,7 @@ namespace TATS {
             _currentAngles[servo] = _config->resetAngles[servo];
             _lastAngles[servo] = _config->resetAngles[servo];
 
-            _servos->initServo({
-                .servoNum = servo,
-                .minAngle = -98.5, 
-                .maxAngle = 98.5,
-                .minMs = 0.553,
-                .maxMs = 2.520,
-                .resetAngle = _resetAngles[servo]
-            });
+            _servos->initServo(_config->servoConfigurations[servo]);
         }
     }
 
@@ -106,17 +99,27 @@ namespace TATS {
 
     bool Env::isDone()
     {
-        bool done = true;
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             if (_disableServo[servo]) {
                 continue;
             }
             else {
-                done = _currentData[servo].done;
+                return _currentData[servo].done;
             }
         } 
 
-        return done;
+        return true;
+        // bool done = true;
+        // for (int servo = 0; servo < NUM_SERVOS; servo++) {
+        //     if (_disableServo[servo]) {
+        //         continue;
+        //     }
+        //     else {
+        //         done = _currentData[servo].done;
+        //     }
+        // } 
+
+        // return done;
     }
 
     void Env::_resetEnv()
@@ -205,7 +208,7 @@ namespace TATS {
                 throw std::runtime_error("State must represent a complete transition");
             }
             else {
-                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.001, true);
+                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, true);
             }
 
             // Fill out the step results
