@@ -16,8 +16,6 @@ QNetwork::QNetwork(int num_inputs, int num_actions, int hidden_size, double init
     linear1 = register_module("linear1", torch::nn::Linear(num_inputs + num_actions, hidden_size));
     linear2 = register_module("linear2", torch::nn::Linear(hidden_size, hidden_size));
     linear3 = register_module("linear3", torch::nn::Linear(hidden_size, 1));
-    // lstm = register_module("lstm", torch::nn::LSTM(torch::nn::LSTMOptions(hidden_size, hidden_size).num_layers(2).dropout(0.2).batch_first(true)));
-    // dropout = register_module("dropout", torch::nn::Dropout(torch::nn::DropoutOptions().p(0.5)));
 
     torch::autograd::GradMode::set_enabled(false);
     torch::nn::init::xavier_uniform_(linear1->weight, 1.0);
@@ -46,18 +44,10 @@ QNetwork::~QNetwork()
 torch::Tensor QNetwork::forward(torch::Tensor state, torch::Tensor actions, int batchSize, bool eval)
 {
     torch::Tensor X;
-
-    // if (eval) {
-    X = torch::relu(linear1->forward(torch::cat({ state, actions }, 1)));
-    X = torch::relu(linear2->forward(X));
-    // X = std::get<0>(lstm->forward(X.view({ batchSize, 1, this->hidden_size }))).index({ torch::indexing::Slice(), -1 });
+    
+    X = torch::leaky_relu(linear1->forward(torch::cat({ state, actions }, 1)));
+    X = torch::leaky_relu(linear2->forward(X));
     X = linear3->forward(X);
-    /*}
-    else {
-        X = dropout->forward(torch::relu(linear1->forward(torch::cat({ state, actions }, 1))));
-        X = dropout->forward(torch::relu(linear2->forward(X)));
-        X = linear3->forward(X);
-    }*/
 
     return X;
 

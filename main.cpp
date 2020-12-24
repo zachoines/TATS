@@ -83,34 +83,6 @@ std::string logs[2] = {
 static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* context);
 volatile sig_atomic_t sig_value1;
 
-float Brightness;
-float Contrast ;
-float Saturation;
-float Gain;
-
-int B;
-int C;
-int S;
-int G;
-
-char winName[20]="Live";
-cv::Mat testImage;
-
-
-void onTrackbar_changed(int, void*)
-{
-    Brightness =float(B)/100;
-    Contrast   =float(C)/100;
-    Saturation =float(S)/100;
-    Gain       =float(G)/100;
-
-    camera->set(cv::CAP_PROP_BRIGHTNESS,Brightness);
-    camera->set(cv::CAP_PROP_CONTRAST, Contrast);
-    camera->set(cv::CAP_PROP_SATURATION, Saturation);
-    camera->set(cv::CAP_PROP_GAIN, Gain);
-
-}
-
 int main(int argc, char** argv)
 {
     
@@ -164,59 +136,23 @@ int main(int argc, char** argv)
         parameters->pid = pid;
 
         // Init camera 3280 x 2464
-        // std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1, format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
+        std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=30/1, format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
         // ! videobalance contrast=1.3 brightness=-.2 saturation=1.2
         // width=3280, height=2464
-        // std::string pipeline = "nvarguscamerasrc sensor-id=0 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=1280, height=720, framerate=60/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
+        // std::string pipeline = "nvarguscamerasrc sensor-id=0 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=3280, height=2464, framerate=30/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
         // std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
         // ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! 
         // std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
-        // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
-        camera = new cv::VideoCapture(0, cv::CAP_ANY);
-        camera->set(3, 1280);
-        camera->set(4, 720);
+        camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
+        // camera = new cv::VideoCapture(0, cv::CAP_ANY);
+        // camera->set(3, 1280);
+        // camera->set(4, 720);
 
-
-        using namespace cv;
-
-        Brightness = camera->get(cv::CAP_PROP_BRIGHTNESS);
-        Contrast   = camera->get(cv::CAP_PROP_CONTRAST );
-        Saturation = camera->get(cv::CAP_PROP_SATURATION);
-        Gain       = camera->get(cv::CAP_PROP_GAIN);
-
-        // camera->set(cv::CAP_PROP_AUTOFOCUS, 1);
-        camera->set(cv::CAP_PROP_BRIGHTNESS,Brightness / 3.0);
-        camera->set(cv::CAP_PROP_CONTRAST, Contrast);
-        camera->set(cv::CAP_PROP_SATURATION, Saturation);
-        camera->set(cv::CAP_PROP_GAIN, Gain);
-
-        // namedWindow(winName);
-
-        // B=int(Brightness*100);
-        // C=int(Contrast*100);
-        // S=int(Saturation*100);
-        // G=int(Gain*100);
-
-        // createTrackbar( "Brightness",winName, &B, 100, onTrackbar_changed );
-        // createTrackbar( "Contrast",winName, &C, 100,onTrackbar_changed );
-        // createTrackbar( "Saturation",winName, &S, 100,onTrackbar_changed);
-        // createTrackbar( "Gain",winName, &G, 100,onTrackbar_changed);
-
-        // int i=0;
-        // char name[10];
-        // for(;;)
-        // {
-
-        //     testImage = GetImageFromCamera(camera);; // get a new frame from camera
-        //     imshow(winName, testImage);
-        //     char c=waitKey(30);
-
-        //     if(c=='s') {
-        //         sprintf(name,"%d.jpg",i++);
-        //         imwrite(name,testImage);
-        //     }
-        //     if( c== 27) break;
-        // }
+        // // camera->set(cv::CAP_PROP_AUTOFOCUS, 1);
+        // camera->set(cv::CAP_PROP_BRIGHTNESS,Brightness / 3.0);
+        // camera->set(cv::CAP_PROP_CONTRAST, Contrast);
+        // camera->set(cv::CAP_PROP_SATURATION, Saturation);
+        // camera->set(cv::CAP_PROP_GAIN, Gain);
 
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
@@ -472,12 +408,15 @@ void panTiltThread(Utility::param* parameters) {
     currentServoMask[currentServo] = false;
     
     // Training data
-    double predictedActions[NUM_SERVOS][NUM_ACTIONS];
-    double stateArray[NUM_INPUT];
-    SD currentState[NUM_SERVOS];
-    TD trainData[NUM_SERVOS];
-    ED eventData[NUM_SERVOS];
-    RD resetResults;
+    double predictedActions[NUM_SERVOS][NUM_ACTIONS] = { 0.0 };
+    double stateArray[NUM_INPUT] = { 0.0 };
+    SD currentState[NUM_SERVOS] = {{}};
+    TD trainData[NUM_SERVOS] = {{}};
+    ED eventData[NUM_SERVOS] = {{}};
+    RD resetResults = {};
+    SR stepResults = {};
+
+    double rate = static_cast<double>(config->updateRate);
 
     try {
         resetResults = servos->reset();	
@@ -490,7 +429,7 @@ void panTiltThread(Utility::param* parameters) {
     }
 
     while (true) {
-
+        
         if (config->useAutoTuning) {
 
             if (!servos->isDone()) {
@@ -531,6 +470,7 @@ void panTiltThread(Utility::param* parameters) {
                     else {
                         currentState[i].getStateArray(stateArray);
                         at::Tensor actions = pidAutoTuner->get_action(torch::from_blob(stateArray, { 1, config->numInput }, options), false);
+                        actions.to(torch::kCPU);
                         if (config->numActions > 1) {
                             auto actions_a = actions.accessor<double, 1>();
                             for (int a = 0; a < config->numActions; a++) {
@@ -542,8 +482,6 @@ void panTiltThread(Utility::param* parameters) {
                         }
                     }
                 }
-
-                SR stepResults;
 
                 try {
 
@@ -593,15 +531,7 @@ void panTiltThread(Utility::param* parameters) {
                             }
                         }
                     }
-
-                    // Vary env sync rate to simulate slowdowns, high latency configurations, and other unique systems.
-                    double rate = static_cast<double>(config->updateRate);
-                    if (config->trainMode) {
-                        rate -= 1.0;
-                        _distribution = std::normal_distribution<double>(0.5, 0.1); 
-                        rate = std::clamp<double>(2.0 * rate * _distribution(_generator) + 1.0, 1.0, 2.0 * rate + 1.0); 
-                    }
-
+                    
                     stepResults = servos->step(predictedActions, true, rate);		
                     
                     totalSteps = (totalSteps + 1) % INT_MAX; 
@@ -616,7 +546,8 @@ void panTiltThread(Utility::param* parameters) {
                 for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
                     trainData[servo] = stepResults.servos[servo];
-                    currentState[servo] = stepResults.servos[servo].nextState;
+                    trainData[servo].currentState = currentState[servo];
+                    currentState[servo] = trainData[servo].nextState;
                     
                     if (config->trainMode) {
                         // If servo is disabled, null record
@@ -625,14 +556,10 @@ void panTiltThread(Utility::param* parameters) {
                         }
 
                         if (config->episodeEndCap) {
-                            if (totalEpisodeSteps[servo] >= config->maxStepsPerEpisode - 1) {
-                                stepResults.servos[servo].done = true;
+                            if (totalEpisodeSteps[servo] > config->maxStepsPerEpisode) {
                                 reset = true;
                             }
                         }
-
-                        trainData[servo].currentState = currentState[servo];
-                        currentState[servo] = trainData[servo].nextState;
 
                         if (replayBuffer->size() <= config->maxBufferSize) {
                             replayBuffer->add(trainData[servo]);
@@ -644,7 +571,7 @@ void panTiltThread(Utility::param* parameters) {
                         double timePeriods = (2.0 / percentage) - 1.0;
                         double emaWeight = (2.0 / (timePeriods + 1.0));
                     
-                        if (!trainData[servo].done) {
+                        if (!trainData[servo].done && !reset) {
 
                             // Average reward in a step
                             totalEpisodeSteps[servo] += 1.0;						
@@ -674,7 +601,7 @@ void panTiltThread(Utility::param* parameters) {
                             std::string episodeData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
                                                     (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
                                                     + std::to_string(numEpisodes[servo]) + ','
-                                                    + std::to_string(totalEpisodeRewards[servo] / totalEpisodeSteps[servo]) + ','
+                                                    + std::to_string(totalEpisodeSteps[servo] > 0.0 ? totalEpisodeRewards[servo] / totalEpisodeSteps[servo] : 0.0) + ','
                                                     + std::to_string(totalEpisodeSteps[servo]) + ','
                                                     + std::to_string(emaEpisodeRewardSum[servo] / emaEpisodeStepSum[servo]) + ','
                                                     + std::to_string(emaEpisodeStepSum[servo]);
@@ -683,14 +610,39 @@ void panTiltThread(Utility::param* parameters) {
 
                             totalEpisodeSteps[servo] = 0.0;
                             totalEpisodeRewards[servo] = 0.0;
-                        }
-
-                        if (reset) {
-                            reset = false;
-                            goto reset;
-                        }        
+                        }     
                     }
 
+                    if (config->logOutput) {
+                        double state[NUM_INPUT];
+                        std::cout << "Here is the next state: ";
+                        trainData[servo].currentState.getStateArray(state);
+                        for (int j = 0; j < NUM_INPUT; j++) {
+                            std::cout << std::to_string(state[j]) << ", ";
+                        }
+                        std::cout << std::endl;
+
+                        std::cout << "Here is the current state: ";
+                        trainData[servo].nextState.getStateArray(state);
+                        for (int j = 0; j < NUM_INPUT; j++) {
+                            std::cout << std::to_string(state[j]) << ", ";
+                        }
+                        std::cout << std::endl;
+
+                        std::cout << "Here is reward: ";
+                        std::cout << std::to_string(trainData[servo].reward);
+                        std::cout << std::endl;
+
+                        std::cout << "Here is the done: ";
+                        std::cout << std::to_string(trainData[servo].done);
+                        std::cout << std::endl;
+
+                        std::cout << "Here are the actions: ";
+                        for (int j = 0; j < NUM_ACTIONS; j++) {
+                            std::cout << std::to_string(trainData[servo].actions[j]) << ", ";
+                        }
+                        std::cout << std::endl;
+                    }    
 
                     if (config->trainMode) {
                         // Inform child process to start training
@@ -708,12 +660,21 @@ void panTiltThread(Utility::param* parameters) {
                         }
                     }
                 }
+
+                if (reset) { goto reset; }   
             }
             else {
                 episodeEndCounts += 1;
 
                 reset:
-                    resetResults = servos->reset();
+                resetResults = servos->reset();
+                
+                // Vary env sync rate to simulate slowdowns, high latency configurations, and other unique systems.
+                if (config->trainMode) {
+                    rate = static_cast<double>(config->updateRate) - 1.0;
+                    _distribution = std::normal_distribution<double>(0.5, 0.1); 
+                    rate = std::clamp<double>(2.0 * rate * _distribution(_generator) + 1.0, 1.0, 2.0 * rate + 1.0); 
+                }
                 
                 for (int servo = 0; servo < NUM_SERVOS; servo++) {
                     currentState[servo] = resetResults.servos[servo];
@@ -729,7 +690,16 @@ void panTiltThread(Utility::param* parameters) {
                 }
 
                 try {
-                    servos->step(predictedActions, false);
+                    stepResults = servos->step(predictedActions, false);
+
+                    double state[NUM_INPUT];
+                    for (int i = 0; i < NUM_SERVOS ; i++) {
+                        
+                        if (stepResults.servos[i].empty) {
+                            continue;
+                        }
+                    }
+                    
                 } catch (...) {
                     throw std::runtime_error("cannot step with servos");
                 }
@@ -752,6 +722,10 @@ void detectThread(Utility::param* parameters)
     using namespace Utility;
 
     Utility::Config* config = new Utility::Config();
+    std::normal_distribution<double> distribution;
+    std::default_random_engine generator;
+    double maxFrameRate = static_cast<double>(config->maxFrameRate) - 1.0;
+    double lastFrameRate = maxFrameRate;
 
     // Setup Camera
     if (!camera->isOpened())
@@ -800,8 +774,7 @@ void detectThread(Utility::param* parameters)
     std::chrono::steady_clock::time_point Tbegin, Tend;
     auto execbegin = std::chrono::high_resolution_clock::now();
 
-    if (!camera->isOpened())
-    {
+    if (!camera->isOpened()) {
         throw std::runtime_error("cannot initialize camera");
     }
 
@@ -1012,6 +985,8 @@ void detectThread(Utility::param* parameters)
                             throw std::runtime_error("Could not init opencv tracker");
                         }
                     } 
+
+
                 }
                 else {
                     lossCount++;
@@ -1040,6 +1015,7 @@ void detectThread(Utility::param* parameters)
                         // Error state
                         // Enter State data
                         double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - execbegin).count() * 1e-9;
+
                         pan.timestamp = elapsed;
                         tilt.timestamp = elapsed;
                         pan.point = 0;
@@ -1239,6 +1215,3 @@ start:
     drawPred(maxVal, startX, startY, endX, endY, display_image, "test");
     cv::imshow("CSI Camera", display_image);
 */
-
-
-

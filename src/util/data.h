@@ -1,4 +1,3 @@
-  
 #pragma once
 /*
     This file should contain data formats, structs, unions, and typedefs.
@@ -15,10 +14,9 @@
 
 namespace Utility {
     #define NUM_SERVOS 2
-    #define NUM_INPUT 8
+    #define NUM_INPUT 6
     #define NUM_ACTIONS 3
     #define NUM_HIDDEN 256
-
     
     struct EventData { 
 
@@ -38,7 +36,16 @@ namespace Utility {
             frame = 0.0;
             timestamp = 0.0;
         }
-        EventData() : done(false), error(0.0), frame(0.0), obj(0.0), timestamp(0.0) {}
+        
+        EventData() : 
+            done(false), 
+            error(0.0), 
+            frame(0.0), 
+            size(0.0),
+            point(0.0),
+            obj(0.0), 
+            timestamp(0.0)
+        {}
     } typedef ED;
 
     // Current state of servo/pid
@@ -48,19 +55,53 @@ namespace Utility {
         double lastAngle;
         double obj;
         double frame;
+        double e; 
+        double errors[4];
 
         void getStateArray(double state[NUM_INPUT]) {
-            pidStateData.getStateArray(state); // first 'n' elems filled
-            state[5] = (lastAngle - currentAngle) / 2.0; // keep between -1 and 1
-            state[6] = currentAngle; 
-            state[7] = obj / 2.0;
+
+            double errorBound = pidStateData.setPoint * 2.0;
+            pidStateData.getStateArray(errors);
+            double currentError = (obj - pidStateData.setPoint);
+            double deltaTime = pidStateData.dt * 1000.0; // Back to mili
+
+            /* 
+                The State
+
+                1.) Current Error
+                2.) Integral error: Sum (e_i * T)
+                3.) First order error difference: (F(e_i) - F(e_i + 1)) / T
+                4.) Second order error difference: (F(e_i) - ( 2.0 * F(e_i + 1) ) + F(e_i + 2)) / T^2 
+                5.) Delta Angle: (last angle - current angle) / T.
+                6.) Delta time: T
+            */
+
+            // Scale roughly between -1.0 ~ 1.0
+            state[0] = currentError / errorBound;
+            state[1] = ( pidStateData.i + ( currentError * pidStateData.dt )) / ( 2.0 * errorBound );
+            state[2] = deltaTime > 0.0 ? (currentError - errors[0]) / deltaTime : 0.0;
+            state[3] = deltaTime > 0.0 ? (currentError - ( 2.0 * errors[0] ) + errors[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+            state[4] = deltaTime > 0.0 ? (lastAngle - currentAngle) / deltaTime : 0.0;
+            state[5] = pidStateData.dt;
         } 
+
+        PIDAndServoStateData() : 
+            pidStateData({}),
+            currentAngle(0.0), 
+            lastAngle(0.0), 
+            obj(0.0), 
+            frame(0.0), 
+            e(0.0)
+        {}
 
     } typedef SD;
 
     // State of PIDs/Servos after reset
     struct ResetData {
         SD servos[NUM_SERVOS];
+        ResetData() : 
+            servos({{}})
+        {}
     } typedef RD;
 
     // Result Data for taking a step with for a given servo/PID
@@ -73,6 +114,10 @@ namespace Utility {
         bool empty;
 
         TrainData() :
+            currentState({}),
+            nextState({}),
+            reward(0.0),
+            actions({0.0}),
             done(false),
             empty(true)
         {}
@@ -81,6 +126,9 @@ namespace Utility {
     // Results of taking actions for each PID/servos in env
     struct StepResults {
         TD servos[NUM_SERVOS];
+        StepResults() :
+            servos({{}})
+        {}
     } typedef SR;
 
     typedef boost::interprocess::allocator<TD, boost::interprocess::managed_shared_memory::segment_manager> ShmemAllocator;
@@ -112,6 +160,7 @@ namespace Utility {
         int maxStepsPerEpisode;
         double numUpdates;
         double trainRate;
+        bool logOutput;
         
         // Tracking Options
         int lossCountMax;
@@ -137,10 +186,7 @@ namespace Utility {
         double anglesHigh[NUM_SERVOS];
         double anglesLow[NUM_SERVOS];
 
-        // Servo alternation options
-        // Used only in training. 
-        // Reduces noise significantly.
-        // Faster convergence if enabled generally
+        // Servo alternation in training reduces noise significantly. Faster convergence if enabled generally
         bool alternateServos;
         int alternateSteps;
         int alternateStop;
@@ -162,29 +208,30 @@ namespace Utility {
             minBufferSize(2000),                 // Min replay buffer size before training size.
             maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
-            episodeEndCap(false),                // End episode early
+            episodeEndCap(true),                 // End episode early
             maxStepsPerEpisode(500),             // Max number of steps in an episode
 
             batchSize(256),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
-            numInitialRandomActions(5000),       // Number of random actions taken.
+            numInitialRandomActions(2500),       // Number of random actions taken.
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
 
-            recheckFrequency(15),                // Num frames in-between revalidations of t
-            lossCountMax(2),                     // Max number of rechecks before episode is considered over
-            updateRate(5),                       // Servo updates, update commands per second
+            recheckFrequency(15),                // Num frames in-between revalidations of
+            lossCountMax(1),                     // Max number of rechecks before episode is considered over
+            updateRate(7),                       // Servo updates, update commands per second
             trainRate(1.0),					     // Network updates, sessions per second
+            logOutput(false),                    // Prints various info to console
             
-            disableServo({ false, true }),       // Disable the { Y, X } servos
-            invertServo({ false, false }),       // Flip output angles { Y, X } servos
-            resetAngles({ 0.0, 0.0 }),           // Angle when reset
-            anglesHigh({ 70.0, 70.0 }),          // Max allowable output angle to servos
-            anglesLow({ -70.0, -70.0 }),         // Min allowable output angle to servos
+            disableServo({ true, false }),       // Disable the { Y, X } servos
+            invertServo({ true, false }),        // Flip output angles { Y, X } servos
+            resetAngles({ -35.0, 0.0 }),         // Angle when reset
+            anglesHigh({ 40.0, 40.0 }),          // Max allowable output angle to servos
+            anglesLow({ -40.0, -40.0 }),         // Min allowable output angle to servos
 
             servoConfigurations({                // Hardware settings for individual servos
-                { 0, -98.5, 98.5, 0.553, 2.520, 0.0 }, 
-                { 1, -99.0, 99.0, 0.750, 2.250, 0.0 } 
+                { 0, -56.5, 56.5, 0.750, 2.250, -35.0 }, 
+                { 1, -56.5, 56.5, 0.750, 2.250, 0.0 } 
             }),
             
             alternateServos(false),              // Whether to alternate servos at the start of training
@@ -192,21 +239,21 @@ namespace Utility {
             alternateStop(3000),                 // Number of alternations
             alternateEpisodeEndCap(15),          // Number "end of episodes" before switching again. Prevents too much noise when both servos are enabled.
 
-            trackerType(1),						 // { CSRT, MOSSE, GOTURN } 
+            trackerType(1),						 // { CSRT, MOSSE, GOTURN }
             useTracking(false),					 // Use openCV tracker instead of face detection
-            draw(true),						     // Draw target bounding box and center on frame
-            showVideo(true),					 // Show camera feed
+            draw(false),						 // Draw target bounding box and center on frame
+            showVideo(false),					 // Show camera feed
             cascadeDetector(false),				 // Use faster cascade face detector
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
-            actionHigh(0.1),                     // Max output to of policy network's logits
-            actionLow(0.0),                      // Min output to of policy network's logits        
-            pidOutputHigh(70.0),                 // Max output allowed for PID's
-            pidOutputLow(-70.0),				 // Min output allowed for PID's
-            defaultGains({ 1.0, 1.0, 1.0 }),     // Gains fed to pids when initialized             
+            actionHigh(1.0),                     // Max output to of policy network's logits
+            actionLow(0.0),                      // Min output to of policy network's logits
+            pidOutputHigh(40.0),                 // Max output allowed for PID's
+            pidOutputLow(-40.0),				 // Min output allowed for PID's
+            defaultGains({ 1.0, 1.0, 1.0 }),     // Gains fed to pids when initialized
             
             dims({ 720, 720 }),                  // Dimensions of frame
-            maxFrameRate(120),                   // Camera capture rate
-            multiProcess(false)                  // Enables autotuning in a seperate process. Otherwise its a thread.
+            maxFrameRate(30),                    // Camera capture rate
+            multiProcess(true)                   // Enables autotuning in a seperate process. Otherwise its a thread.
             {}
     } typedef cfg;
 

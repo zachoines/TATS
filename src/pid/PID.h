@@ -7,22 +7,27 @@
 
 
 struct PIDState {
-    double e; // error
-    double i; // Integral of error with respect to time
-    double d; // negative derivative of input with respect to time
-    double din; // Delta input
     double dt; // Delta time
-    double de; // Delta error
-    double d2e; // Second order error
-    double errSum; // Sum of error
-
-    void getStateArray(double state[5]) {
-        state[0] = e;
-        state[1] = de;
-        state[2] = d2e; 
-        state[3] = errSum; 
-        state[4] = dt; 
+    double i; // Integral
+    double din; // derivative
+    double in; // input
+    double setPoint;
+    double errors[4]; // Previous error
+    
+    void getStateArray(double state[4]) {
+        for (int i = 0; i < 4; i++) {
+            state[i] = errors[i];
+        }
     }
+
+    PIDState() : 
+        dt(0.0),
+        i(0.0),
+        din(0.0),
+        in(0.0),
+        setPoint(0.0),
+        errors({ 0.0 })
+    {}
 
 } typedef state;
 
@@ -31,7 +36,7 @@ class PID
     public:
         PID(double kP, double kI, double kD, double min, double max, double setpoint);
         void init();
-        double update(double input, double sleep = 0.0);
+        double update(double input);
         void getWeights(double w[3]);
         void setWeights(double kP, double kI, double kD);
         void getPID(double w[3]);
@@ -40,7 +45,6 @@ class PID
         
         // Get current internal variable state. Call after update().
         state getState(bool normalize); 
-        // std::vector<double> getState(); // Default normalized
 
     private:
         double _max;
@@ -62,13 +66,12 @@ class PID
         std::chrono::steady_clock::time_point _prevTime;
         std::chrono::steady_clock::duration _deltTime;
 
-        double _prevError1;
-        double _prevError2;
+        double _prevError;
         double _sumError;
         double _deltaInput;
         double _deltaTime;
         double _deltaError;
-        double _d2Error;
+        double _prevErrors[4];
 
         double _windup_guard;
         double _setpoint;

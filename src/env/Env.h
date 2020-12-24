@@ -24,9 +24,9 @@ namespace TATS {
         int _frameSkip;
         double _lastTimeStamp[NUM_SERVOS];
 
-        Utility::ED _eventData[NUM_SERVOS];
-        Utility::ED _lastData[NUM_SERVOS];
-        Utility::ED _currentData[NUM_SERVOS];
+        Utility::ED _eventData[NUM_SERVOS] = {{}};
+        Utility::ED _lastData[NUM_SERVOS] = {{}};
+        Utility::ED _currentData[NUM_SERVOS] = {{}};
 
         bool _invert[NUM_SERVOS];
         bool _disableServo[NUM_SERVOS];

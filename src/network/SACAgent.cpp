@@ -350,25 +350,25 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         // Delay update of Target Value and Policy Networks
         if (_current_update > _max_delay) {
 
-            policy_loss = (_alpha * log_pi_t - torch::min(qf1_pi, qf2_pi)).mean();
+            // policy_loss = (_alpha * log_pi_t - torch::min(qf1_pi, qf2_pi)).mean();
 
             // Determine policy advantage and calc loss
-            // torch::Tensor advantage = torch::min(qf1_pi, qf2_pi) - value_predictions.detach();
-            // policy_loss = (_alpha * log_pi_t - advantage).mean();
+            torch::Tensor advantage = torch::min(qf1_pi, qf2_pi) - value_predictions.detach();
+            policy_loss = (_alpha * log_pi_t - advantage).mean();
 
             // // Policy Regularization
-            // torch::Tensor mean_reg = 1e-3 * torch::mean(mean.sum(1, true).pow(2.0));
-            // torch::Tensor std_reg = 1e-3 * torch::mean(std.sum(1, true).pow(2.0));
+            torch::Tensor mean_reg = 1e-3 * torch::mean(mean.sum(1, true).pow(2.0));
+            torch::Tensor std_reg = 1e-3 * torch::mean(std.sum(1, true).pow(2.0));
 
-            // torch::Tensor actor_reg = mean_reg + std_reg;
-            // policy_loss += actor_reg;
+            torch::Tensor actor_reg = mean_reg + std_reg;
+            policy_loss += actor_reg;
 
 
              // Update Policy Network
             if (pthread_mutex_lock(&_policyNetLock) == 0) {
                 _policy_net->optimizer->zero_grad();
                 policy_loss.backward();
-                // torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 0.5);
+                torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 0.5);
                 _policy_net->optimizer->step();
                 pthread_mutex_unlock(&_policyNetLock);
 

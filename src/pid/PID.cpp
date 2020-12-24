@@ -13,9 +13,12 @@ PID::PID(double kP, double kI, double kD, double min, double max, double setpoin
     _max = max;
     _min = min;
 
-    _windup_guard = setpoint * 2; 
+    _windup_guard = setpoint * 4; 
     _setpoint = setpoint;
 
+    for (int i = 0; i < 4; i++) {
+        _prevErrors[i] = 0.0;
+    }
 }
 
 void PID::init() {
@@ -24,11 +27,9 @@ void PID::init() {
     _prevTime = _currTime;
 
     // initialize the previous error
-    _prevError1 = 0.0;
-    _prevError2 = 0.0;
+    _prevError = 0.0;
     _last_input = 0.0;
     _sumError = 0.0;
-    _d2Error = 0.0;
 
     // initialize the term result variables
     _cP = 0.0;
@@ -40,9 +41,14 @@ void PID::init() {
     _kI = _init_kI;
     _kD = _init_kD;
 
+    // Reset deltas
+    _deltaError = 0.0;
+    _deltaInput = 0.0;
+    _deltaTime = 0.0;
+
 }
 
-double PID::update(double input, double sleep) {
+double PID::update(double input) {
     
     // Delta time
     _currTime = std::chrono::steady_clock::now();
@@ -56,11 +62,10 @@ double PID::update(double input, double sleep) {
     _cP = error;
 
     // Integral of error with respect to time
-    _sumError += error;
+    _sumError += (error * _deltaTime);
     _cI += (error * (_kI * _deltaTime));
 
     // Derivative of input with respect to time
-    _deltaError = error - _prevError1;
     _deltaInput = (_last_input - input);
     (_deltaTime > 0.0) ? (_cD = (1.0 / _deltaTime)) : (_cD = 0.0);
 
@@ -68,17 +73,18 @@ double PID::update(double input, double sleep) {
     _cI = std::clamp<double>(_cI, -_windup_guard, _windup_guard);
 
     // save previous time and error
-    _d2Error = error - ( 2.0 * _prevError1 ) + _prevError2;
     _prevTime = _currTime;
     _last_input = input;
-    _prevError2 = _prevError1;
-    _prevError1 = error; 
+    _prevError = error; 
 
-    // Cross-mult, sum and return
-    double output = (_kP * _cP) + (_cI) - (_kD * _cD * _deltaInput);
+    // save errors
+    _prevErrors[3] = _prevErrors[2];
+    _prevErrors[2] = _prevErrors[1];
+    _prevErrors[1] = _prevErrors[0];
+    _prevErrors[0] = error;
 
-    // Enforce PID gain bounds
-    return std::clamp<double>(output, _min, _max);
+    // Cross-mult, sum and return, enforce PID gain bounds
+    return std::clamp<double>((_kP * _cP) + (_cI) - (_kD * _cD * _deltaInput), _min, _max);
 }
 
 void PID::getPID(double w[3])
@@ -98,50 +104,20 @@ double PID::getWindupGaurd()
     return _windup_guard;
 }
 
-// std::vector<double> PID::getState() {
-//     double errorBound = 2.0 * _setpoint;
-//     std::vector<double> stateData;
-    
-//     stateData.push_back(Utility::normalize(_cP, -errorBound, errorBound));
-//     stateData.push_back(Utility::normalize(_cI, -_windup_guard, _windup_guard));
-//     stateData.push_back(Utility::normalize(-(_cD * _deltaInput), -2.0 * errorBound, 2.0 * errorBound));
-//     stateData.push_back(Utility::normalize(_deltaInput, -2.0 * errorBound, 2.0 * errorBound));
-//     stateData.push_back(_deltaTime);
-//     stateData.push_back(Utility::normalize(_deltaError, -2.0 * errorBound, 2.0 * errorBound));
-//     stateData.push_back(std::clamp<double>(Utility::normalize(_sumError, -errorBound, errorBound), -1.0, 1.0));
-
-//     return stateData;
-// }
-
 state PID::getState(bool normalize)
 {
-    state g;
+    state g = {};
 
-    // Delta time
-    g.dt = _deltaTime;
-
-    // Error
-    g.e = _cP;
-
-    // Delta error
-    g.de = _deltaError;
-
-    // Second order error diff
-    g.d2e = _d2Error;
-
-    // Sum of error
-    g.errSum = _sumError;
-
-
-    // Normalize and scale datapoints. 
-    if (normalize) {
-        double errorBound = 2.0 * _setpoint;
-        g.e = Utility::normalize(g.e, -errorBound, errorBound);
-        g.de = Utility::normalize(g.de, -errorBound, errorBound);
-        g.d2e = Utility::normalize(g.d2e, -errorBound, errorBound);
-        g.errSum = std::clamp<double>(Utility::normalize(g.errSum, -_windup_guard, _windup_guard), -1.0, 1.0);
-        g.dt = std::clamp<double>(_deltaTime, 0.0, 1.0);
+    g.i = 0;
+    for (int i = 0; i < 4; i++) {
+        g.errors[i] = _prevErrors[i];
+        g.i += (g.errors[i] * _deltaTime);
     }
+
+    g.din = _deltaInput;
+    g.in = _last_input;
+    g.dt = _deltaTime;
+    g.setPoint = _setpoint;
 
     return g;
 }
@@ -155,12 +131,9 @@ void PID::getWeights(double w[3])
 
 void PID::setWeights(double kP, double kI, double kD)
 {
-    _kP = 0;
-    _kI = 0;
-    _kD = 0; 
-    _kP += kP;
-    _kI += kI;
-    _kD += kD; 
+    _kP = kP;
+    _kI = kI;
+    _kD = kD; 
 }
 
 

@@ -3,6 +3,10 @@
 namespace TATS {
     Env::Env()
     {
+        _eventData;
+        _lastData;
+        _currentData;
+
         // Setup I2C and PWM
         _wire = new control::Wire();
         _pwm = new control::PCA9685(0x40, _wire);
@@ -99,27 +103,19 @@ namespace TATS {
 
     bool Env::isDone()
     {
+
+        // return true;
+        bool done = true;
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             if (_disableServo[servo]) {
                 continue;
             }
             else {
-                return _currentData[servo].done;
+                done = _currentData[servo].done;
             }
         } 
 
-        return true;
-        // bool done = true;
-        // for (int servo = 0; servo < NUM_SERVOS; servo++) {
-        //     if (_disableServo[servo]) {
-        //         continue;
-        //     }
-        //     else {
-        //         done = _currentData[servo].done;
-        //     }
-        // } 
-
-        // return done;
+        return done;
     }
 
     void Env::_resetEnv()
@@ -137,7 +133,7 @@ namespace TATS {
         _resetEnv();
         _syncEnv();
 
-        Utility::RD data;
+        Utility::RD data = {};
 
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             data.servos[servo].pidStateData = _pids[servo]->getState(true);
@@ -171,6 +167,8 @@ namespace TATS {
 
                 if (rescale) {
                     rescaledActions[servo][a] = Utility::rescaleAction(actions[servo][a], _config->actionLow, _config->actionHigh);
+                } else {
+                    rescaledActions[servo][a] = actions[servo][a];
                 }
             }
 
@@ -180,10 +178,9 @@ namespace TATS {
             }
             else {
                 _pids[servo]->setWeights(rescaledActions[servo][0], rescaledActions[servo][1], rescaledActions[servo][2]);
-                newAngle = _pids[servo]->update(_currentData[servo].obj, 1000.0 / rate);
+                newAngle = _pids[servo]->update(_currentData[servo].obj);
             }
 
-            // newAngle = Utility::mapOutput(newAngle, _config->pidOutputLow, _config->pidOutputHigh, _config->angleLow, _config->angleHigh);
             if (_invert[servo]) { 
                 newAngle = newAngle * -1.0; 
             }
@@ -213,8 +210,9 @@ namespace TATS {
 
             // Fill out the step results
             if (!_config->usePIDs) {
+                
                 // We still use PIDS for keeping track of error in ENV. Otherwise the caller supplies actions rather than PIDS
-                _pids[servo]->update(currentError, 1000.0 / rate);
+                _pids[servo]->update(currentError);
                 stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
             }
             else {
@@ -222,7 +220,7 @@ namespace TATS {
             }
 
             // Update states, divide by max possible values
-            stepResults.servos[servo].nextState.obj = (_currentData[servo].frame > 0) ? _currentData[servo].obj / _currentData[servo].frame : 0.0;
+            stepResults.servos[servo].nextState.obj = _currentData[servo].obj;
             stepResults.servos[servo].nextState.frame = _currentData[servo].frame;
             stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
             stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
