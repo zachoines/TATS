@@ -69,11 +69,22 @@ namespace Utility {
                 The State
 
                 1.) Current Error
-                2.) Integral error: Sum (e_i * T)
-                3.) First order error difference: (F(e_i) - F(e_i + 1)) / T
-                4.) Second order error difference: (F(e_i) - ( 2.0 * F(e_i + 1) ) + F(e_i + 2)) / T^2 
-                5.) Delta Angle: (last angle - current angle) / T.
-                6.) Delta time: T
+
+                2.) Integral error: 
+                    Formula: Sum (e_i * T)
+                    Note: For last 5 errors
+
+                3.) First order error difference: 
+                    Formula: (F(e_i) - F(e_i + 1)) / T
+
+                4.) Second order error difference: 
+                    Formula: (F(e_i) - ( 2.0 * F(e_i + 1) ) + F(e_i + 2)) / T^2 
+
+                5.) Delta Angle: 
+                    Formula: (last angle - current angle) / T.
+
+                6.) Delta time: T 
+                    Note: In seconds
             */
 
             // Scale roughly between -1.0 ~ 1.0
@@ -82,7 +93,7 @@ namespace Utility {
             state[2] = deltaTime > 0.0 ? (currentError - errors[0]) / deltaTime : 0.0;
             state[3] = deltaTime > 0.0 ? (currentError - ( 2.0 * errors[0] ) + errors[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
             state[4] = deltaTime > 0.0 ? (lastAngle - currentAngle) / deltaTime : 0.0;
-            state[5] = pidStateData.dt;
+            state[5] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
         } 
 
         PIDAndServoStateData() : 
@@ -172,6 +183,7 @@ namespace Utility {
         bool showVideo;
         bool cascadeDetector;
         bool usePIDs;
+        std::vector<std::string> targets;
 
         // PID options
         double pidOutputHigh;
@@ -214,11 +226,11 @@ namespace Utility {
             batchSize(256),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
             numInitialRandomActions(2500),       // Number of random actions taken.
-            trainMode(true),                     // When autotuning is on, 'false' means network test mode.
+            trainMode(false),                    // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
 
-            recheckFrequency(15),                // Num frames in-between revalidations of
-            lossCountMax(1),                     // Max number of rechecks before episode is considered over
+            recheckFrequency(10),                // Num frames in-between revalidations of
+            lossCountMax(2),                     // Max number of rechecks before episode is considered over
             updateRate(7),                       // Servo updates, update commands per second
             trainRate(1.0),					     // Network updates, sessions per second
             logOutput(false),                    // Prints various info to console
@@ -236,20 +248,21 @@ namespace Utility {
             
             alternateServos(false),              // Whether to alternate servos at the start of training
             alternateSteps(100),                 // Steps per servo (will increase exponentially as training proggresses (doubles threshold each time its met)). Cut short by 'alternateEpisodeEndCap'
-            alternateStop(3000),                 // Number of alternations
+            alternateStop(300),                  // Number of alternations
             alternateEpisodeEndCap(15),          // Number "end of episodes" before switching again. Prevents too much noise when both servos are enabled.
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN }
-            useTracking(false),					 // Use openCV tracker instead of face detection
-            draw(false),						 // Draw target bounding box and center on frame
-            showVideo(false),					 // Show camera feed
+            useTracking(true),					 // Use openCV tracker instead of face detection
+            draw(true),						     // Draw target bounding box and center on frame
+            showVideo(true),					 // Show camera feed
             cascadeDetector(false),				 // Use faster cascade face detector
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
-            actionHigh(1.0),                     // Max output to of policy network's logits
+            actionHigh(0.2),                     // Max output to of policy network's logits
             actionLow(0.0),                      // Min output to of policy network's logits
             pidOutputHigh(40.0),                 // Max output allowed for PID's
             pidOutputLow(-40.0),				 // Min output allowed for PID's
             defaultGains({ 1.0, 1.0, 1.0 }),     // Gains fed to pids when initialized
+            targets({"cat", "dog"}),
             
             dims({ 720, 720 }),                  // Dimensions of frame
             maxFrameRate(30),                    // Camera capture rate

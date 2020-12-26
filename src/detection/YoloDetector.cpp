@@ -222,13 +222,12 @@ namespace Detect {
                 t.boundingBox = cv::Rect(cv::Point(b[Det::tl_x], b[Det::tl_y]), cv::Point(b[Det::br_x], b[Det::br_y])); 
                 t.confidence = det_cpu_array[index][Det::score];
                 t.label = det_cpu_array[index][Det::class_idx];
+                t.target = class_names[t.label];
                 det_vec.emplace_back(t);
 
                 if (t.confidence > conf_threshold) {
                     t.found = true;
                 }
-
-
             }
 
             ScaleCoordinates(det_vec, pad_w, pad_h, scale, img_shape);

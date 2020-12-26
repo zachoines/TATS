@@ -385,18 +385,18 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         // Update Q-Value networks
         _q_net1->optimizer->zero_grad();
         q_value_loss1.backward();
-        // torch::nn::utils::clip_grad_norm_(_q_net1->parameters(), 0.5);
+        torch::nn::utils::clip_grad_norm_(_q_net1->parameters(), 0.5);
         _q_net1->optimizer->step();
 
         _q_net2->optimizer->zero_grad();
         q_value_loss2.backward();
-        // torch::nn::utils::clip_grad_norm_(_q_net2->parameters(), 0.5);
+        torch::nn::utils::clip_grad_norm_(_q_net2->parameters(), 0.5);
         _q_net2->optimizer->step();
 
         // Update Value network
         _value_network->zero_grad();
         value_loss.backward();
-        // torch::nn::utils::clip_grad_norm_(_value_network->parameters(), 0.5);
+        torch::nn::utils::clip_grad_norm_(_value_network->parameters(), 0.5);
         _value_network->optimizer->step();
         
         // Update counters
@@ -434,10 +434,11 @@ void SACAgent::load_policy(Utility::sharedString* s) {
     if (pthread_mutex_lock(&_policyNetLock) == 0) {
         // Load from stream
         this->_load_from_array(*_policy_net, s);
+        pthread_mutex_unlock(&_policyNetLock);
     }
     else {
         pthread_mutex_unlock(&_policyNetLock);
-        throw std::runtime_error("could not obtain lock when loading policy from disk");
+        throw std::runtime_error("could not obtain lock while loading policy");
     }
 }
 

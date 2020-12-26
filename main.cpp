@@ -18,6 +18,7 @@
 #include <random>
 #include <ctime>
 #include <thread>
+#include <algorithm>
 
 // Pytorch imports
 #include <torch/torch.h>
@@ -125,7 +126,7 @@ int main(int argc, char** argv)
     }
 
     // Parent process is image recognition PID/servo controller, second is SAC Servo autotuner
-    if (config->multiProcess) {
+    if (config->multiProcess && config->trainMode) {
         pid = fork(); 
     } else {
         pid = getpid();
@@ -138,7 +139,7 @@ int main(int argc, char** argv)
         // Init camera 3280 x 2464
         std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=30/1, format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
         // ! videobalance contrast=1.3 brightness=-.2 saturation=1.2
-        // width=3280, height=2464
+        // width=4056, height=3040
         // std::string pipeline = "nvarguscamerasrc sensor-id=0 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=3280, height=2464, framerate=30/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
         // std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
         // ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! 
@@ -190,6 +191,15 @@ int main(int argc, char** argv)
     } else {
     
         // Create the SAC agent for training
+        // torch::DeviceType device;
+        // if (torch::cuda::is_available()) {
+        //     std::cout << "Training PID auto-tuner with CUDA!" << std::endl;
+        //     device = torch::kCUDA;
+        // } else {
+        //     device = torch::kCPU;
+        // }
+
+        // SACAgent* pidAutoTunerChild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow, true, 0.99, 5e-3, 0.2, 3e-4, 3e-4, 3e-4, device);
         SACAgent* pidAutoTunerChild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
         // Variables for training
@@ -236,6 +246,13 @@ int main(int argc, char** argv)
         sigemptyset(&zeromask);
         sig_value1 = 0;
 
+        // Annealed ERE (Emphasizing Recent Experience)
+        // https://arxiv.org/pdf/1906.04009.pdf
+        double N0 = 0.996;
+        double NT = 1.0;
+        double T = maxTrainingSteps;
+        double t_i = 0;
+
         // Wait on parent process' signal before training
         while ((sig_value1 != SIGINT) && (sig_value1 != SIGTERM))
         {
@@ -243,19 +260,13 @@ int main(int argc, char** argv)
 
             // Sleep until signal is caught; train model on waking
         start:
+            
             sigsuspend(&zeromask);
 
             if (sig_value1 == SIGUSR1) {
 
                 std::cout << "Train signal received..." << std::endl;
                 bool isTraining = true;
-
-                // Annealed ERE (Emphasizing Recent Experience)
-                // https://arxiv.org/pdf/1906.04009.pdf
-                double N0 = 0.996;
-                double NT = 1.0;
-                double T = maxTrainingSteps;
-                double t_i = 0;
 
                 // Begin training process
                 while (isTraining) {
@@ -287,10 +298,14 @@ int main(int argc, char** argv)
                     }
 
                     // Write values to shared memory for parent to read
-                    pidAutoTunerChild->save_policy(s);
+                    try {
+                        pidAutoTunerChild->save_policy(s);
+                    } catch (...) {
+                        throw std::runtime_error("Cannot save policy params to shared memory array");
+                    }
                     
                     // Inform parent new params are available
-                    std::cout << "Sync signal sent..." << std::endl;
+                    // std::cout << "Sync signal sent..." << std::endl;
                     kill(getppid(), SIGUSR1);
 
                     // Sleep per train rate
@@ -330,7 +345,7 @@ void syncThread(Utility::param* parameters) {
 
     // Loop for syncing parent network params
     while (true) {
-
+        
         // Wait until sync signal is received
         signum = sigwaitinfo(&mask, &info);
         if (signum == -1) {
@@ -341,9 +356,13 @@ void syncThread(Utility::param* parameters) {
 
         // Update weights on signal received from autotune thread
         if (signum == SIGUSR1 && info.si_pid == pid) {
-            std::cout << "Received sync signal..." << std::endl;
+            // std::cout << "Received sync signal..." << std::endl;
 
-            pidAutoTuner->load_policy(s);
+            try {
+                pidAutoTuner->load_policy(s);
+            } catch (...) {
+                throw std::runtime_error("Cannot sync network parameters with auto-tune process");
+            }
         }
 
         // Break when on SIGINT
@@ -351,6 +370,9 @@ void syncThread(Utility::param* parameters) {
             std::cout << "Ctrl+C detected!" << std::endl;
             break;
         }
+
+        // std::cout << "Sending train signal..." << std::endl;
+        // kill(parameters->pid, SIGUSR1);
     }
 }
 
@@ -600,6 +622,7 @@ void panTiltThread(Utility::param* parameters) {
                             // Log Episode averages
                             std::string episodeData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
                                                     (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
+                                                    + std::to_string(totalSteps) + ','
                                                     + std::to_string(numEpisodes[servo]) + ','
                                                     + std::to_string(totalEpisodeSteps[servo] > 0.0 ? totalEpisodeRewards[servo] / totalEpisodeSteps[servo] : 0.0) + ','
                                                     + std::to_string(totalEpisodeSteps[servo]) + ','
@@ -753,6 +776,7 @@ void detectThread(Utility::param* parameters)
     bool isSearching = false;
     int lossCount = 0;
     int lossCountMax = config->lossCountMax;
+    std::vector<std::string> targets = config->targets;
 
     // Create object tracker to optimize detection performance
     cv::Rect2d roi;
@@ -784,13 +808,30 @@ void detectThread(Utility::param* parameters)
     if (cascadeDetector) {
         detector = new Detect::CascadeDetector ("./models/haar/haarcascade_frontalface_alt2.xml");
     } else {
-        
-        std::vector<std::string> class_names = {
-            "0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
+
+        std::vector<std::string> class_names = { 
+            "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
+            "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
+            "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+            "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
+            "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+            "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+            "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
+            "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
+            "hair drier", "toothbrush" 
         };
+        
+        // std::vector<std::string> class_names = {
+        //     "0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
+        // };
+
+        // std::vector<std::string> class_names = {
+        //     "cat", "dog"
+        // };
 
         std::string path = get_current_dir_name();
-        std::string weights = path + "/models/yolo/yolo_uno.torchscript.pt";
+        std::string weights = path + "/models/yolo/yolov5s_coco.torchscript.pt";
+        
         detector = new Detect::YoloDetector(weights, class_names);
     }
 
@@ -812,8 +853,8 @@ void detectThread(Utility::param* parameters)
                 int cropSize = config->dims[0];
                 int offsetW = (frame.cols - cropSize) / 2;
                 int offsetH = (frame.rows - cropSize) / 2;
-                cv::Rect roi(offsetW, offsetH, cropSize, cropSize);
-                frame = frame(roi).clone();
+                cv::Rect region(offsetW, offsetH, cropSize, cropSize);
+                frame = frame(region).clone();
             } catch (const std::exception& e)
             {
                 std::cerr << e.what();
@@ -826,6 +867,7 @@ void detectThread(Utility::param* parameters)
             }
 
             if (isTracking) {
+                
                 isSearching = false;
 
                 try {
@@ -917,8 +959,11 @@ void detectThread(Utility::param* parameters)
                 if (!results.empty()) { 
                     result = results.at(0);
                 } 
-                 
-                if (result.found) {
+
+                roi = result.boundingBox;
+                
+                // If we confidently found the object we are looking for
+                if (result.found && (std::find(targets.begin(), targets.end(), result.target) != targets.end())) {
 
                     // Update loop variants
                     lossCount = 0;
@@ -970,10 +1015,10 @@ void detectThread(Utility::param* parameters)
                         throw std::runtime_error("cannot update event data");
                     }
 
-                    if (useTracking) {
+                    if (useTracking && !isTracking) {
 
                         try {
-                            roi = result.boundingBox;
+                            
                             tracker = createOpenCVTracker(trackerType);
 
                             if (tracker->init(frame, roi)) {
@@ -984,9 +1029,7 @@ void detectThread(Utility::param* parameters)
                             camera->release();
                             throw std::runtime_error("Could not init opencv tracker");
                         }
-                    } 
-
-
+                    }
                 }
                 else {
                     lossCount++;
