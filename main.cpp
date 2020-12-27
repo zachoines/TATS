@@ -144,16 +144,14 @@ int main(int argc, char** argv)
         // std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
         // ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! 
         // std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
-        camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
-        // camera = new cv::VideoCapture(0, cv::CAP_ANY);
-        // camera->set(3, 1280);
-        // camera->set(4, 720);
+        // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
+        
+        camera = new cv::VideoCapture(0, cv::CAP_V4L2);
+        camera->set(cv::CAP_PROP_FRAME_WIDTH, 1280);
+        camera->set(cv::CAP_PROP_FRAME_HEIGHT, 720);
+        camera->set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
+        camera->set(cv::CAP_PROP_FPS, config->maxFrameRate);
 
-        // // camera->set(cv::CAP_PROP_AUTOFOCUS, 1);
-        // camera->set(cv::CAP_PROP_BRIGHTNESS,Brightness / 3.0);
-        // camera->set(cv::CAP_PROP_CONTRAST, Contrast);
-        // camera->set(cv::CAP_PROP_SATURATION, Saturation);
-        // camera->set(cv::CAP_PROP_GAIN, Gain);
 
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
@@ -809,28 +807,29 @@ void detectThread(Utility::param* parameters)
         detector = new Detect::CascadeDetector ("./models/haar/haarcascade_frontalface_alt2.xml");
     } else {
 
-        std::vector<std::string> class_names = { 
-            "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
-            "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-            "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-            "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-            "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-            "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-            "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
-            "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
-            "hair drier", "toothbrush" 
-        };
-        
-        // std::vector<std::string> class_names = {
-        //     "0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
+        // std::vector<std::string> class_names = { 
+        //     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
+        //     "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
+        //     "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+        //     "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
+        //     "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+        //     "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+        //     "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
+        //     "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
+        //     "hair drier", "toothbrush" 
         // };
+        
+        std::vector<std::string> class_names = {
+            "0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
+        };
 
         // std::vector<std::string> class_names = {
         //     "cat", "dog"
         // };
 
         std::string path = get_current_dir_name();
-        std::string weights = path + "/models/yolo/yolov5s_coco.torchscript.pt";
+        // std::string weights = path + "/models/yolo/yolov5s_coco.torchscript.pt";
+        std::string weights = path + "/models/yolo/yolo5s_uno.torchscript.pt";
         
         detector = new Detect::YoloDetector(weights, class_names);
     }
@@ -838,6 +837,8 @@ void detectThread(Utility::param* parameters)
     std::vector<struct Detect::DetectionData> results;
 
     while (true) {
+
+        auto start = std::chrono::high_resolution_clock::now(); // For delay
 
         if (isSearching) {
             // TODO:: Perform better search ruetine
@@ -1086,6 +1087,13 @@ void detectThread(Utility::param* parameters)
                     } 
                 }
             }
+
+
+            auto end = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+            
+            // It should be known that it takes longer time at first time
+            std::cout << "Detection took : " << duration.count() << " ms" << std::endl;
 
             if (showVideo) {
                 cv::imshow("Viewport", frame);

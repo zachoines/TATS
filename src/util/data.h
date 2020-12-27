@@ -230,21 +230,26 @@ namespace Utility {
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
 
             recheckFrequency(10),                // Num frames in-between revalidations of
-            lossCountMax(2),                     // Max number of rechecks before episode is considered over
+            lossCountMax(1),                     // Max number of rechecks before episode is considered over
             updateRate(7),                       // Servo updates, update commands per second
             trainRate(1.0),					     // Network updates, sessions per second
             logOutput(false),                    // Prints various info to console
             
-            disableServo({ true, false }),       // Disable the { Y, X } servos
+            disableServo({ true, false }),      // Disable the { Y, X } servos
             invertServo({ true, false }),        // Flip output angles { Y, X } servos
-            resetAngles({ -35.0, 0.0 }),         // Angle when reset
+            resetAngles({ 0.0, 0.0 }),           // Angle when reset
             anglesHigh({ 40.0, 40.0 }),          // Max allowable output angle to servos
             anglesLow({ -40.0, -40.0 }),         // Min allowable output angle to servos
 
             servoConfigurations({                // Hardware settings for individual servos
-                { 0, -56.5, 56.5, 0.750, 2.250, -35.0 }, 
+                { 0, -56.5, 56.5, 0.750, 2.250, 0.0 }, 
                 { 1, -56.5, 56.5, 0.750, 2.250, 0.0 } 
             }),
+
+            // servoConfigurations({                // Hardware settings for individual servos
+            //     { 0, -65.0, 65.0, 0.900, 2.100, 0.0 }, 
+            //     { 1, -65.0, 65.0, 0.900, 2.100, 0.0 } 
+            // }),
             
             alternateServos(false),              // Whether to alternate servos at the start of training
             alternateSteps(100),                 // Steps per servo (will increase exponentially as training proggresses (doubles threshold each time its met)). Cut short by 'alternateEpisodeEndCap'
@@ -252,9 +257,9 @@ namespace Utility {
             alternateEpisodeEndCap(15),          // Number "end of episodes" before switching again. Prevents too much noise when both servos are enabled.
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN }
-            useTracking(true),					 // Use openCV tracker instead of face detection
-            draw(true),						     // Draw target bounding box and center on frame
-            showVideo(true),					 // Show camera feed
+            useTracking(false),					 // Use openCV tracker instead of face detection
+            draw(false),						 // Draw target bounding box and center on frame
+            showVideo(false),					 // Show camera feed
             cascadeDetector(false),				 // Use faster cascade face detector
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
             actionHigh(0.2),                     // Max output to of policy network's logits
@@ -262,10 +267,11 @@ namespace Utility {
             pidOutputHigh(40.0),                 // Max output allowed for PID's
             pidOutputLow(-40.0),				 // Min output allowed for PID's
             defaultGains({ 1.0, 1.0, 1.0 }),     // Gains fed to pids when initialized
-            targets({"cat", "dog"}),
+            targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
+            // targets({"face"}),
             
             dims({ 720, 720 }),                  // Dimensions of frame
-            maxFrameRate(30),                    // Camera capture rate
+            maxFrameRate(60),                    // Camera capture rate
             multiProcess(true)                   // Enables autotuning in a seperate process. Otherwise its a thread.
             {}
     } typedef cfg;
