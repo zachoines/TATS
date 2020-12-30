@@ -72,19 +72,21 @@ double PID::update(double input) {
     // Integral windup gaurd
     _cI = std::clamp<double>(_cI, -_windup_guard, _windup_guard);
 
-    // save previous time and error
+    // save previous time, error, and outputs
     _prevTime = _currTime;
     _last_input = input;
     _prevError = error; 
 
-    // save errors
-    _prevErrors[3] = _prevErrors[2];
-    _prevErrors[2] = _prevErrors[1];
-    _prevErrors[1] = _prevErrors[0];
-    _prevErrors[0] = error;
+    for (int i = 2; i >= 0; i--) {
+        _prevOutputs[i + 1] = _prevOutputs[i];
+        _prevErrors[i + 1] = _prevErrors[i];
+    }
 
     // Cross-mult, sum and return, enforce PID gain bounds
-    return std::clamp<double>((_kP * _cP) + (_cI) - (_kD * _cD * _deltaInput), _min, _max);
+    _prevOutputs[0] = std::clamp<double>((_kP * _cP) + (_cI) - (_kD * _cD * _deltaInput), _min, _max);
+    _prevErrors[0] = error;
+
+    return _prevOutputs[0];
 }
 
 void PID::getPID(double w[3])

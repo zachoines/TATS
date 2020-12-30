@@ -141,6 +141,7 @@ namespace TATS {
             data.servos[servo].frame = _currentData[servo].frame;
             data.servos[servo].lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
             data.servos[servo].currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
+            data.servos[servo].spf = _currentData[servo].spf;
         }
 
         return data;
@@ -224,6 +225,7 @@ namespace TATS {
             stepResults.servos[servo].nextState.frame = _currentData[servo].frame;
             stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
             stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
+            stepResults.servos[servo].nextState.spf = _currentData[servo].spf;
             stepResults.servos[servo].done = _currentData[servo].done;
             stepResults.servos[servo].empty = false;
         }

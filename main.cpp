@@ -86,6 +86,8 @@ volatile sig_atomic_t sig_value1;
 
 int main(int argc, char** argv)
 {
+
+    std::srand( (unsigned)std::time( NULL ) );
     
     // Kill child if parent dies :(
     prctl(PR_SET_PDEATHSIG, SIGKILL); 
@@ -98,6 +100,7 @@ int main(int argc, char** argv)
     Config* config = new Config();
     servos = new TATS::Env();
 
+    // TODO:: Make numParams a dynamic calculation
     // Create a shared memory buffer for experiance replay
     int numParams = 558298; // size of policy network! Will change if anything is edited in defaults
     boost::interprocess::shared_memory_object::remove("SharedMemorySegment");
@@ -125,7 +128,7 @@ int main(int argc, char** argv)
         }
     }
 
-    // Parent process is image recognition PID/servo controller, second is SAC Servo autotuner
+    // Parent process is image recognition PID/servo controller, second is SAC PID Autotuner
     if (config->multiProcess && config->trainMode) {
         pid = fork(); 
     } else {
@@ -137,20 +140,12 @@ int main(int argc, char** argv)
         parameters->pid = pid;
 
         // Init camera 3280 x 2464
-        std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=30/1, format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
-        // ! videobalance contrast=1.3 brightness=-.2 saturation=1.2
-        // width=4056, height=3040
-        // std::string pipeline = "nvarguscamerasrc sensor-id=0 ee-mode=1 ee-strength=0 tnr-mode=2 tnr-strength=1 wbmode=3 ! video/x-raw(memory:NVMM), width=3280, height=2464, framerate=30/1,format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
-        // std::string pipeline = gstreamer_pipeline(0, config->dims[1], config->dims[0], config->dims[1], config->dims[0], config->maxFrameRate, 0);
-        // ! videobalance contrast=1.3 brightness=-.2 saturation=1.2 ! 
-        // std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=4032,height=3040,framerate=30/1 ! nvvidconv ! video/x-raw, width=1280,height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
+        // std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=60/1, format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
         // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
         
-        camera = new cv::VideoCapture(0, cv::CAP_V4L2);
+        camera = new cv::VideoCapture(0);
         camera->set(cv::CAP_PROP_FRAME_WIDTH, 1280);
         camera->set(cv::CAP_PROP_FRAME_HEIGHT, 720);
-        camera->set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
-        camera->set(cv::CAP_PROP_FPS, config->maxFrameRate);
 
 
         // Setup threads and PIDS
@@ -368,9 +363,6 @@ void syncThread(Utility::param* parameters) {
             std::cout << "Ctrl+C detected!" << std::endl;
             break;
         }
-
-        // std::cout << "Sending train signal..." << std::endl;
-        // kill(parameters->pid, SIGUSR1);
     }
 }
 
@@ -839,6 +831,14 @@ void detectThread(Utility::param* parameters)
     while (true) {
 
         auto start = std::chrono::high_resolution_clock::now(); // For delay
+        
+        // Half the time vary the FPS when training
+        if (config->trainMode && config->variableFPS && config->varyFPSChance < static_cast<float>(rand()) / static_cast <float> (RAND_MAX)) {
+            double additional_delay = config->FPSVariance;
+            distribution = std::normal_distribution<double>(0.5, 0.1); 
+            additional_delay = std::clamp<double>(2.0 * additional_delay * distribution(generator) + 1.0, 0.0, 2.0 * additional_delay + 1.0); 
+            Utility::msleep(static_cast<int>(additional_delay));
+        }
 
         if (isSearching) {
             // TODO:: Perform better search ruetine
@@ -920,9 +920,14 @@ void detectThread(Utility::param* parameters)
                 pan.done = false;
                 tilt.done = false;
                 
-                double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - execbegin).count() * 1e-9;
+                auto now = std::chrono::high_resolution_clock::now();
+                double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
                 pan.timestamp = elapsed;
                 tilt.timestamp = elapsed;
+
+                double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
+                pan.spf = seconds_per_frame;
+                tilt.spf = seconds_per_frame;
 
                 // Fresh data
                 ED eventDataArray[2] {
@@ -989,7 +994,8 @@ void detectThread(Utility::param* parameters)
                     pan.error = frameCenterX - objX;
 
                     // Other State data
-                    double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - execbegin).count() * 1e-9;
+                    auto now = std::chrono::high_resolution_clock::now();
+                    double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
                     pan.timestamp = elapsed;
                     tilt.timestamp = elapsed;
 
@@ -1003,6 +1009,10 @@ void detectThread(Utility::param* parameters)
                     tilt.frame = frameCenterY;
                     pan.done = false;
                     tilt.done = false;
+                
+                    double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
+                    pan.spf = seconds_per_frame;
+                    tilt.spf = seconds_per_frame;
 
                     // Fresh data
                     ED eventDataArray[2] {
@@ -1058,7 +1068,8 @@ void detectThread(Utility::param* parameters)
 
                         // Error state
                         // Enter State data
-                        double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now() - execbegin).count() * 1e-9;
+                        auto now = std::chrono::high_resolution_clock::now();
+                        double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
 
                         pan.timestamp = elapsed;
                         tilt.timestamp = elapsed;
@@ -1072,6 +1083,11 @@ void detectThread(Utility::param* parameters)
                         tilt.frame = frameCenterY;
                         pan.done = true;
                         tilt.done = true;
+                        
+                        double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
+                        pan.spf = seconds_per_frame;
+                        tilt.spf = seconds_per_frame;
+
 
                         // Fresh data
                         ED eventDataArray[2] {

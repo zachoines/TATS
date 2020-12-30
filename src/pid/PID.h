@@ -12,13 +12,8 @@ struct PIDState {
     double din; // derivative
     double in; // input
     double setPoint;
-    double errors[4]; // Previous error
-    
-    void getStateArray(double state[4]) {
-        for (int i = 0; i < 4; i++) {
-            state[i] = errors[i];
-        }
-    }
+    double errors[4]; // Previous errors
+    double outputs[4]; // Previous outputs
 
     PIDState() : 
         dt(0.0),
@@ -72,6 +67,7 @@ class PID
         double _deltaTime;
         double _deltaError;
         double _prevErrors[4];
+        double _prevOutputs[4];
 
         double _windup_guard;
         double _setpoint;
