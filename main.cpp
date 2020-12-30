@@ -298,7 +298,6 @@ int main(int argc, char** argv)
                     }
                     
                     // Inform parent new params are available
-                    // std::cout << "Sync signal sent..." << std::endl;
                     kill(getppid(), SIGUSR1);
 
                     // Sleep per train rate
@@ -1103,13 +1102,6 @@ void detectThread(Utility::param* parameters)
                     } 
                 }
             }
-
-
-            auto end = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-            
-            // It should be known that it takes longer time at first time
-            std::cout << "Detection took : " << duration.count() << " ms" << std::endl;
 
             if (showVideo) {
                 cv::imshow("Viewport", frame);

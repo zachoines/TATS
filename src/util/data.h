@@ -91,8 +91,8 @@ namespace Utility {
                 7.) Delta time: T 
                     Note: In seconds
 
-                8.) Second per frame: T 
-                    Note: In seconds
+                8.) Seconds per frame: T 
+    
             */
 
             // Scale roughly between -1.0 ~ 1.0
