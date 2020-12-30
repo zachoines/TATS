@@ -73,6 +73,7 @@ pid_t pid;
 SACAgent* pidAutoTuner = nullptr;
 TATS::Env* servos = nullptr;
 cv::VideoCapture* camera = nullptr;
+double additional_delay = 0.0;
 
 // Log files
 std::string logs[2] = {
@@ -685,7 +686,17 @@ void panTiltThread(Utility::param* parameters) {
                 if (config->trainMode) {
                     rate = static_cast<double>(config->updateRate) - 1.0;
                     _distribution = std::normal_distribution<double>(0.5, 0.1); 
-                    rate = std::clamp<double>(2.0 * rate * _distribution(_generator) + 1.0, 1.0, 2.0 * rate + 1.0); 
+                    rate = std::clamp<double>(2.0 * rate * _distribution(_generator) + 1.0, 1.0, 2.0 * rate + 1.0);
+
+                    if (config->varyFPSChance < static_cast<float>(rand()) / static_cast <float> (RAND_MAX)) {
+                        pthread_mutex_lock(&trainLock);
+                        additional_delay = config->FPSVariance;
+                        _distribution = std::normal_distribution<double>(0.5, 0.1); 
+                        additional_delay = std::clamp<double>(2.0 * additional_delay * _distribution(_generator) + 1.0, 0.0, 2.0 * additional_delay + 1.0);  
+                        pthread_mutex_unlock(&trainLock);
+                    } else {
+                        additional_delay = 0.0;
+                    }      
                 }
                 
                 for (int servo = 0; servo < NUM_SERVOS; servo++) {
@@ -734,10 +745,6 @@ void detectThread(Utility::param* parameters)
     using namespace Utility;
 
     Utility::Config* config = new Utility::Config();
-    std::normal_distribution<double> distribution;
-    std::default_random_engine generator;
-    double maxFrameRate = static_cast<double>(config->maxFrameRate) - 1.0;
-    double lastFrameRate = maxFrameRate;
 
     // Setup Camera
     if (!camera->isOpened())
@@ -832,11 +839,10 @@ void detectThread(Utility::param* parameters)
         auto start = std::chrono::high_resolution_clock::now(); // For delay
         
         // Half the time vary the FPS when training
-        if (config->trainMode && config->variableFPS && config->varyFPSChance < static_cast<float>(rand()) / static_cast <float> (RAND_MAX)) {
-            double additional_delay = config->FPSVariance;
-            distribution = std::normal_distribution<double>(0.5, 0.1); 
-            additional_delay = std::clamp<double>(2.0 * additional_delay * distribution(generator) + 1.0, 0.0, 2.0 * additional_delay + 1.0); 
+        if (config->trainMode && config->variableFPS) {
+            pthread_mutex_lock(&trainLock);
             Utility::msleep(static_cast<int>(additional_delay));
+            pthread_mutex_unlock(&trainLock);
         }
 
         if (isSearching) {

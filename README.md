@@ -1,5 +1,5 @@
 # TATS
-Target acquisition and tracking system. The aim of this repo is to use various deep learning techniques for detecting and tracking targets, optimized for IOT systems like the RPI 4 and NVIDEA Jetson product lines.
+Target acquisition and tracking system. The aim of this repo is to use various deep learning techniques for detecting and tracking targets. Optimized for linux IOT systems like the Raspberry Pi and NVIDEA Jetson product lines.
 
 ## Requirements
 * libtorch 1.6.0
@@ -33,20 +33,18 @@ Target acquisition and tracking system. The aim of this repo is to use various d
 	* Install from source
 		* git clone http://github.com/pytorch/pytorch
 		* cd pytorch
-		* git submodule update --init
 		* sudo pip3 install -U setuptools
 		* sudo pip3 install -r requirements.txt
 		* git submodule update --init --recursive
 		* sudo python3 setup.py develop
-        * python3 setup.py install
+        * sudo python3 setup.py install
 
 * lib Boost
 	* Sudo apt-get install libboost
-	* Include dir via linker command: -I/usr/include/boost
 
 * Build TATS
     * cmake -DCMAKE_PREFIX_PATH={path to build dir}/pytorch/build/lib.linux-aarch64-3.6/
-        * Its also possible to use python installation of Pytorch for the build as well
+        * Its also possible to use python installation of Pytorch for the build
     * make TATS
     
 * Run install
