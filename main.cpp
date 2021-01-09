@@ -66,6 +66,7 @@ void autoTuneThread(Utility::param* parameters);
 
 pthread_cond_t trainCond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t trainLock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t sleepLock = PTHREAD_MUTEX_INITIALIZER;
 
 pid_t pid;
 
@@ -73,7 +74,8 @@ pid_t pid;
 SACAgent* pidAutoTuner = nullptr;
 TATS::Env* servos = nullptr;
 cv::VideoCapture* camera = nullptr;
-double additional_delay = 0.0;
+double additionalDelay = 0.0;
+bool variableFPS = false;
 
 // Log files
 std::string logs[2] = {
@@ -141,12 +143,12 @@ int main(int argc, char** argv)
         parameters->pid = pid;
 
         // Init camera 3280 x 2464
-        // std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=60/1, format=NV12 ! nvvidconv flip-method=0 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
-        // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
+        std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=60/1, format=NV12 ! nvvidconv flip-method=2 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
+        camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
         
-        camera = new cv::VideoCapture(0);
-        camera->set(cv::CAP_PROP_FRAME_WIDTH, 1280);
-        camera->set(cv::CAP_PROP_FRAME_HEIGHT, 720);
+        // camera = new cv::VideoCapture(0);
+        // camera->set(cv::CAP_PROP_FRAME_WIDTH, 1280);
+        // camera->set(cv::CAP_PROP_FRAME_HEIGHT, 720);
 
 
         // Setup threads and PIDS
@@ -369,9 +371,10 @@ void syncThread(Utility::param* parameters) {
 static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* context)
 {
     // Take care of all segfaults
-    if (sig_number == SIGSEGV)
+    if (sig_number == SIGSEGV || sig_number == SIGTSTP || sig_number == SIGINT)
     {
-        perror("SIGSEV: Address access error.");
+        cv::destroyAllWindows();
+        camera->release();
         exit(-1);
     }
 
@@ -688,15 +691,20 @@ void panTiltThread(Utility::param* parameters) {
                     _distribution = std::normal_distribution<double>(0.5, 0.1); 
                     rate = std::clamp<double>(2.0 * rate * _distribution(_generator) + 1.0, 1.0, 2.0 * rate + 1.0);
 
-                    if (config->varyFPSChance < static_cast<float>(rand()) / static_cast <float> (RAND_MAX)) {
-                        pthread_mutex_lock(&trainLock);
-                        additional_delay = config->FPSVariance;
+                    pthread_mutex_lock(&sleepLock);
+                    
+                    if (config->variableFPS && config->varyFPSChance < static_cast<float>(rand()) / static_cast <float> (RAND_MAX)) {
+                        
                         _distribution = std::normal_distribution<double>(0.5, 0.1); 
-                        additional_delay = std::clamp<double>(2.0 * additional_delay * _distribution(_generator) + 1.0, 0.0, 2.0 * additional_delay + 1.0);  
-                        pthread_mutex_unlock(&trainLock);
+                        additionalDelay = std::clamp<double>(2.0 * config->FPSVariance * _distribution(_generator) + 1.0, 0.0, 2.0 * config->FPSVariance + 1.0);  
+                        variableFPS = true;
+                        
                     } else {
-                        additional_delay = 0.0;
-                    }      
+                        variableFPS = false;
+                        additionalDelay = 0.0;
+                    }
+
+                    pthread_mutex_unlock(&sleepLock);   
                 }
                 
                 for (int servo = 0; servo < NUM_SERVOS; servo++) {
@@ -838,11 +846,12 @@ void detectThread(Utility::param* parameters)
 
         auto start = std::chrono::high_resolution_clock::now(); // For delay
         
-        // Half the time vary the FPS when training
-        if (config->trainMode && config->variableFPS) {
-            pthread_mutex_lock(&trainLock);
-            Utility::msleep(static_cast<int>(additional_delay));
-            pthread_mutex_unlock(&trainLock);
+        // Vary FPS during training. 
+        // Don't bother wrapping globals variableFPS/additionalDelay in mutexes, changes relatively seldomly
+        if (config->trainMode && variableFPS) {
+            pthread_mutex_lock(&sleepLock);
+            Utility::msleep(static_cast<int>(additionalDelay));
+            pthread_mutex_unlock(&sleepLock);
         }
 
         if (isSearching) {
@@ -934,6 +943,10 @@ void detectThread(Utility::param* parameters)
                 pan.spf = seconds_per_frame;
                 tilt.spf = seconds_per_frame;
 
+                // if (config->logOutput) {
+                //     std::cout << "Seconds per frame: " << std::to_string(seconds_per_frame) << std::endl;
+                // }   
+
                 // Fresh data
                 ED eventDataArray[2] {
                     tilt,
@@ -1019,6 +1032,10 @@ void detectThread(Utility::param* parameters)
                     pan.spf = seconds_per_frame;
                     tilt.spf = seconds_per_frame;
 
+                    // if (config->logOutput) {
+                    //     std::cout << "Seconds per frame: " << std::to_string(seconds_per_frame) << std::endl;
+                    // }   
+
                     // Fresh data
                     ED eventDataArray[2] {
                         tilt,
@@ -1093,6 +1110,9 @@ void detectThread(Utility::param* parameters)
                         pan.spf = seconds_per_frame;
                         tilt.spf = seconds_per_frame;
 
+                        // if (config->logOutput) {
+                        //     std::cout << "Seconds per frame: " << std::to_string(seconds_per_frame) << std::endl;
+                        // }      
 
                         // Fresh data
                         ED eventDataArray[2] {

@@ -18,6 +18,7 @@ PID::PID(double kP, double kI, double kD, double min, double max, double setpoin
 
     for (int i = 0; i < 4; i++) {
         _prevErrors[i] = 0.0;
+        _prevOutputs[i] = 0.0;
     }
 }
 
@@ -45,6 +46,11 @@ void PID::init() {
     _deltaError = 0.0;
     _deltaInput = 0.0;
     _deltaTime = 0.0;
+
+    for (int i = 0; i < 4; i++) {
+        _prevErrors[i] = 0.0;
+        _prevOutputs[i] = 0.0;
+    }
 
 }
 
@@ -82,6 +88,16 @@ double PID::update(double input) {
         _prevErrors[i + 1] = _prevErrors[i];
     }
 
+    // _prevErrors[3] = _prevErrors[2];
+    // _prevErrors[2] = _prevErrors[1];
+    // _prevErrors[1] = _prevErrors[0];
+    // _prevErrors[0] = error;
+
+    // _prevOutputs[3] = _prevOutputs[2];
+    // _prevOutputs[2] = _prevOutputs[1];
+    // _prevOutputs[1] = _prevOutputs[0];
+    // _prevOutputs[0] = std::clamp<double>((_kP * _cP) + (_cI) - (_kD * _cD * _deltaInput), _min, _max);
+
     // Cross-mult, sum and return, enforce PID gain bounds
     _prevOutputs[0] = std::clamp<double>((_kP * _cP) + (_cI) - (_kD * _cD * _deltaInput), _min, _max);
     _prevErrors[0] = error;
@@ -113,6 +129,7 @@ state PID::getState(bool normalize)
     g.i = 0;
     for (int i = 0; i < 4; i++) {
         g.errors[i] = _prevErrors[i];
+        g.outputs[i] = _prevOutputs[i];
         g.i += (g.errors[i] * _deltaTime);
     }
 

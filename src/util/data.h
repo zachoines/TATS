@@ -100,8 +100,8 @@ namespace Utility {
             state[1] = ( pidStateData.i + ( currentError * pidStateData.dt )) / ( 2.0 * errorBound );
             state[2] = deltaTime > 0.0 ? (currentError - pidStateData.errors[0]) / deltaTime : 0.0;
             state[3] = deltaTime > 0.0 ? (currentError - ( 2.0 * pidStateData.errors[0] ) + pidStateData.errors[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
-            state[4] = deltaTime > 0.0 ? (currentAngle - pidStateData.outputs[0]) / deltaTime : 0.0;
-            state[5] = deltaTime > 0.0 ? (currentAngle - ( 2.0 * pidStateData.outputs[0] ) + pidStateData.outputs[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+            state[4] = deltaTime > 0.0 ? (pidStateData.outputs[0] - pidStateData.outputs[1]) / deltaTime : 0.0;
+            state[5] = deltaTime > 0.0 ? (pidStateData.outputs[0] - ( 2.0 * pidStateData.outputs[1] ) + pidStateData.outputs[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
             state[6] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
             state[7] = spf;
         } 
@@ -249,17 +249,17 @@ namespace Utility {
             recheckFrequency(10),                // Num frames in-between revalidations of
             lossCountMax(1),                     // Max number of rechecks before episode is considered over
             updateRate(7),                       // Servo updates, update commands per second
-            trainRate(1.0),					     // Network updates, sessions per second
-            logOutput(true),                    // Prints various info to console
+            trainRate(0.5),					     // Network updates, sessions per second
+            logOutput(true),                     // Prints various info to console
             
             disableServo({ true, false }),       // Disable the { Y, X } servos
             invertServo({ true, false }),        // Flip output angles { Y, X } servos
-            resetAngles({ 0.0, 0.0 }),           // Angle when reset
+            resetAngles({ -40.0, 0.0 }),         // Angle when reset
             anglesHigh({ 40.0, 40.0 }),          // Max allowable output angle to servos
             anglesLow({ -40.0, -40.0 }),         // Min allowable output angle to servos
 
             servoConfigurations({                // Hardware settings for individual servos
-                { 0, -56.5, 56.5, 0.750, 2.250, 0.0 }, 
+                { 0, -56.5, 56.5, 0.750, 2.250, -40.0 }, 
                 { 1, -56.5, 56.5, 0.750, 2.250, 0.0 } 
             }),
             
@@ -274,8 +274,8 @@ namespace Utility {
             showVideo(false),					 // Show camera feed
             cascadeDetector(true),				 // Use faster cascade face detector
             usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
-            actionHigh(0.2),                     // Max output to of policy network's logits
-            actionLow(0.0),                      // Min output to of policy network's logits
+            actionHigh(0.1),                     // Max output to of policy network's logits
+            actionLow(0.0),                      // xMin output to of policy network's logits
             pidOutputHigh(40.0),                 // Max output allowed for PID's
             pidOutputLow(-40.0),				 // Min output allowed for PID's
             defaultGains({ 1.0, 1.0, 1.0 }),     // Gains fed to pids when initialized

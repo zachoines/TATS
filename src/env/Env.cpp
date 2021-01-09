@@ -137,10 +137,10 @@ namespace TATS {
 
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             data.servos[servo].pidStateData = _pids[servo]->getState(true);
-            data.servos[servo].obj = (_currentData[servo].frame > 0) ? _currentData[servo].obj / _currentData[servo].frame : 0.0;
+            data.servos[servo].obj =  _currentData[servo].obj;
             data.servos[servo].frame = _currentData[servo].frame;
-            data.servos[servo].lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
-            data.servos[servo].currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
+            data.servos[servo].lastAngle = _lastAngles[servo];
+            data.servos[servo].currentAngle = _currentAngles[servo];
             data.servos[servo].spf = _currentData[servo].spf;
         }
 
@@ -223,8 +223,8 @@ namespace TATS {
             // Update states, divide by max possible values
             stepResults.servos[servo].nextState.obj = _currentData[servo].obj;
             stepResults.servos[servo].nextState.frame = _currentData[servo].frame;
-            stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo] / _config->anglesHigh[servo];
-            stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo] / _config->anglesHigh[servo];
+            stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo];
+            stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo];
             stepResults.servos[servo].nextState.spf = _currentData[servo].spf;
             stepResults.servos[servo].done = _currentData[servo].done;
             stepResults.servos[servo].empty = false;
