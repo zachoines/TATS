@@ -13,7 +13,7 @@ PID::PID(double kP, double kI, double kD, double min, double max, double setpoin
     _max = max;
     _min = min;
 
-    _windup_guard = setpoint * 4; 
+    _windup_guard = setpoint * 2; 
     _setpoint = setpoint;
 
     for (int i = 0; i < 4; i++) {
@@ -87,16 +87,6 @@ double PID::update(double input) {
         _prevOutputs[i + 1] = _prevOutputs[i];
         _prevErrors[i + 1] = _prevErrors[i];
     }
-
-    // _prevErrors[3] = _prevErrors[2];
-    // _prevErrors[2] = _prevErrors[1];
-    // _prevErrors[1] = _prevErrors[0];
-    // _prevErrors[0] = error;
-
-    // _prevOutputs[3] = _prevOutputs[2];
-    // _prevOutputs[2] = _prevOutputs[1];
-    // _prevOutputs[1] = _prevOutputs[0];
-    // _prevOutputs[0] = std::clamp<double>((_kP * _cP) + (_cI) - (_kD * _cD * _deltaInput), _min, _max);
 
     // Cross-mult, sum and return, enforce PID gain bounds
     _prevOutputs[0] = std::clamp<double>((_kP * _cP) + (_cI) - (_kD * _cD * _deltaInput), _min, _max);

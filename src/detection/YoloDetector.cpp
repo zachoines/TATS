@@ -108,10 +108,7 @@ namespace Detect {
         std::vector<torch::jit::IValue> inputs;
         inputs.emplace_back(tensor_img);
 
-        // inference
         torch::jit::IValue output = module_.forward(inputs);
-        
-        /*** Post-process ***/
         auto detections = output.toTuple()->elements()[0].toTensor();
 
         // result: n * 7

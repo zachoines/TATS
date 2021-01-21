@@ -29,10 +29,19 @@ PolicyNetwork::PolicyNetwork(int num_inputs, int num_actions, int hidden_size, d
 
     // Initialize params
     torch::autograd::GradMode::set_enabled(false);
-    torch::nn::init::xavier_uniform_(linear1->weight, 1.0);
-    torch::nn::init::xavier_uniform_(linear2->weight, 1.0);
-    torch::nn::init::xavier_uniform_(mean_Linear->weight, 1.0);
-    torch::nn::init::xavier_uniform_(log_std_linear->weight, 1.0);
+    // torch::nn::init::xavier_uniform_(linear1->weight, 1.0);
+    // torch::nn::init::xavier_uniform_(linear2->weight, 1.0);
+    // torch::nn::init::xavier_uniform_(mean_Linear->weight, 1.0);
+    // torch::nn::init::xavier_uniform_(log_std_linear->weight, 1.0);
+    // torch::nn::init::constant_(linear1->bias, 0.0);
+    // torch::nn::init::constant_(linear2->bias, 0.0);
+    // torch::nn::init::constant_(mean_Linear->bias, 0.0);
+    // torch::nn::init::constant_(log_std_linear->bias, 0.0);
+
+    torch::nn::init::kaiming_normal_(linear1->weight);
+    torch::nn::init::kaiming_normal_(linear2->weight);
+    torch::nn::init::kaiming_normal_(mean_Linear->weight, 1.0);
+    torch::nn::init::kaiming_normal_(log_std_linear->weight, 1.0);
     torch::nn::init::constant_(linear1->bias, 0.0);
     torch::nn::init::constant_(linear2->bias, 0.0);
     torch::nn::init::constant_(mean_Linear->bias, 0.0);
@@ -63,6 +72,7 @@ torch::Tensor PolicyNetwork::forward(torch::Tensor state, int batchSize, bool ev
     mean = mean_Linear->forward(X);
     log_std = torch::tanh(log_std_linear->forward(X));
     log_std = log_std_min + 0.5 * (log_std_max - log_std_min) * (log_std + 1.0);
+    // log_std = torch::clamp(log_std, log_std_min, log_std_max);
 
     return torch::cat({ { mean }, { log_std } }, 0);
 }

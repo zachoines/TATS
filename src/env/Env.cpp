@@ -30,6 +30,11 @@ namespace TATS {
             _lastAngles[servo] = _config->resetAngles[servo];
 
             _servos->initServo(_config->servoConfigurations[servo]);
+
+            for (int i = 0; i < 4; i++) {
+                _outputs[servo][i] = 0.0;
+                _errors[servo][i] = 0.0;
+            }
         }
     }
 
@@ -125,6 +130,11 @@ namespace TATS {
             _lastAngles[servo] = _resetAngles[servo];
             _currentAngles[servo] = _resetAngles[servo];
             _pids[servo]->init();
+            
+            for (int i = 0; i < 4; i++) {
+                _errors[servo][i] = 0.0;
+                _outputs[servo][i] = 0.0;
+            }
         }
     }
 
@@ -139,9 +149,18 @@ namespace TATS {
             data.servos[servo].pidStateData = _pids[servo]->getState(true);
             data.servos[servo].obj =  _currentData[servo].obj;
             data.servos[servo].frame = _currentData[servo].frame;
-            data.servos[servo].lastAngle = _lastAngles[servo];
-            data.servos[servo].currentAngle = _currentAngles[servo];
+            data.servos[servo].lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
+            data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
             data.servos[servo].spf = _currentData[servo].spf;
+    
+
+            for (int i = 0; i < 4; i++) {
+                _outputs[servo][i] = 0.0;
+                _errors[servo][i] = 0.0;
+            }
+
+            _outputs[servo][0] = _currentAngles[servo];
+            _errors[servo][0] = _currentData[servo].obj - _currentData[servo].frame;
         }
 
         return data;
@@ -209,25 +228,36 @@ namespace TATS {
                 stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, true);
             }
 
+            // Update state information
+            stepResults.servos[servo].nextState.obj = _currentData[servo].obj;
+            stepResults.servos[servo].nextState.frame = _currentData[servo].frame;
+            stepResults.servos[servo].nextState.lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
+            stepResults.servos[servo].nextState.currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
+            stepResults.servos[servo].nextState.spf = _currentData[servo].spf;
+            stepResults.servos[servo].done = _currentData[servo].done;
+            stepResults.servos[servo].empty = false;
+
+            // Store error and output history
+            for (int i = 2; i >= 0; i--) {
+                _outputs[servo][i + 1] = _outputs[servo][i];
+                _errors[servo][i + 1] = _errors[servo][i];
+            }
+
+            // Scale to -1 to 1;
+            _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
+            _errors[servo][0] = Utility::mapOutput(_currentData[servo].obj - _currentData[servo].frame,  -2.0 * _currentData[servo].frame, 2.0 * _currentData[servo].frame, -1.0, 1.0);
+
             // Fill out the step results
             if (!_config->usePIDs) {
                 
                 // We still use PIDS for keeping track of error in ENV. Otherwise the caller supplies actions rather than PIDS
                 _pids[servo]->update(currentError);
                 stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
+                stepResults.servos[servo].nextState.setData(_errors[servo], _outputs[servo]);
             }
             else {
                 stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
             }
-
-            // Update states, divide by max possible values
-            stepResults.servos[servo].nextState.obj = _currentData[servo].obj;
-            stepResults.servos[servo].nextState.frame = _currentData[servo].frame;
-            stepResults.servos[servo].nextState.lastAngle = _lastAngles[servo];
-            stepResults.servos[servo].nextState.currentAngle = _currentAngles[servo];
-            stepResults.servos[servo].nextState.spf = _currentData[servo].spf;
-            stepResults.servos[servo].done = _currentData[servo].done;
-            stepResults.servos[servo].empty = false;
         }
 
         return stepResults;

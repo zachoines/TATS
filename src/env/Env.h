@@ -33,6 +33,8 @@ namespace TATS {
         double _resetAngles[NUM_SERVOS];
         double _currentAngles[NUM_SERVOS];
         double _lastAngles[NUM_SERVOS];
+        double _errors[NUM_SERVOS][4];
+        double _outputs[NUM_SERVOS][4];
         int _currentSteps; 
         bool _forceEnable;
 

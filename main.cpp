@@ -68,7 +68,7 @@ pthread_cond_t trainCond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t trainLock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t sleepLock = PTHREAD_MUTEX_INITIALIZER;
 
-pid_t pid;
+pid_t pid = -1;
 
 // Shared between threads
 SACAgent* pidAutoTuner = nullptr;
@@ -91,9 +91,6 @@ int main(int argc, char** argv)
 {
 
     std::srand( (unsigned)std::time( NULL ) );
-    
-    // Kill child if parent dies :(
-    prctl(PR_SET_PDEATHSIG, SIGKILL); 
 
     using namespace Utility;
     using namespace TATS;
@@ -124,10 +121,7 @@ int main(int argc, char** argv)
         for (int log = 0; log < 2; log++) {
             // Remove old logs
             std::string logPath = servoPath + logs[log];
-
-            if (fileExists(logPath)) {
-                std::remove(logPath.c_str());
-            }
+            std::remove(logPath.c_str());
         }
     }
 
@@ -144,13 +138,16 @@ int main(int argc, char** argv)
 
         // Init camera 3280 x 2464
         std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=60/1, format=NV12 ! nvvidconv flip-method=2 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
-        camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
+        // std::string pipeline = "v4l2src device=/dev/video0 ! video/x-raw ! videoconvert ! appsink";
+        // std::string pipeline = "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int)640, height=(int)480, format=(string)I420, framerate=(fraction)30/1 ! nvvidconv ! video/x-raw, format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink";
+        // std::string pipeline = "v4l2src device=/dev/video0 ! video/x-raw, width=1920, height=1080, framerate=30/1, format=YUY2' ! nvvidconv flip-method=2 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
+        // std::string pipeline = "/usr/src/jetson_multimedia_api/samples/v4l2cuda/capture-cuda device=/dev/video0 ! video/x-raw ! videoconvert ! appsink";
+        // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
         
-        // camera = new cv::VideoCapture(0);
-        // camera->set(cv::CAP_PROP_FRAME_WIDTH, 1280);
-        // camera->set(cv::CAP_PROP_FRAME_HEIGHT, 720);
-
-
+        camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
+        camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
+        camera->set(cv::CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
+        
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
         if (!config->trainMode) {
@@ -167,7 +164,7 @@ int main(int argc, char** argv)
             syncThread(parameters);
 
             // Terminate Child processes
-            kill(-pid, SIGQUIT);
+            kill(pid, SIGQUIT);
             if (wait(NULL) != -1) {
                 return 0;
             }
@@ -194,7 +191,11 @@ int main(int argc, char** argv)
         // } else {
         //     device = torch::kCPU;
         // }
+        
+        // Kill child if parent killed
+        prctl(PR_SET_PDEATHSIG, SIGKILL); 
 
+        
         // SACAgent* pidAutoTunerChild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow, true, 0.99, 5e-3, 0.2, 3e-4, 3e-4, 3e-4, device);
         SACAgent* pidAutoTunerChild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
@@ -250,7 +251,7 @@ int main(int argc, char** argv)
         double t_i = 0;
 
         // Wait on parent process' signal before training
-        while ((sig_value1 != SIGINT) && (sig_value1 != SIGTERM))
+        while ((sig_value1 != SIGINT) && (sig_value1 != SIGTERM) && (sig_value1 != SIGSEGV) && (sig_value1 != SIGTSTP))
         {
             sig_value1 = 0;
 
@@ -373,9 +374,7 @@ static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* co
     // Take care of all segfaults
     if (sig_number == SIGSEGV || sig_number == SIGTSTP || sig_number == SIGINT)
     {
-        cv::destroyAllWindows();
-        camera->release();
-        exit(-1);
+        kill(getpid(), SIGKILL);
     }
 
     sig_value1 = sig_number;
@@ -812,31 +811,9 @@ void detectThread(Utility::param* parameters)
     if (cascadeDetector) {
         detector = new Detect::CascadeDetector ("./models/haar/haarcascade_frontalface_alt2.xml");
     } else {
-
-        // std::vector<std::string> class_names = { 
-        //     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
-        //     "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-        //     "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-        //     "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-        //     "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-        //     "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-        //     "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
-        //     "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
-        //     "hair drier", "toothbrush" 
-        // };
-        
-        std::vector<std::string> class_names = {
-            "0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"
-        };
-
-        // std::vector<std::string> class_names = {
-        //     "cat", "dog"
-        // };
-
+        std::vector<std::string> class_names = config->classes;
         std::string path = get_current_dir_name();
-        // std::string weights = path + "/models/yolo/yolov5s_coco.torchscript.pt";
-        std::string weights = path + "/models/yolo/yolo5s_uno.torchscript.pt";
-        
+        std::string weights = path + config->yoloPath;
         detector = new Detect::YoloDetector(weights, class_names);
     }
 
@@ -864,7 +841,11 @@ void detectThread(Utility::param* parameters)
             try {
                 // crop the image to generate equal setpoints for PIDs
                 frame = GetImageFromCamera(camera);
-
+                
+                // if (config->resize[0] != config->captureSize[0] || config->resize[1] != config->captureSize[1]) {
+                //     cv::resize(frame, frame, cv::Size(config->resize[1], config->resize[0]), 0, 0, CV_INTER_LINEAR);
+                // }
+                
                 int cropSize = config->dims[0];
                 int offsetW = (frame.cols - cropSize) / 2;
                 int offsetH = (frame.rows - cropSize) / 2;
@@ -942,11 +923,7 @@ void detectThread(Utility::param* parameters)
                 double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
                 pan.spf = seconds_per_frame;
                 tilt.spf = seconds_per_frame;
-
-                // if (config->logOutput) {
-                //     std::cout << "Seconds per frame: " << std::to_string(seconds_per_frame) << std::endl;
-                // }   
-
+                
                 // Fresh data
                 ED eventDataArray[2] {
                     tilt,
@@ -967,6 +944,7 @@ void detectThread(Utility::param* parameters)
             else {
 
             detect:
+                // bool intersects = ((A & B).area() > 0);
                 try {
                     std::vector<struct Detect::DetectionData> out = detector->detect(frame, draw, 1);
                     results = out;
@@ -1031,10 +1009,6 @@ void detectThread(Utility::param* parameters)
                     double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
                     pan.spf = seconds_per_frame;
                     tilt.spf = seconds_per_frame;
-
-                    // if (config->logOutput) {
-                    //     std::cout << "Seconds per frame: " << std::to_string(seconds_per_frame) << std::endl;
-                    // }   
 
                     // Fresh data
                     ED eventDataArray[2] {
@@ -1109,10 +1083,6 @@ void detectThread(Utility::param* parameters)
                         double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
                         pan.spf = seconds_per_frame;
                         tilt.spf = seconds_per_frame;
-
-                        // if (config->logOutput) {
-                        //     std::cout << "Seconds per frame: " << std::to_string(seconds_per_frame) << std::endl;
-                        // }      
 
                         // Fresh data
                         ED eventDataArray[2] {
@@ -1235,10 +1205,6 @@ start:
         Utility::msleep(milis);
     }
 }
-
-// g++ -o test /home/zachoines/Documents/repos/test/pytorch/test.cpp -std=gnu++17 -Wl,--no-as-needed -g -I/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6/torch/include -I/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6/torch/include/torch/csrc/api/include -L/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6/torch/lib -lc10_cuda -lc10 -ltorch -ltorch_cuda -ltorch_cpu
-// cmake -DCMAKE_PREFIX_PATH=/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6/
-// make TATS
 
 /*
     torch::Device cpu(torch::kCPU);

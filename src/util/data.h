@@ -13,21 +13,22 @@
 #include "../servo/ServoKit.h"
 
 namespace Utility {
-    #define NUM_SERVOS 2
-    #define NUM_INPUT 8
-    #define NUM_ACTIONS 3
-    #define NUM_HIDDEN 256
+    #define NUM_SERVOS 2                         // Number of servos used 
+    #define NUM_INPUT 9                          // Size of the state schema
+    #define NUM_HIDDEN 256                       // Number of nodes in each networls hidden layer
+    #define USE_PIDS 0                           // When enabled AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
+    #define NUM_ACTIONS ((USE_PIDS) ? 3 : 1)     // Number of AI output logits. 3 when PID's are enabled, one for each PID gain. Othersize one for output angle.
     
     struct EventData { 
 
-        bool done;
-        double obj; // The X or Y center of object on in frame
-        double size; // The bounding size of object along its X or Y axis
-        double point; // The X or Y Origin coordinate of object
-        double frame; // The X or Y center of frame
-        double error;
-        double timestamp;
-        double spf; // seconds per frame
+        bool done;                               // For when the targer is lost
+        double obj;                              // The X or Y center of object on in frame
+        double size;                             // The bounding size of object along its X or Y axis
+        double point;                            // The X or Y Origin coordinate of object
+        double frame;                            // The X or Y center of frame
+        double error;                            // Number of pixels between object and target centers
+        double timestamp;                      
+        double spf;                              // seconds per frame of the detect thread
 
         void reset() {
             done = false;
@@ -56,10 +57,20 @@ namespace Utility {
         struct PIDState pidStateData;
         double currentAngle;
         double lastAngle;
+        double angleMax;
+        double errors[4];
+        double outputs[4];
         double obj;
         double frame;
         double e; 
         double spf;
+
+        void setData(double errs[4], double outs[4]) {
+            for (int i = 0; i < 4; i++) {
+                errors[i] = errs[i];
+                outputs[i] = outs[i];
+            }
+        }
 
         void getStateArray(double state[NUM_INPUT]) {
 
@@ -95,15 +106,31 @@ namespace Utility {
     
             */
 
-            // Scale roughly between -1.0 ~ 1.0
-            state[0] = currentError / errorBound;
-            state[1] = ( pidStateData.i + ( currentError * pidStateData.dt )) / ( 2.0 * errorBound );
-            state[2] = deltaTime > 0.0 ? (currentError - pidStateData.errors[0]) / deltaTime : 0.0;
-            state[3] = deltaTime > 0.0 ? (currentError - ( 2.0 * pidStateData.errors[0] ) + pidStateData.errors[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
-            state[4] = deltaTime > 0.0 ? (pidStateData.outputs[0] - pidStateData.outputs[1]) / deltaTime : 0.0;
-            state[5] = deltaTime > 0.0 ? (pidStateData.outputs[0] - ( 2.0 * pidStateData.outputs[1] ) + pidStateData.outputs[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
-            state[6] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-            state[7] = spf;
+            if (USE_PIDS) {
+                state[0] = currentAngle;
+                state[1] = currentError / errorBound;
+                state[2] = ( pidStateData.i + ( currentError * pidStateData.dt )) / ( 2.0 * errorBound );
+                state[3] = deltaTime > 0.0 ? (currentError - pidStateData.errors[0]) / deltaTime : 0.0;
+                state[4] = deltaTime > 0.0 ? (currentError - ( 2.0 * pidStateData.errors[0] ) + pidStateData.errors[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+                state[5] = deltaTime > 0.0 ? (pidStateData.outputs[0] - pidStateData.outputs[1]) / deltaTime : 0.0;
+                state[6] = deltaTime > 0.0 ? (pidStateData.outputs[0] - ( 2.0 * pidStateData.outputs[1] ) + pidStateData.outputs[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+                state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                state[8] = spf;
+            } else {
+                double integral = 0.0;
+                for (int i = 0; i < 4; i++) {
+                    integral += (errors[i] * pidStateData.dt);
+                }
+                state[0] = outputs[0];
+                state[1] = errors[0];
+                state[2] = integral / 4.0;
+                state[3] = deltaTime > 0.0 ? (errors[0] - errors[1]) / deltaTime : 0.0;
+                state[4] = deltaTime > 0.0 ? (errors[0] - ( 2.0 * errors[1] ) + errors[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+                state[5] = deltaTime > 0.0 ? (outputs[0] - outputs[1]) / deltaTime : 0.0;
+                state[6] = deltaTime > 0.0 ? (outputs[0] - ( 2.0 * outputs[1] ) + outputs[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+                state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                state[8] = spf;
+            }
         } 
 
         PIDAndServoStateData() : 
@@ -111,6 +138,8 @@ namespace Utility {
             currentAngle(0.0), 
             lastAngle(0.0), 
             obj(0.0), 
+            errors({ 0.0 }),
+            outputs({ 0.0 }),
             frame(0.0), 
             e(0.0),
             spf(0.0)
@@ -168,6 +197,11 @@ namespace Utility {
         double actionHigh;
         double actionLow;
 
+        // Yolo detection options
+        std::string yoloPath;
+        std::vector<std::string> targets;
+        std::vector<std::string> classes;
+
         // Train Options
         long maxTrainingSteps;
         int maxBufferSize;
@@ -197,7 +231,6 @@ namespace Utility {
         bool showVideo;
         bool cascadeDetector;
         bool usePIDs;
-        std::vector<std::string> targets;
 
         // PID options
         double pidOutputHigh;
@@ -220,7 +253,9 @@ namespace Utility {
 
         // Other 
         int dims[2];
-        int maxFrameRate;
+        int captureSize[2];
+        int resize[2];
+        int fps;
         bool multiProcess;
     
         Config() :
@@ -243,25 +278,49 @@ namespace Utility {
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
             variableFPS(true),                   // Vary the FPS in training
-            FPSVariance(5.0),                    // Average change in FPS
+            FPSVariance(6.0),                    // Average change in FPS
             varyFPSChance(0.5),                  // Percentage of frames that have variable FPS
 
             recheckFrequency(10),                // Num frames in-between revalidations of
             lossCountMax(1),                     // Max number of rechecks before episode is considered over
-            updateRate(7),                       // Servo updates, update commands per second
-            trainRate(0.5),					     // Network updates, sessions per second
+            updateRate(10),                      // Servo updates, update commands per second
+            trainRate(.5),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             
             disableServo({ true, false }),       // Disable the { Y, X } servos
             invertServo({ true, false }),        // Flip output angles { Y, X } servos
-            resetAngles({ -40.0, 0.0 }),         // Angle when reset
-            anglesHigh({ 40.0, 40.0 }),          // Max allowable output angle to servos
-            anglesLow({ -40.0, -40.0 }),         // Min allowable output angle to servos
-
-            servoConfigurations({                // Hardware settings for individual servos
-                { 0, -56.5, 56.5, 0.750, 2.250, -40.0 }, 
-                { 1, -56.5, 56.5, 0.750, 2.250, 0.0 } 
-            }),
+            resetAngles({                        // Angle when reset
+                USE_PIDS ? 0.0 : 90.0, 
+                USE_PIDS ? 0.0 : 90.0
+            }),           
+            anglesHigh({                         // Max allowable output angle to servos
+                USE_PIDS ? 40.0 : 123.5, 
+                USE_PIDS ? 40.0 : 123.5
+            }),          
+            anglesLow({                          // Min allowable output angle to servos
+                USE_PIDS ? -40.0 : 33.5,        
+                USE_PIDS ? -40.0 : 33.5
+            }),         
+            servoConfigurations(                 // Hardware settings for individual servos         
+                {                             
+                    { 
+                        0, 
+                        USE_PIDS ? -56.5 : 33.5, 
+                        USE_PIDS ? 56.5 : 123.5, 
+                        0.750, 
+                        2.250, 
+                        USE_PIDS ? 0.0 : 90.0
+                    }, 
+                    { 
+                        1, 
+                        USE_PIDS ? -56.5 : 33.5, 
+                        USE_PIDS ? 56.5 : 123.5, 
+                        0.750, 
+                        2.250, 
+                        USE_PIDS ? 0.0 : 90.0
+                    } 
+                }
+            ),
             
             alternateServos(false),              // Whether to alternate servos at the start of training
             alternateSteps(100),                 // Steps per servo (will increase exponentially as training proggresses (doubles threshold each time its met)). Cut short by 'alternateEpisodeEndCap'
@@ -270,21 +329,42 @@ namespace Utility {
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN }
             useTracking(false),					 // Use openCV tracker instead of face detection
-            draw(false),						 // Draw target bounding box and center on frame
-            showVideo(false),					 // Show camera feed
-            cascadeDetector(true),				 // Use faster cascade face detector
-            usePIDs(true),                       // Network outputs PID gains, or network outputs angle directly
-            actionHigh(0.1),                     // Max output to of policy network's logits
-            actionLow(0.0),                      // xMin output to of policy network's logits
+            draw(true),						     // Draw target bounding box and center on frame
+            showVideo(true),					 // Show camera feed
+            cascadeDetector(false),				 // Use faster cascade face detector
+            usePIDs((bool)USE_PIDS),             // Network outputs PID gains, or network outputs angle directly
+            actionHigh(                          // Max output to of policy network's logits   
+                USE_PIDS ? 0.1 : 123.5
+            ),                     
+            actionLow(                           // Min output to of policy network's logits
+                USE_PIDS ? 0.0 : 33.5
+            ),                      
             pidOutputHigh(40.0),                 // Max output allowed for PID's
             pidOutputLow(-40.0),				 // Min output allowed for PID's
-            defaultGains({ 1.0, 1.0, 1.0 }),     // Gains fed to pids when initialized
-            // targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
-            targets({"face"}),
+            defaultGains({ .08, .04, .001}),     // Gains fed to pids when initialized
             
-            dims({ 720, 720 }),                  // Dimensions of frame
-            maxFrameRate(60),                    // Camera capture rate
-            multiProcess(true)                   // Enables autotuning in a seperate process. Otherwise its a thread.
+            dims({ 720, 720 }),                  // The image crop dimensions. Applied before autotuning input.
+            captureSize({ 720, 1280 }),          // The dimensions for capture device
+            resize({ 720, 1280 }),               // The dimensions to scale to before cropping
+            
+            fps(60),                             // Camera capture rate
+            multiProcess(true),                  // Enables autotuning in a seperate process. Otherwise its a thread.
+
+            yoloPath("/models/yolo/yolo5s_uno.torchscript.pt"),
+            targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
+            classes({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"})
+            
+            // yoloPath("/models/yolo/yolov5s_coco.torchscript.pt"),
+            // classes({ 
+            // "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
+            // "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
+            // "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+            // "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
+            // "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+            // "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+            // "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
+            // "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
+            // "hair drier", "toothbrush" });
             {}
     } typedef cfg;
 
