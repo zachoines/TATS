@@ -248,7 +248,7 @@ torch::Tensor SACAgent::get_action(torch::Tensor state, bool trainMode)
             throw std::runtime_error("could not obtain lock when getting action");
         }
 
-        torch::Tensor reshapedResult = next.view({ 5, 1, _num_actions });
+        torch::Tensor reshapedResult = next.view({ 7, 1, _num_actions });
         return torch::squeeze(reshapedResult[0]);
     }
     else {
@@ -261,7 +261,7 @@ torch::Tensor SACAgent::get_action(torch::Tensor state, bool trainMode)
             throw std::runtime_error("could not obtain lock when getting action");
         }
 
-        torch::Tensor reshapedResult = next.view({ 5, 1, _num_actions });
+        torch::Tensor reshapedResult = next.view({ 7, 1, _num_actions });
         return torch::squeeze(reshapedResult[2]); // Return the mean action
     }
 }
@@ -307,12 +307,14 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         
         // Sample from Policy
         torch::Tensor current = _policy_net->sample(states_t, batchSize);
-        torch::Tensor reshapedResult = current.view({ 5, batchSize, _num_actions });
+        torch::Tensor reshapedResult = current.view({ 7, batchSize, _num_actions });
         torch::Tensor new_actions_t = reshapedResult[0];
         torch::Tensor log_pi_t = reshapedResult[1];
         torch::Tensor mean = reshapedResult[2];
         torch::Tensor std = reshapedResult[3];
         torch::Tensor z_values = reshapedResult[4];
+        torch::Tensor log_std = reshapedResult[5];
+        torch::Tensor unsquashed_mean = reshapedResult[6];
         log_pi_t = log_pi_t.sum(1, true);
 
         // Update alpha temperature
@@ -356,19 +358,17 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
             torch::Tensor advantage = torch::min(qf1_pi, qf2_pi) - value_predictions.detach();
             policy_loss = (_alpha * log_pi_t - advantage).mean();
 
-            // // Policy Regularization
-            torch::Tensor mean_reg = 1e-3 * torch::mean(mean.sum(1, true).pow(2.0));
-            torch::Tensor std_reg = 1e-3 * torch::mean(std.sum(1, true).pow(2.0));
-
-            torch::Tensor actor_reg = mean_reg + std_reg;
-            policy_loss += actor_reg;
-
+            // Policy Regularization
+            torch::Tensor mean_reg = 1e-3 * 0.5 * torch::mean(torch::pow(unsquashed_mean, 2.0));
+            torch::Tensor std_reg = 1e-3 * 0.5 * torch::mean(torch::pow(log_std, 2.0));
+            
+            policy_loss += (mean_reg + std_reg);
 
              // Update Policy Network
             if (pthread_mutex_lock(&_policyNetLock) == 0) {
                 _policy_net->optimizer->zero_grad();
                 policy_loss.backward();
-                torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 0.5);
+                // torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 0.5);
                 _policy_net->optimizer->step();
                 pthread_mutex_unlock(&_policyNetLock);
 
@@ -385,18 +385,18 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         // Update Q-Value networks
         _q_net1->optimizer->zero_grad();
         q_value_loss1.backward();
-        torch::nn::utils::clip_grad_norm_(_q_net1->parameters(), 0.5);
+        // torch::nn::utils::clip_grad_norm_(_q_net1->parameters(), 0.5);
         _q_net1->optimizer->step();
 
         _q_net2->optimizer->zero_grad();
         q_value_loss2.backward();
-        torch::nn::utils::clip_grad_norm_(_q_net2->parameters(), 0.5);
+        // torch::nn::utils::clip_grad_norm_(_q_net2->parameters(), 0.5);
         _q_net2->optimizer->step();
 
         // Update Value network
         _value_network->zero_grad();
         value_loss.backward();
-        torch::nn::utils::clip_grad_norm_(_value_network->parameters(), 0.5);
+        // torch::nn::utils::clip_grad_norm_(_value_network->parameters(), 0.5);
         _value_network->optimizer->step();
         
         // Update counters

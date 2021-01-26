@@ -374,6 +374,7 @@ static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* co
     // Take care of all segfaults
     if (sig_number == SIGSEGV || sig_number == SIGTSTP || sig_number == SIGINT)
     {
+        camera->release();
         kill(getpid(), SIGKILL);
     }
 
@@ -447,6 +448,8 @@ void panTiltThread(Utility::param* parameters) {
         if (config->useAutoTuning) {
 
             if (!servos->isDone()) {
+                
+                // servos->getCurrentState(currentState);
                 for (int i = 0; i < NUM_SERVOS; i++) {
 
                     // Query network and get PID gains
@@ -654,7 +657,7 @@ void panTiltThread(Utility::param* parameters) {
 
                         std::cout << "Here are the actions: ";
                         for (int j = 0; j < NUM_ACTIONS; j++) {
-                            std::cout << std::to_string(trainData[servo].actions[j]) << ", ";
+                            std::cout << std::to_string(Utility::rescaleAction(trainData[servo].actions[j], config->actionLow, config->actionHigh)) << ", ";
                         }
                         std::cout << std::endl;
                     }    

@@ -58,8 +58,8 @@ namespace Utility {
         double currentAngle;
         double lastAngle;
         double angleMax;
-        double errors[4];
-        double outputs[4];
+        double errors[4] = { 0.0 };
+        double outputs[4] = { 0.0 };
         double obj;
         double frame;
         double e; 
@@ -79,7 +79,7 @@ namespace Utility {
             double deltaTime = pidStateData.dt * 1000.0; // Back to mili
 
             /* 
-                The State
+                The State (then multiplied by constants to move closer to -1 ~ 1)
 
                 1.) Current Error
 
@@ -121,15 +121,27 @@ namespace Utility {
                 for (int i = 0; i < 4; i++) {
                     integral += (errors[i] * pidStateData.dt);
                 }
+
                 state[0] = outputs[0];
                 state[1] = errors[0];
-                state[2] = integral / 4.0;
-                state[3] = deltaTime > 0.0 ? (errors[0] - errors[1]) / deltaTime : 0.0;
-                state[4] = deltaTime > 0.0 ? (errors[0] - ( 2.0 * errors[1] ) + errors[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
-                state[5] = deltaTime > 0.0 ? (outputs[0] - outputs[1]) / deltaTime : 0.0;
-                state[6] = deltaTime > 0.0 ? (outputs[0] - ( 2.0 * outputs[1] ) + outputs[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+                state[2] = integral;
+                state[3] = deltaTime > 0.0 ? ((errors[0] - errors[1]) / deltaTime) * 100.0 : 0.0;
+                state[4] = deltaTime > 0.0 ? ((errors[0] - ( 2.0 * errors[1] ) + errors[2]) / std::pow<double>(deltaTime, 2.0)) * 100 : 0.0; 
+                state[5] = deltaTime > 0.0 ? ((outputs[0] - outputs[1]) / deltaTime) * 100.0 : 0.0;
+                state[6] = deltaTime > 0.0 ? ((outputs[0] - ( 2.0 * outputs[1] ) + outputs[2]) / std::pow<double>(deltaTime, 2.0)) * 100 : 0.0; 
                 state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                state[8] = spf;
+                state[8] = deltaTime > 0.0 ? spf : 0.0;
+
+                // state[0] = outputs[0];
+                // state[1] = errors[0];
+                // state[2] = outputs[1];
+                // state[3] = errors[1];
+                // state[4] = outputs[2];
+                // state[5] = errors[2];
+                // state[6] = outputs[3];
+                // state[7] = errors[3];
+                // state[8] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                // state[9] = deltaTime > 0.0 ? spf : 0.0;
             }
         } 
 
@@ -275,50 +287,33 @@ namespace Utility {
             batchSize(256),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
             numInitialRandomActions(2500),       // Number of random actions taken.
-            trainMode(true),                     // When autotuning is on, 'false' means network test mode.
+            trainMode(false),                    // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
             variableFPS(true),                   // Vary the FPS in training
             FPSVariance(6.0),                    // Average change in FPS
             varyFPSChance(0.5),                  // Percentage of frames that have variable FPS
 
             recheckFrequency(10),                // Num frames in-between revalidations of
-            lossCountMax(1),                     // Max number of rechecks before episode is considered over
-            updateRate(10),                      // Servo updates, update commands per second
+            lossCountMax(3),                     // Max number of rechecks before episode is considered over
+            updateRate(8),                       // Servo updates, update commands per second
             trainRate(.5),					     // Network updates, sessions per second
-            logOutput(true),                     // Prints various info to console
+            logOutput(false),                    // Prints various info to console
             
-            disableServo({ true, false }),       // Disable the { Y, X } servos
+            disableServo({ false, false }),      // Disable the { Y, X } servos
             invertServo({ true, false }),        // Flip output angles { Y, X } servos
             resetAngles({                        // Angle when reset
-                USE_PIDS ? 0.0 : 90.0, 
-                USE_PIDS ? 0.0 : 90.0
+                0.0, 0.0
             }),           
             anglesHigh({                         // Max allowable output angle to servos
-                USE_PIDS ? 40.0 : 123.5, 
-                USE_PIDS ? 40.0 : 123.5
+                45.0, 45.0
             }),          
             anglesLow({                          // Min allowable output angle to servos
-                USE_PIDS ? -40.0 : 33.5,        
-                USE_PIDS ? -40.0 : 33.5
+                -45.0, -45.0
             }),         
             servoConfigurations(                 // Hardware settings for individual servos         
                 {                             
-                    { 
-                        0, 
-                        USE_PIDS ? -56.5 : 33.5, 
-                        USE_PIDS ? 56.5 : 123.5, 
-                        0.750, 
-                        2.250, 
-                        USE_PIDS ? 0.0 : 90.0
-                    }, 
-                    { 
-                        1, 
-                        USE_PIDS ? -56.5 : 33.5, 
-                        USE_PIDS ? 56.5 : 123.5, 
-                        0.750, 
-                        2.250, 
-                        USE_PIDS ? 0.0 : 90.0
-                    } 
+                    { 0, -56.5, 56.5, 0.750, 2.250, 0.0 }, 
+                    { 1, -56.5, 56.5, 0.750, 2.250, 0.0 } 
                 }
             ),
             
@@ -329,19 +324,19 @@ namespace Utility {
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN }
             useTracking(false),					 // Use openCV tracker instead of face detection
-            draw(true),						     // Draw target bounding box and center on frame
-            showVideo(true),					 // Show camera feed
+            draw(false),						 // Draw target bounding box and center on frame
+            showVideo(false),					 // Show camera feed
             cascadeDetector(false),				 // Use faster cascade face detector
             usePIDs((bool)USE_PIDS),             // Network outputs PID gains, or network outputs angle directly
             actionHigh(                          // Max output to of policy network's logits   
-                USE_PIDS ? 0.1 : 123.5
+                USE_PIDS ? 0.1 : 45.0
             ),                     
             actionLow(                           // Min output to of policy network's logits
-                USE_PIDS ? 0.0 : 33.5
+                USE_PIDS ? 0.0 : -45.0
             ),                      
-            pidOutputHigh(40.0),                 // Max output allowed for PID's
-            pidOutputLow(-40.0),				 // Min output allowed for PID's
-            defaultGains({ .08, .04, .001}),     // Gains fed to pids when initialized
+            pidOutputHigh(45.0),                 // Max output allowed for PID's
+            pidOutputLow(-45.0),				 // Min output allowed for PID's
+            defaultGains({ 1.0, 1.0, 1.0}),     // Gains fed to pids when initialized
             
             dims({ 720, 720 }),                  // The image crop dimensions. Applied before autotuning input.
             captureSize({ 720, 1280 }),          // The dimensions for capture device
@@ -351,6 +346,7 @@ namespace Utility {
             multiProcess(true),                  // Enables autotuning in a seperate process. Otherwise its a thread.
 
             yoloPath("/models/yolo/yolo5s_uno.torchscript.pt"),
+            // targets({"face"}),
             targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
             classes({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"})
             

@@ -168,12 +168,12 @@ namespace Utility {
 		if (alt) {
 
 			if (done) {
-				r1 = -2.0;
+				r1 = -1.0;
 			} else if (errorNewScaled <= errorThreshold) {
 				r1 = 0.0;
 			}
 			                                 
-			r2 += Utility::mapOutput(1.0 - errorNewScaled, 0.0, 1.0, -0.50, 0.50);
+			// r2 += Utility::mapOutput(1.0 - errorNewScaled, 0.0, 1.0, -0.50, 0.50);
 			// r2 += errorNewScaled;
 
 			// Rewards R3
@@ -250,24 +250,22 @@ namespace Utility {
 	
 		} else {
 			
-			if ( done ) { return  -2.0; }
-			
-			// Another varient with only negative rewards
-			if (errorNewScaled < errorThreshold) {
-				r1 = 0.0;
-			} else {
-				r1 = errorThreshold - errorNewScaled;
-			}
+	        // Another varient with only negative rewards
+			// if (errorNewScaled < errorThreshold) {
+			// 	r1 = 0.0;
+			// } else {
+			r1 = - errorNewScaled;
+			// // }
 
-			if (errorNewScaled <= errorOldScaled) {
-				r2 = 0.0;
-			}
-			else {
-				r2 = errorNewScaled - errorOldScaled;
-			}
+			// if (errorNewScaled <= errorOldScaled) {
+			// 	r2 = 0.0;
+			// }
+			// else {
+			// 	r2 = errorNewScaled - errorOldScaled;
+			// }
 			
 			// Punish done, scale and clamp from -1 to 1
-			return std::clamp<double>((w1 * r1) + (w2 * r2), -2.0, 0.0);	
+			return std::clamp<double>((w1 * r1) + ( done ? -1.0 : 0.0), -2.0, 0.0);	
 		}	
 	}
 

@@ -26,8 +26,9 @@ torch::Tensor Normal::log_prob(torch::Tensor value)
 {
     torch::Tensor var = torch::pow(scale, 2.0);
     torch::Tensor log_scale = torch::log(scale);
-
-    return -(torch::pow(value - loc, 2.0) / (2.0 * var)) - log_scale - torch::log(torch::sqrt(torch::tensor({ 2.0 * M_PI })));
+    
+    // return -(torch::pow(value - loc, 2.0) / (2.0 * var)) - log_scale - torch::log(torch::sqrt(torch::tensor({ 2.0 * M_PI })));
+    return -torch::pow(value - loc, 2.0) / (2.0 * var) - log_scale - torch::log(torch::sqrt(torch::tensor({ 2.0 * M_PI })));
 }
 
 

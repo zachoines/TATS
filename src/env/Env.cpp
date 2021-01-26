@@ -159,8 +159,12 @@ namespace TATS {
                 _errors[servo][i] = 0.0;
             }
 
-            _outputs[servo][0] = _currentAngles[servo];
-            _errors[servo][0] = _currentData[servo].obj - _currentData[servo].frame;
+            double frameCenter = (_config->dims[servo] / 2.0);
+            _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
+            _errors[servo][0] = (_invert[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
+            // _errors[servo][0] = (_currentData[servo].obj - frameCenter) / frameCenter;
+            data.servos[servo].setData(_errors[servo], _outputs[servo]);
+            _stateData[servo] = data.servos[servo];
         }
 
         return data;
@@ -201,9 +205,9 @@ namespace TATS {
                 newAngle = _pids[servo]->update(_currentData[servo].obj);
             }
 
-            if (_invert[servo]) { 
-                newAngle = newAngle * -1.0; 
-            }
+            // if (_invert[servo]) { 
+            //     newAngle = newAngle * -1.0; 
+            // }
 
             _lastAngles[servo] = _currentAngles[servo];
             _currentAngles[servo] = newAngle;
@@ -225,7 +229,7 @@ namespace TATS {
                 throw std::runtime_error("State must represent a complete transition");
             }
             else {
-                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, true);
+                stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, false);
             }
 
             // Update state information
@@ -237,6 +241,8 @@ namespace TATS {
             stepResults.servos[servo].done = _currentData[servo].done;
             stepResults.servos[servo].empty = false;
 
+            _stateData[servo] = stepResults.servos[servo].nextState;
+
             // Store error and output history
             for (int i = 2; i >= 0; i--) {
                 _outputs[servo][i + 1] = _outputs[servo][i];
@@ -244,9 +250,11 @@ namespace TATS {
             }
 
             // Scale to -1 to 1;
+            double frameCenter = (_config->dims[servo] / 2.0);
             _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
-            _errors[servo][0] = Utility::mapOutput(_currentData[servo].obj - _currentData[servo].frame,  -2.0 * _currentData[servo].frame, 2.0 * _currentData[servo].frame, -1.0, 1.0);
-
+            _errors[servo][0] = (_invert[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
+            // _errors[servo][0] = (_currentData[servo].obj - frameCenter) / frameCenter;
+            
             // Fill out the step results
             if (!_config->usePIDs) {
                 
@@ -272,6 +280,12 @@ namespace TATS {
     void Env::setDisabled(bool servos[NUM_SERVOS]) {
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             _disableServo[servo] = servos[servo];
+        }
+    }
+
+    void Env::getCurrentState(Utility::SD state[NUM_SERVOS]) {
+        for (int servo = 0; servo < NUM_SERVOS; servo++) {
+            state[servo] = _stateData[servo];
         }
     }
 };

@@ -21,15 +21,13 @@ QNetwork::QNetwork(int num_inputs, int num_actions, int hidden_size, double init
     // torch::nn::init::xavier_uniform_(linear1->weight, 1.0);
     // torch::nn::init::xavier_uniform_(linear2->weight, 1.0);
     // torch::nn::init::xavier_uniform_(linear3->weight, 1.0);
-    // torch::nn::init::constant_(linear1->bias, 0.0);
-    // torch::nn::init::constant_(linear2->bias, 0.0);
-    // torch::nn::init::constant_(linear3->bias, 0.0);
-    torch::nn::init::kaiming_normal_(linear1->weight);
-    torch::nn::init::kaiming_normal_(linear2->weight);
-    torch::nn::init::kaiming_normal_(linear3->weight);
     torch::nn::init::constant_(linear1->bias, 0.0);
     torch::nn::init::constant_(linear2->bias, 0.0);
     torch::nn::init::constant_(linear3->bias, 0.0);
+    torch::nn::init::kaiming_normal_(linear1->weight);
+    torch::nn::init::kaiming_normal_(linear2->weight);
+    torch::nn::init::kaiming_normal_(linear3->weight);
+    
     torch::autograd::GradMode::set_enabled(true);
 
     linear1->weight.set_requires_grad(true);
