@@ -132,15 +132,6 @@ namespace Utility {
                 // state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
                 // state[8] = deltaTime > 0.0 ? spf : 0.0;
 
-                // state[0] = outputs[0];
-                // state[1] = errors[0];
-                // state[2] = outputs[1];
-                // state[3] = errors[1];
-                // state[4] = outputs[2];
-                // state[5] = errors[2];
-                // state[6] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                // state[7] = deltaTime > 0.0 ? spf : 0.0;
-
                 state[0] = outputs[0];
                 state[1] = errors[0];
                 state[2] = outputs[1];
@@ -269,12 +260,6 @@ namespace Utility {
         double anglesHigh[NUM_SERVOS];
         double anglesLow[NUM_SERVOS];
 
-        // Servo alternation in training reduces noise significantly. Faster convergence if enabled generally
-        bool alternateServos;
-        int alternateSteps;
-        int alternateStop;
-        int alternateEpisodeEndCap;
-
         // Other 
         int dims[2];
         int captureSize[2];
@@ -312,7 +297,7 @@ namespace Utility {
             trainRate(1.0),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             
-            disableServo({ false, true }),       // Disable the { Y, X } servos
+            disableServo({ false, false }),      // Disable the { Y, X } servos
             invertServo({ true, false }),        // Flip output angles { Y, X } servos
             resetAngles({                        // Angle when reset
                 0.0, 0.0
@@ -328,12 +313,7 @@ namespace Utility {
                     { 0, -56.5, 56.5, 0.750, 2.250, 0.0 }, 
                     { 1, -56.5, 56.5, 0.750, 2.250, 0.0 } 
                 }
-            ),
-            
-            alternateServos(false),              // Whether to alternate servos at the start of training
-            alternateSteps(100),                 // Steps per servo (will increase exponentially as training proggresses (doubles threshold each time its met)). Cut short by 'alternateEpisodeEndCap'
-            alternateStop(300),                  // Number of alternations
-            alternateEpisodeEndCap(15),          // Number "end of episodes" before switching again. Prevents too much noise when both servos are enabled.
+            ),    
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN }
             useTracking(false),					 // Use openCV tracker instead of face detection

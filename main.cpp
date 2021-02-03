@@ -506,60 +506,10 @@ void panTiltThread(Utility::param* parameters) {
                 }
 
                 try {
-
-                    if (config->trainMode) {
-                        
-                        // If we are alternating servos
-                        /* if (config->alternateServos) {
-
-                            // Max steps with current servo or met the 'End of Episodes' max for current servo mask
-                            if (alternateCounter == 0 || alternateCounter > config->alternateSteps || episodeEndCounts > config->alternateEpisodeEndCap) {
-                                
-                                // Switch disabled servo and reset counters
-                                alternationMode = (alternationMode + 1) % 2;
-                                
-                                if (!initialRandomActions) {
-                                    numAlternations += 1;
-                                }
-                                
-                                episodeEndCounts = 0;
-                                alternateCounter = 0;
-
-                                // Stop alternating, reset back to default servo mask
-                                if (numAlternations > config->alternateStop) {
-                                    std::cout << "WARNING: Done alternating between servos" << std::endl;
-                                    config->alternateServos = false;
-                                    servos->setDisabled(config->disableServo);	
-                                }
-                                
-                                // Set all on
-                                // else if (alternationMode == 1) {
-                                //     servos->setDisabled(enableAllServos);
-                                // } 
-                                
-                                // Turn one axis off
-                                else {
-                                    currentServoMask[currentServo] = true;
-                                    currentServo = (currentServo + 1) % NUM_SERVOS;
-                                    currentServoMask[currentServo] = false;
-                                    servos->setDisabled(currentServoMask);	
-                                }
-
-                                alternateCounter++;
-                                goto reset;
-
-                            } else {
-                                alternateCounter++;
-                            } 
-                        } */
-                    }
-                    
                     stepResults = servos->step(predictedActions, true, rate);		
-                    
                     totalSteps = (totalSteps + 1) % INT_MAX; 
-
                 } catch(const std::exception& e) {
-                    std::cerr << e.what() << '\n';
+                    std::cerr << e.what() << std::endl;
                     throw std::runtime_error("cannot step with servos");
                 }
                 
@@ -615,11 +565,6 @@ void panTiltThread(Utility::param* parameters) {
                         }
                         else {
                             
-                            // If we are alternating, prevent premature ending of episode next time around
-                            if (config->alternateServos && totalEpisodeSteps[servo] >= static_cast<double>(config->alternateSteps)) {
-                                config->alternateSteps *= 2;
-                            }
-
                             numEpisodes[servo] += 1;
                             emaEpisodeRewardSum[servo] = (totalEpisodeRewards[servo] - emaEpisodeRewardSum[servo]) * emaWeight + emaEpisodeRewardSum[servo];
                             emaEpisodeStepSum[servo] = (totalEpisodeSteps[servo] - emaEpisodeStepSum[servo]) * emaWeight + emaEpisodeStepSum[servo];

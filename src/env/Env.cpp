@@ -101,7 +101,7 @@ namespace TATS {
         }
         catch(const std::exception& e)
         {
-            std::cerr << e.what() << '\n';
+            std::cerr << e.what() << std::endl;
             throw std::runtime_error("cannot update event data");
         }
     }
