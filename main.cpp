@@ -408,6 +408,10 @@ void panTiltThread(Utility::param* parameters) {
     double totalEpisodeSteps[NUM_SERVOS] = { 0.0 };
     int episodeEndCounts = 0.0;
 
+    double totalEpisodeObjPredError[NUM_SERVOS] = { 0.0 };
+    double stepAverageObjPredError[NUM_SERVOS] = { 0.0 };
+    double emaEpisodeObjPredErrorSum[NUM_SERVOS] = { 0.0 };
+
     // training state variables
     bool initialRandomActions = config->initialRandomActions;
     int numInitialRandomActions = config->numInitialRandomActions;
@@ -459,7 +463,7 @@ void panTiltThread(Utility::param* parameters) {
                             numInitialRandomActions--;
 
                             for (int a = 0; a < config->numActions; a++) {
-                                predictedActions[i][a] = std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);;
+                                predictedActions[i][a] = std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
                             }
                         }
                         else {
@@ -469,6 +473,7 @@ void panTiltThread(Utility::param* parameters) {
                                 std::cout << "WARNING: Done generating initial random actions" << std::endl;
                             }
                             
+                            // Perform Inference, get action(s) 
                             currentState[i].getStateArray(stateArray);
                             at::Tensor actions = pidAutoTuner->get_action(torch::from_blob(stateArray, { 1, config->numInput }, options), true);
                             actions.to(torch::kCPU);
@@ -505,7 +510,7 @@ void panTiltThread(Utility::param* parameters) {
                     if (config->trainMode) {
                         
                         // If we are alternating servos
-                        if (config->alternateServos) {
+                        /* if (config->alternateServos) {
 
                             // Max steps with current servo or met the 'End of Episodes' max for current servo mask
                             if (alternateCounter == 0 || alternateCounter > config->alternateSteps || episodeEndCounts > config->alternateEpisodeEndCap) {
@@ -545,8 +550,8 @@ void panTiltThread(Utility::param* parameters) {
 
                             } else {
                                 alternateCounter++;
-                            }
-                        }
+                            } 
+                        } */
                     }
                     
                     stepResults = servos->step(predictedActions, true, rate);		
@@ -592,14 +597,19 @@ void panTiltThread(Utility::param* parameters) {
 
                             // Average reward in a step
                             totalEpisodeSteps[servo] += 1.0;						
-                            totalEpisodeRewards[servo] += trainData[servo].reward;
-                            stepAverageRewards[servo] = (trainData[servo].reward - stepAverageRewards[servo]) * emaWeight + stepAverageRewards[servo];
+                            totalEpisodeRewards[servo] += trainData[servo].errors[0];
+                            totalEpisodeObjPredError[servo] += trainData[servo].errors[1];
+
+                            stepAverageRewards[servo] = (trainData[servo].errors[0] - stepAverageRewards[servo]) * emaWeight + stepAverageRewards[servo];
+                            stepAverageObjPredError[servo] = (trainData[servo].errors[1] - stepAverageObjPredError[servo]) * emaWeight + stepAverageObjPredError[servo];
 
                             std::string stepData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
                                                 (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
                                                 + std::to_string(totalSteps) + ','
-                                                + std::to_string(trainData[servo].reward) + ',' 
-                                                + std::to_string(stepAverageRewards[servo]);
+                                                + std::to_string(trainData[servo].errors[0]) + ',' 
+                                                + std::to_string(stepAverageRewards[servo])  + ','
+                                                + std::to_string(trainData[servo].errors[1])  + ','
+                                                + std::to_string(stepAverageObjPredError[servo]);
 
                             appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[1], stepData);
                         }
@@ -613,7 +623,8 @@ void panTiltThread(Utility::param* parameters) {
                             numEpisodes[servo] += 1;
                             emaEpisodeRewardSum[servo] = (totalEpisodeRewards[servo] - emaEpisodeRewardSum[servo]) * emaWeight + emaEpisodeRewardSum[servo];
                             emaEpisodeStepSum[servo] = (totalEpisodeSteps[servo] - emaEpisodeStepSum[servo]) * emaWeight + emaEpisodeStepSum[servo];
-
+                            emaEpisodeObjPredErrorSum[servo] = (totalEpisodeObjPredError[servo] - emaEpisodeObjPredErrorSum[servo]) * emaWeight + emaEpisodeObjPredErrorSum[servo];
+                
                             // Log Episode averages
                             std::string episodeData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
                                                     (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
@@ -622,12 +633,14 @@ void panTiltThread(Utility::param* parameters) {
                                                     + std::to_string(totalEpisodeSteps[servo] > 0.0 ? totalEpisodeRewards[servo] / totalEpisodeSteps[servo] : 0.0) + ','
                                                     + std::to_string(totalEpisodeSteps[servo]) + ','
                                                     + std::to_string(emaEpisodeRewardSum[servo] / emaEpisodeStepSum[servo]) + ','
-                                                    + std::to_string(emaEpisodeStepSum[servo]);
+                                                    + std::to_string(emaEpisodeStepSum[servo]) + ','
+                                                    + std::to_string(emaEpisodeObjPredErrorSum[servo] / emaEpisodeStepSum[servo]);
                             
                             appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[0], episodeData);
 
                             totalEpisodeSteps[servo] = 0.0;
                             totalEpisodeRewards[servo] = 0.0;
+                            totalEpisodeObjPredError[servo] = 0.0;
                         }     
                     }
 
@@ -656,9 +669,19 @@ void panTiltThread(Utility::param* parameters) {
                         std::cout << std::endl;
 
                         std::cout << "Here are the actions: ";
-                        for (int j = 0; j < NUM_ACTIONS; j++) {
-                            std::cout << std::to_string(Utility::rescaleAction(trainData[servo].actions[j], config->actionLow, config->actionHigh)) << ", ";
+
+                        if (config->usePIDs) {
+                            for (int j = 0; j < NUM_ACTIONS; j++) {
+                                std::cout << std::to_string(Utility::rescaleAction(trainData[servo].actions[j], config->actionLow, config->actionHigh)) << ", ";
+                            }
+                        } else {
+                            std::cout << std::to_string(Utility::rescaleAction(trainData[servo].actions[0], config->actionLow, config->actionHigh)) << ", ";
+                            std::cout << std::to_string(Utility::rescaleAction(trainData[servo].actions[1], 0.0, config->dims[servo])) << std::endl;
+
+                            std::cout << "Here are the errors: ";
+                            std::cout << std::to_string(trainData[servo].errors[0]) << ", " << std::to_string(trainData[servo].errors[1]) << std::endl;
                         }
+                        
                         std::cout << std::endl;
                     }    
 
@@ -777,6 +800,7 @@ void detectThread(Utility::param* parameters)
     bool cascadeDetector = config->cascadeDetector;
 
     // program state variables
+    bool programStart = true;
     bool rechecked = false;
     bool isTracking = false;
     bool isSearching = false;
@@ -869,19 +893,14 @@ void detectThread(Utility::param* parameters)
                 
                 isSearching = false;
 
-                try {
-                    // Get the new tracking result
-                    if (!tracker->update(frame, roi)) {
-                        isTracking = false;
-                        lossCount++;
-                        goto detect;
-                    }
-                } catch (const std::exception& e)
-                {
-                    std::cerr << e.what();
-                    camera->release();
-                    throw std::runtime_error("could not update opencv tracker");
-                }			
+                // Get the new tracking result
+                if (!tracker->update(frame, roi)) {
+            lostTracking:
+                    isTracking = false;
+                    lossCount++;
+                    goto detect;
+                }
+		
 
                 // Chance to revalidate object tracking quality
                 if (frameCount >= recheckFrequency) {
@@ -947,7 +966,7 @@ void detectThread(Utility::param* parameters)
             else {
 
             detect:
-                // bool intersects = ((A & B).area() > 0);
+
                 try {
                     std::vector<struct Detect::DetectionData> out = detector->detect(frame, draw, 1);
                     results = out;
@@ -960,24 +979,67 @@ void detectThread(Utility::param* parameters)
                 
                 Detect::DetectionData result;
                 result.found = false;
-
+  
                 if (!results.empty()) { 
-                    result = results.at(0);
-                } 
+                    if (programStart || isSearching) {
+                        for (auto res : results) {
+                            
+                            if (std::find(targets.begin(), targets.end(), res.target) != targets.end()) {
+                                result = res;
+                                roi = result.boundingBox;
+                                break;
+                            }
+                        }         
+                    } else if (useTracking && rechecked) {
+                        rechecked = false;
+                        for (auto res : results) {
+                            result = res;
+                            
+                            // If they intersect
+                            if (((result.boundingBox & roi).area() > 0.0)) {
+                                goto validated; 
+                            }  
+                        }
+                        
+                        goto lostTracking;
+                    } else {
+                        // Vast magority of the time there will be overlap 
+                        double bestIOU = 0.0;
+                        double bestDistance = 0.0;
+                    
+                        for (auto res : results) {
+                            
+                            // If they intersect
+                            if (std::find(targets.begin(), targets.end(), res.target) != targets.end()) {                                
+                                double area = (res.boundingBox & roi).area();
+                                double distance = Utility::distance(res.center, (roi.tl() + roi.br()) / 2.0);
 
-                roi = result.boundingBox;
+                                if (area >= bestIOU) {
+                                    bestDistance = distance;
+                                    bestIOU = area;
+                                    result = res;
+                                    roi = result.boundingBox;
+                                } else if (distance <= bestDistance) {
+                                    bestDistance = distance;
+                                    result = res;
+                                    roi = result.boundingBox;
+                                }
+                                
+                                // std::cout << "Here is the distance and areas: " << std::to_string(bestDistance) << ", " << std::to_string(bestIOU) << std::endl;
+                            }
+                        } 
+                    }
+                } 
                 
                 // If we confidently found the object we are looking for
-                if (result.found && (std::find(targets.begin(), targets.end(), result.target) != targets.end())) {
+                if (result.found) {
 
                     // Update loop variants
+                    programStart = false;
                     lossCount = 0;
                     isSearching = false;
 
-                    if (rechecked) {
-                        rechecked = false;
-                        goto validated; 
-                    }
+                    roi = result.boundingBox;
 
                     ED tilt;
                     ED pan;
@@ -1039,6 +1101,112 @@ void detectThread(Utility::param* parameters)
                             camera->release();
                             throw std::runtime_error("Could not init opencv tracker");
                         }
+                    }
+                }
+                else if (config->usePOT) {
+                    lossCount++;
+                    rechecked = false;
+
+                    // Target is out of sight, inform PID's, model, and servos
+                    if (lossCount >= lossCountMax) {
+                        
+                        isSearching = true;
+                        isTracking = false;
+                        lossCount = 0;
+
+                        ED tilt;
+                        ED pan;
+                        
+                        // Object not on screen
+                        frameCenterX = static_cast<double>(frame.cols) / 2.0;
+                        frameCenterY = static_cast<double>(frame.rows) / 2.0;
+                        objX = 0;
+                        objY = 0;
+
+                        // Max error
+                        tilt.error = frameCenterY;
+                        pan.error = frameCenterX;
+
+                        // Error state
+                        // Enter State data
+                        auto now = std::chrono::high_resolution_clock::now();
+                        double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
+
+                        pan.timestamp = elapsed;
+                        tilt.timestamp = elapsed;
+                        pan.point = 0;
+                        tilt.point = 0;
+                        pan.size = 0;
+                        tilt.size = 0;
+                        pan.obj = frameCenterX * 2;
+                        tilt.obj = frameCenterY * 2; // max error
+                        pan.frame = frameCenterX;
+                        tilt.frame = frameCenterY;
+                        pan.done = true;
+                        tilt.done = true;
+                        
+                        double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
+                        pan.spf = seconds_per_frame;
+                        tilt.spf = seconds_per_frame;
+
+                        // Fresh data
+                        ED eventDataArray[2] {
+                            tilt,
+                            pan
+                        };
+                        
+                        try {
+                            servos->update(eventDataArray);
+                        } catch (...) {
+                            throw std::runtime_error("cannot update event data");
+                        }
+                    } else if (!isSearching and !programStart) {
+                        // Get the prediction location of object relative to frame center
+                        if (config->logOutput) {
+                            std::cout << "Using Predictive Object Tracking: frame # " << std::to_string(lossCount) << std::endl;
+                        }
+                        
+                        double locations[NUM_SERVOS] = { 0.0 };
+                        servos->getPredictedObjectLocation(locations);
+
+                        ED tilt;
+                        ED pan;
+                        
+                        frameCenterX = static_cast<double>(config->dims[1]) / 2.0;
+                        frameCenterY = static_cast<double>(config->dims[0]) / 2.0;
+                        objX = locations[1];
+                        objY = locations[0];
+                        
+                        auto now = std::chrono::high_resolution_clock::now();
+                        double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
+
+                        pan.timestamp = elapsed;
+                        tilt.timestamp = elapsed;
+                        pan.obj = objX;
+                        tilt.obj = objY;
+                        pan.frame = frameCenterX;
+                        tilt.frame = frameCenterY;
+                        tilt.error = frameCenterY - objY;
+                        pan.error = frameCenterX - objX;
+                        pan.done = false;
+                        tilt.done = false;
+                        
+                        double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
+                        pan.spf = seconds_per_frame;
+                        tilt.spf = seconds_per_frame;
+
+                        // Fresh data
+                        ED eventDataArray[2] {
+                            tilt,
+                            pan
+                        };
+                        
+                        try {
+                            servos->update(eventDataArray);
+                        } catch (...) {
+                            throw std::runtime_error("cannot update event data");
+                        }
+
                     }
                 }
                 else {
@@ -1208,64 +1376,3 @@ start:
         Utility::msleep(milis);
     }
 }
-
-/*
-    torch::Device cpu(torch::kCPU);
-    torch::Device cuda(torch::kCUDA);
-
-    // Set up Tensorflow DNN
-    std::string path = get_current_dir_name();
-    std::string frozen_model_pbtxt = path + "/models/frozen_models/FacesMotorbikesairplanesModel.pbtxt";
-    std::string frozen_model_pb = path + "/models/frozen_models/FacesMotorbikesairplanesModel.pb";
-    std::vector<std::vector<cv::Mat>> outputblobs;
-    cv::Mat display_image, input_image;
-    cv::dnn::Net tensorflowDetector = cv::dnn::readNetFromTensorflow(frozen_model_pb);
-    tensorflowDetector.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
-    tensorflowDetector.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
-
-    // One time initialization of DNN
-    std::string imageFile = "/images/faces/image_0001.jpg";
-    std::string imageFilePath = path + imageFile;
-    input_image = cv::imread(imageFilePath, cv::IMREAD_UNCHANGED);
-    input_image.convertTo(input_image, CV_32F, 1 / 255.0);
-    tensorflowDetector.setInput(cv::dnn::blobFromImage(input_image, 1.0, cv::Size(224, 224), 0.0, false, false, CV_32F));
-    tensorflowDetector.forward(outputblobs, {"functional_1/box_output/Sigmoid", "functional_1/label_output/Softmax"}); 
-
-    outputblobs.clear();
-    input_image = GetImageFromCamera(camera);
-    display_image = input_image.clone();
-    input_image.convertTo(input_image, CV_32F, 1 / 255.0);
-    cv::resize(input_image, input_image, cv::Size(224, 224), 0, 0, cv::INTER_LINEAR);
-    tensorflowDetector.setInput(cv::dnn::blobFromImage(input_image, 1.0, cv::Size(224, 224), 0.0, true, false, CV_32F));
-    tensorflowDetector.forward(outputblobs, {"functional_1/box_output/Sigmoid", "functional_1/label_output/Softmax"});
-    cv::Mat box = outputblobs.at(0).at(0);
-    cv::Mat probs = outputblobs.at(1).at(0);
-    
-    int h = display_image.rows;
-    int w = display_image.cols;
-
-    // Print what we see
-    std::cout << box << std::endl;
-    std::cout << probs << std::endl;
-    
-    // Box Image dims
-    double startYProb = box.at<float>(0);
-    double endYProb = box.at<float>(1);
-    double startXProb = box.at<float>(2);
-    double endXProb = box.at<float>(3);
-    
-    int startX = static_cast<int>(startXProb * static_cast<double>(w));
-    int startY = static_cast<int>(startYProb * static_cast<double>(h));
-    int endX = static_cast<int>(endXProb * static_cast<double>(w));
-    int endY =  static_cast<int>(endYProb * static_cast<double>(h));
-
-    // Argmax of probs
-    double minVal; 
-    double maxVal; 
-    cv::Point minLoc; 
-    cv::Point maxLoc;
-
-    cv::minMaxLoc(probs, &minVal, &maxVal, &minLoc, &maxLoc );
-    drawPred(maxVal, startX, startY, endX, endY, display_image, "test");
-    cv::imshow("CSI Camera", display_image);
-*/

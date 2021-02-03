@@ -34,8 +34,9 @@ namespace TATS {
         double _resetAngles[NUM_SERVOS];
         double _currentAngles[NUM_SERVOS] = { 0.0 };
         double _lastAngles[NUM_SERVOS] = { 0.0 };
-        double _errors[NUM_SERVOS][4] = { 0.0 };
-        double _outputs[NUM_SERVOS][4] = { 0.0 };
+        double _errors[NUM_SERVOS][5] = { 0.0 };
+        double _outputs[NUM_SERVOS][5] = { 0.0 };
+        double _predObjLoc[NUM_SERVOS] = { 0.0 };
         int _currentSteps; 
         bool _forceEnable;
 
@@ -60,5 +61,6 @@ namespace TATS {
         Utility::SR step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale = true, double rate = 5);  // Steps with actions and waits for Env to update, then returns the current state.
         void update(Utility::ED eventDataArray[NUM_SERVOS]); // Called from another thread to update state variables
         void getCurrentState(Utility::SD state[NUM_SERVOS]);
+        void getPredictedObjectLocation(double locations[NUM_SERVOS]);
     };
 };

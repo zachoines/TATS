@@ -14,10 +14,10 @@
 
 namespace Utility {
     #define NUM_SERVOS 2                         // Number of servos used 
-    #define NUM_INPUT 9                          // Size of the state schema
+    #define NUM_INPUT 10                         // Size of the state schema
     #define NUM_HIDDEN 256                       // Number of nodes in each networls hidden layer
     #define USE_PIDS 0                           // When enabled AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
-    #define NUM_ACTIONS ((USE_PIDS) ? 3 : 1)     // Number of AI output logits. 3 when PID's are enabled, one for each PID gain. Othersize one for output angle.
+    #define NUM_ACTIONS ((USE_PIDS) ? 3 : 2)     // Number of AI output logits. 3 when PID's are enabled, one for each PID gain. Othersize two for output angle and object location prediction.
     
     struct EventData { 
 
@@ -58,15 +58,15 @@ namespace Utility {
         double currentAngle;
         double lastAngle;
         double angleMax;
-        double errors[4] = { 0.0 };
-        double outputs[4] = { 0.0 };
+        double errors[5] = { 0.0 };
+        double outputs[5] = { 0.0 };
         double obj;
         double frame;
         double e; 
         double spf;
 
-        void setData(double errs[4], double outs[4]) {
-            for (int i = 0; i < 4; i++) {
+        void setData(double errs[5], double outs[5]) {
+            for (int i = 0; i < 5; i++) {
                 errors[i] = errs[i];
                 outputs[i] = outs[i];
             }
@@ -117,20 +117,20 @@ namespace Utility {
                 state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
                 state[8] = spf;
             } else {
-                double integral = 0.0;
-                for (int i = 0; i < 4; i++) {
-                    integral += (errors[i] * pidStateData.dt);
-                }
+                // double integral = 0.0;
+                // for (int i = 0; i < 5; i++) {
+                //     integral += (errors[i] * pidStateData.dt);
+                // }
 
-                state[0] = outputs[0];
-                state[1] = errors[0];
-                state[2] = integral;
-                state[3] = deltaTime > 0.0 ? ((errors[0] - errors[1]) / deltaTime) * 100.0 : 0.0;
-                state[4] = deltaTime > 0.0 ? ((errors[0] - ( 2.0 * errors[1] ) + errors[2]) / std::pow<double>(deltaTime, 2.0)) * 100 : 0.0; 
-                state[5] = deltaTime > 0.0 ? ((outputs[0] - outputs[1]) / deltaTime) * 100.0 : 0.0;
-                state[6] = deltaTime > 0.0 ? ((outputs[0] - ( 2.0 * outputs[1] ) + outputs[2]) / std::pow<double>(deltaTime, 2.0)) * 100 : 0.0; 
-                state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                state[8] = deltaTime > 0.0 ? spf : 0.0;
+                // state[0] = outputs[0];
+                // state[1] = errors[0];
+                // state[2] = integral;
+                // state[3] = deltaTime > 0.0 ? ((errors[0] - errors[1]) / deltaTime) * 100.0 : 0.0;
+                // state[4] = deltaTime > 0.0 ? ((errors[0] - ( 2.0 * errors[1] ) + errors[2]) / std::pow<double>(deltaTime, 2.0)) * 100.0 : 0.0; 
+                // state[5] = deltaTime > 0.0 ? ((outputs[0] - outputs[1]) / deltaTime) * 100.0 : 0.0;
+                // state[6] = deltaTime > 0.0 ? ((outputs[0] - ( 2.0 * outputs[1] ) + outputs[2]) / std::pow<double>(deltaTime, 2.0)) * 100.0 : 0.0; 
+                // state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                // state[8] = deltaTime > 0.0 ? spf : 0.0;
 
                 // state[0] = outputs[0];
                 // state[1] = errors[0];
@@ -138,10 +138,19 @@ namespace Utility {
                 // state[3] = errors[1];
                 // state[4] = outputs[2];
                 // state[5] = errors[2];
-                // state[6] = outputs[3];
-                // state[7] = errors[3];
-                // state[8] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                // state[9] = deltaTime > 0.0 ? spf : 0.0;
+                // state[6] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                // state[7] = deltaTime > 0.0 ? spf : 0.0;
+
+                state[0] = outputs[0];
+                state[1] = errors[0];
+                state[2] = outputs[1];
+                state[3] = errors[1];
+                state[4] = outputs[2];
+                state[5] = errors[2];
+                state[6] = outputs[3];
+                state[7] = errors[3];
+                state[8] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                state[9] = deltaTime > 0.0 ? spf : 0.0;
             }
         } 
 
@@ -173,6 +182,7 @@ namespace Utility {
         SD nextState;
         double reward;
         double actions[NUM_ACTIONS];
+        double errors[2];
         bool done;
         bool empty;
 
@@ -181,6 +191,7 @@ namespace Utility {
             nextState({}),
             reward(0.0),
             actions({0.0}),
+            errors({0.0}),
             done(false),
             empty(true)
         {}
@@ -243,6 +254,7 @@ namespace Utility {
         bool showVideo;
         bool cascadeDetector;
         bool usePIDs;
+        bool usePOT;
 
         // PID options
         double pidOutputHigh;
@@ -290,20 +302,21 @@ namespace Utility {
             trainMode(false),                    // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
             variableFPS(true),                   // Vary the FPS in training
-            FPSVariance(6.0),                    // Average change in FPS
+            FPSVariance(7.0),                    // Average change in FPS
             varyFPSChance(0.5),                  // Percentage of frames that have variable FPS
 
-            recheckFrequency(10),                // Num frames in-between revalidations of
-            lossCountMax(3),                     // Max number of rechecks before episode is considered over
+            recheckFrequency(120),               // Num frames in-between revalidations of
+            lossCountMax(5),                     // Max number of rechecks before episode is considered over. 
+                                                 // In the case of usePOT, MAX uses of predictive object tracking.
             updateRate(8),                       // Servo updates, update commands per second
-            trainRate(.5),					     // Network updates, sessions per second
-            logOutput(false),                    // Prints various info to console
+            trainRate(1.0),					     // Network updates, sessions per second
+            logOutput(true),                     // Prints various info to console
             
-            disableServo({ false, false }),      // Disable the { Y, X } servos
+            disableServo({ false, true }),       // Disable the { Y, X } servos
             invertServo({ true, false }),        // Flip output angles { Y, X } servos
             resetAngles({                        // Angle when reset
                 0.0, 0.0
-            }),           
+            }),    
             anglesHigh({                         // Max allowable output angle to servos
                 45.0, 45.0
             }),          
@@ -324,6 +337,7 @@ namespace Utility {
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN }
             useTracking(false),					 // Use openCV tracker instead of face detection
+            usePOT(true),                        // Predictive Object Tracking. If detection has failed, uses AI to predict objects next location
             draw(false),						 // Draw target bounding box and center on frame
             showVideo(false),					 // Show camera feed
             cascadeDetector(false),				 // Use faster cascade face detector
@@ -336,7 +350,7 @@ namespace Utility {
             ),                      
             pidOutputHigh(45.0),                 // Max output allowed for PID's
             pidOutputLow(-45.0),				 // Min output allowed for PID's
-            defaultGains({ 1.0, 1.0, 1.0}),     // Gains fed to pids when initialized
+            defaultGains({ 1.0, 1.0, 1.0}),      // Gains fed to pids when initialized
             
             dims({ 720, 720 }),                  // The image crop dimensions. Applied before autotuning input.
             captureSize({ 720, 1280 }),          // The dimensions for capture device

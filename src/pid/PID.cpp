@@ -77,6 +77,7 @@ double PID::update(double input) {
 
     // Integral windup gaurd
     _cI = std::clamp<double>(_cI, -_windup_guard, _windup_guard);
+    _sumError = std::clamp<double>(_sumError, -_windup_guard, _windup_guard) / _windup_guard;
 
     // save previous time, error, and outputs
     _prevTime = _currTime;
@@ -116,12 +117,12 @@ state PID::getState(bool normalize)
 {
     state g = {};
 
-    g.i = 0;
-    for (int i = 0; i < 4; i++) {
-        g.errors[i] = _prevErrors[i];
-        g.outputs[i] = _prevOutputs[i];
-        g.i += (g.errors[i] * _deltaTime);
-    }
+    g.i = _sumError;
+    // for (int i = 0; i < 4; i++) {
+    //     g.errors[i] = _prevErrors[i];
+    //     g.outputs[i] = _prevOutputs[i];
+    //     g.i += (g.errors[i] * _deltaTime);
+    // }
 
     g.din = _deltaInput;
     g.in = _last_input;

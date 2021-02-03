@@ -16,8 +16,8 @@ namespace Detect {
 		bool found;
 		int label;
 		std::string target;
-		cv::Point2i center;
-		cv::Rect boundingBox;
+		cv::Point2d center;
+		cv::Rect2d boundingBox;
 	};
 	class ObjectDetector
 	{

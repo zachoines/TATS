@@ -31,7 +31,7 @@ namespace TATS {
 
             _servos->initServo(_config->servoConfigurations[servo]);
 
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 5; i++) {
                 _outputs[servo][i] = 0.0;
                 _errors[servo][i] = 0.0;
             }
@@ -131,7 +131,7 @@ namespace TATS {
             _currentAngles[servo] = _resetAngles[servo];
             _pids[servo]->init();
             
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 5; i++) {
                 _errors[servo][i] = 0.0;
                 _outputs[servo][i] = 0.0;
             }
@@ -154,7 +154,7 @@ namespace TATS {
             data.servos[servo].spf = _currentData[servo].spf;
     
 
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < 5; i++) {
                 _outputs[servo][i] = 0.0;
                 _errors[servo][i] = 0.0;
             }
@@ -165,6 +165,7 @@ namespace TATS {
             // _errors[servo][0] = (_currentData[servo].obj - frameCenter) / frameCenter;
             data.servos[servo].setData(_errors[servo], _outputs[servo]);
             _stateData[servo] = data.servos[servo];
+            _predObjLoc[servo] = 0.0;
         }
 
         return data;
@@ -185,16 +186,35 @@ namespace TATS {
                 continue;
             }
 
-            // Scale PID actions if configured
-            for (int a = 0; a < NUM_ACTIONS; a++) {
-                stepResults.servos[servo].actions[a] = actions[servo][a];
+            if (!_config->usePIDs) {
+
+                // Derive output angle and object's next location from SAC output actions
+                stepResults.servos[servo].actions[0] = actions[servo][0];
+                stepResults.servos[servo].actions[1] = actions[servo][1];
 
                 if (rescale) {
-                    rescaledActions[servo][a] = Utility::rescaleAction(actions[servo][a], _config->actionLow, _config->actionHigh);
+                    rescaledActions[servo][0] = Utility::rescaleAction(actions[servo][0], _config->actionLow, _config->actionHigh); // Angle
+                    rescaledActions[servo][1] = Utility::rescaleAction(actions[servo][1], 0, _config->dims[servo]); // Estimate of location
+                    _predObjLoc[servo] = rescaledActions[servo][1];
                 } else {
-                    rescaledActions[servo][a] = actions[servo][a];
+                    for (int a = 0; a < NUM_ACTIONS; a++) {
+                        rescaledActions[servo][a] = actions[servo][a];
+                    }  
+                }
+            } else {
+
+                // Derive PID gains from SAC output actions
+                for (int a = 0; a < NUM_ACTIONS; a++) {
+                    stepResults.servos[servo].actions[a] = actions[servo][a];
+
+                    if (rescale) {
+                        rescaledActions[servo][a] = Utility::rescaleAction(actions[servo][a], _config->actionLow, _config->actionHigh);
+                    } else {
+                        rescaledActions[servo][a] = actions[servo][a];
+                    }
                 }
             }
+            
 
             double newAngle = 0.0;
             if (!_config->usePIDs) {
@@ -230,6 +250,9 @@ namespace TATS {
             }
             else {
                 stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, false);
+                stepResults.servos[servo].errors[0] = stepResults.servos[servo].reward;
+                stepResults.servos[servo].errors[1] = Utility::predictedObjectLocationToReward(rescaledActions[servo][1], _currentData[servo].obj, static_cast<double>(_config->dims[servo]), _currentData[servo].done);;
+                stepResults.servos[servo].reward += stepResults.servos[servo].errors[1];
             }
 
             // Update state information
@@ -244,7 +267,7 @@ namespace TATS {
             _stateData[servo] = stepResults.servos[servo].nextState;
 
             // Store error and output history
-            for (int i = 2; i >= 0; i--) {
+            for (int i = 4; i >= 0; i--) {
                 _outputs[servo][i + 1] = _outputs[servo][i];
                 _errors[servo][i + 1] = _errors[servo][i];
             }
@@ -253,7 +276,6 @@ namespace TATS {
             double frameCenter = (_config->dims[servo] / 2.0);
             _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
             _errors[servo][0] = (_invert[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
-            // _errors[servo][0] = (_currentData[servo].obj - frameCenter) / frameCenter;
             
             // Fill out the step results
             if (!_config->usePIDs) {
@@ -286,6 +308,27 @@ namespace TATS {
     void Env::getCurrentState(Utility::SD state[NUM_SERVOS]) {
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             state[servo] = _stateData[servo];
+        }
+    }
+
+    void Env::getPredictedObjectLocation(double locations[NUM_SERVOS]) {
+        std::unique_lock<std::mutex> lck(_lock);
+        try
+        {
+            for (int servo = 0; servo < NUM_SERVOS; servo++) {
+                if (_disableServo[servo]) {
+                    continue;
+                }
+
+                locations[servo] = _predObjLoc[servo];
+            }
+            
+            lck.unlock();
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+            throw std::runtime_error("cannot get current object locations");
         }
     }
 };

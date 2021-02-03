@@ -14,6 +14,10 @@
 
 namespace Utility {
 
+	static double distance(cv::Point2d a, cv::Point2d b) {
+		return std::sqrt( (a.x-b.x) * (a.x-b.x) + (a.y-b.y) * (a.y-b.y) );
+	}
+
 	static void msleep(int milli) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(milli));
 	}
@@ -257,16 +261,20 @@ namespace Utility {
 			r1 = - errorNewScaled;
 			// // }
 
-			// if (errorNewScaled <= errorOldScaled) {
-			// 	r2 = 0.0;
-			// }
-			// else {
-			// 	r2 = errorNewScaled - errorOldScaled;
-			// }
+			if (errorNewScaled <= errorOldScaled) {
+				r2 = 0.0;
+			}
+			else {
+				r2 = errorNewScaled - errorOldScaled;
+			}
 			
 			// Punish done, scale and clamp from -1 to 1
 			return std::clamp<double>((w1 * r1) + ( done ? -1.0 : 0.0), -2.0, 0.0);	
 		}	
+	}
+
+	static double predictedObjectLocationToReward(double pred, double target, double max, bool done) {
+		return (done) ? 0.0 : -(std::fabs(target - pred) / max);
 	}
 
 	// Scale from -1.0 to 1.0 to low to high

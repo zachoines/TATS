@@ -254,8 +254,8 @@ namespace Detect {
             x2 = clip(x2, 0, img_shape.width);
             y2 = clip(y2, 0, img_shape.height);
 
-            i.boundingBox = cv::Rect(cv::Point(x1, y1), cv::Point(x2, y2));
-            i.center = (i.boundingBox.tl() + i.boundingBox.br()) / 2;
+            i.boundingBox = cv::Rect2d(cv::Point2d(x1, y1), cv::Point2d(x2, y2));
+            i.center = (i.boundingBox.tl() + i.boundingBox.br()) / 2.0;
         }
     }
 

@@ -368,7 +368,7 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
             if (pthread_mutex_lock(&_policyNetLock) == 0) {
                 _policy_net->optimizer->zero_grad();
                 policy_loss.backward();
-                // torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 0.5);
+                // torch::nn::utils::clip_grad_norm_(_policy_net->parameters(), 1.0);
                 _policy_net->optimizer->step();
                 pthread_mutex_unlock(&_policyNetLock);
 
@@ -385,18 +385,18 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         // Update Q-Value networks
         _q_net1->optimizer->zero_grad();
         q_value_loss1.backward();
-        // torch::nn::utils::clip_grad_norm_(_q_net1->parameters(), 0.5);
+        // torch::nn::utils::clip_grad_norm_(_q_net1->parameters(), 1.0);
         _q_net1->optimizer->step();
 
         _q_net2->optimizer->zero_grad();
         q_value_loss2.backward();
-        // torch::nn::utils::clip_grad_norm_(_q_net2->parameters(), 0.5);
+        // torch::nn::utils::clip_grad_norm_(_q_net2->parameters(), 1.0);
         _q_net2->optimizer->step();
 
         // Update Value network
         _value_network->zero_grad();
         value_loss.backward();
-        // torch::nn::utils::clip_grad_norm_(_value_network->parameters(), 0.5);
+        // torch::nn::utils::clip_grad_norm_(_value_network->parameters(), 1.0);
         _value_network->optimizer->step();
         
         // Update counters
