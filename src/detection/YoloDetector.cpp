@@ -2,9 +2,7 @@
 
 namespace Detect {
 
-    YoloDetector::~YoloDetector() {
-        
-    }
+    YoloDetector::~YoloDetector() {}
 
     YoloDetector::YoloDetector(std::string path, std::vector<std::string> classNames) {
         if (Utility::fileExists(path)) {
@@ -104,52 +102,16 @@ namespace Detect {
         std::vector<torch::jit::IValue> inputs;
         inputs.emplace_back(tensor_img);
         torch::jit::IValue output = module_.forward(inputs);
-    
-        // result: n * 7
-        // batch index(0), top-left x/y (1,2), bottom-right x/y (3,4), score(5), class id(6)
+
         return PostProcessing(output.toTuple()->elements()[0].toTensor(), pad_w, pad_h, scale, img.size(), conf_threshold, iou_threshold);
     }
 
-    // returns the IoU of bounding boxes
-    torch::Tensor YoloDetector::GetBoundingBoxIoU(const torch::Tensor& box1, const torch::Tensor& box2) {
-        // get the coordinates of bounding boxes
-        const torch::Tensor& b1_x1 = box1.select(1, 0);
-        const torch::Tensor& b1_y1 = box1.select(1, 1);
-        const torch::Tensor& b1_x2 = box1.select(1, 2);
-        const torch::Tensor& b1_y2 = box1.select(1, 3);
-
-        const torch::Tensor& b2_x1 = box2.select(1, 0);
-        const torch::Tensor& b2_y1 = box2.select(1, 1);
-        const torch::Tensor& b2_x2 = box2.select(1, 2);
-        const torch::Tensor& b2_y2 = box2.select(1, 3);
-
-        // get the coordinates of the intersection rectangle
-        torch::Tensor inter_rect_x1 =  torch::max(b1_x1, b2_x1);
-        torch::Tensor inter_rect_y1 =  torch::max(b1_y1, b2_y1);
-        torch::Tensor inter_rect_x2 =  torch::min(b1_x2, b2_x2);
-        torch::Tensor inter_rect_y2 =  torch::min(b1_y2, b2_y2);
-
-        // calculate intersection area
-        torch::Tensor inter_area = torch::max(inter_rect_x2 - inter_rect_x1 + 1,torch::zeros(inter_rect_x2.sizes()))
-                                * torch::max(inter_rect_y2 - inter_rect_y1 + 1, torch::zeros(inter_rect_x2.sizes()));
-
-        // calculate union area
-        torch::Tensor b1_area = (b1_x2 - b1_x1 + 1)*(b1_y2 - b1_y1 + 1);
-        torch::Tensor b2_area = (b2_x2 - b2_x1 + 1)*(b2_y2 - b2_y1 + 1);
-
-        // calculate IoU
-        torch::Tensor iou = inter_area / (b1_area + b2_area - inter_area);
-
-        return iou;
-    }
-
-
     std::vector<std::vector<DetectionData>> YoloDetector::PostProcessing(const torch::Tensor& detections, float pad_w, float pad_h, float scale, const cv::Size& img_shape, float conf_thres, float iou_thres) {
-        constexpr int item_attr_size = 5;
+        // batch index(0), tl (1,2), br x/y (3,4), conf score (5), class id (6)
         int batch_size = detections.size(0);
         auto num_classes = detections.size(2) - item_attr_size;
 
-        // get candidates which object confidence > threshold
+        // get candidates per confidence threshold
         auto conf_mask = detections.select(2, 4).ge(conf_thres).unsqueeze(2);
 
         std::vector<std::vector<DetectionData>> output;
@@ -168,10 +130,10 @@ namespace Detect {
             // compute overall score = obj_conf * cls_conf, similar to x[:, 5:] *= x[:, 4:5]
             det.slice(1, item_attr_size, item_attr_size + num_classes) *= det.select(1, 4).unsqueeze(1);
 
-            // box (center x, center y, width, height) to (x1, y1, x2, y2)
+            // convert [center x, center y, width, height] to [x1, y1, x2, y2]
             torch::Tensor box = xywh2xyxy(det.slice(1, 0, 4));
 
-            // [best class only] get the max classes score at each result (e.g. elements 5-84)
+            // get the max classes score at each result
             std::tuple<torch::Tensor, torch::Tensor> max_classes = torch::max(det.slice(1, item_attr_size, item_attr_size + num_classes), 1);
 
             // class score
@@ -222,10 +184,8 @@ namespace Detect {
             }
 
             ScaleCoordinates(det_vec, pad_w, pad_h, scale, img_shape);
-
-            // save final detection for the current image
             output.emplace_back(det_vec);
-        } // end of batch iterating
+        } 
 
         return output;
     }

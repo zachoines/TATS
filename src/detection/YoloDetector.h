@@ -62,14 +62,13 @@ namespace Detect {
 		float confidence;
 		float conf_threshold = 0.4;
 		float iou_threshold = 0.6;
+		int item_attr_size = 5;
 
         void loadModule(const std::string& model_path);
 
         std::vector<std::vector<DetectionData>> run(const cv::Mat& img);
 
         std::vector<float> LetterboxImage(const cv::Mat& src, cv::Mat& dst, const cv::Size& out_size = cv::Size(640, 640));
-
-        torch::Tensor GetBoundingBoxIoU(const torch::Tensor& box1, const torch::Tensor& box2);
 
         std::vector<std::vector<DetectionData>> PostProcessing(const torch::Tensor& detections, float pad_w, float pad_h, float scale, const cv::Size& img_shape, float conf_thres, float iou_thres);
 
