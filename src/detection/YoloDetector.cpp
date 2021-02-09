@@ -18,7 +18,8 @@ namespace Detect {
                 cv::Mat img(640, 640, CV_8UC3);
                 cv::randu(img, cv::Scalar(0, 0, 0), cv::Scalar(255, 255, 255));
                 run(img);
-            } catch (...) {
+            } catch (c10::Error e) {
+                std::cerr << e.what() << std::endl;
                 throw std::runtime_error("Error loading Yolo5 model");
             }
     
@@ -107,13 +108,11 @@ namespace Detect {
 
         std::vector<torch::jit::IValue> inputs;
         inputs.emplace_back(tensor_img);
-
         torch::jit::IValue output = module_.forward(inputs);
-        auto detections = output.toTuple()->elements()[0].toTensor();
-
+    
         // result: n * 7
         // batch index(0), top-left x/y (1,2), bottom-right x/y (3,4), score(5), class id(6)
-        return PostProcessing(detections, pad_w, pad_h, scale, img.size(), conf_threshold, iou_threshold);
+        return PostProcessing(output.toTuple()->elements()[0].toTensor(), pad_w, pad_h, scale, img.size(), conf_threshold, iou_threshold);
     }
 
     // returns the IoU of bounding boxes

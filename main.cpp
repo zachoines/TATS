@@ -752,6 +752,7 @@ void detectThread(Utility::param* parameters)
     int lossCount = 0;
     int lossCountMax = config->lossCountMax;
     std::vector<std::string> targets = config->targets;
+    std::string currentTarget = "";
 
     // Create object tracker to optimize detection performance
     cv::Rect2d roi;
@@ -843,6 +844,7 @@ void detectThread(Utility::param* parameters)
             lostTracking:
                     isTracking = false;
                     lossCount++;
+                    currentTarget = "";
                     goto detect;
                 }
 		
@@ -917,7 +919,7 @@ void detectThread(Utility::param* parameters)
                     results = out;
                 } catch (const std::exception& e)
                 {
-                    std::cerr << e.what();
+                    std::cerr << e.what() << std::endl;
                     camera->release();
                     throw std::runtime_error("Could not detect target from frame");
                 }
@@ -932,6 +934,7 @@ void detectThread(Utility::param* parameters)
                             if (std::find(targets.begin(), targets.end(), res.target) != targets.end()) {
                                 result = res;
                                 roi = result.boundingBox;
+                                currentTarget = result.target;
                                 break;
                             }
                         }         
@@ -955,7 +958,7 @@ void detectThread(Utility::param* parameters)
                         for (auto res : results) {
                             
                             // If they intersect
-                            if (std::find(targets.begin(), targets.end(), res.target) != targets.end()) {                                
+                            if (currentTarget == res.target) {                                
                                 double area = (res.boundingBox & roi).area();
                                 double distance = Utility::distance(res.center, (roi.tl() + roi.br()) / 2.0);
 
@@ -969,8 +972,6 @@ void detectThread(Utility::param* parameters)
                                     result = res;
                                     roi = result.boundingBox;
                                 }
-                                
-                                // std::cout << "Here is the distance and areas: " << std::to_string(bestDistance) << ", " << std::to_string(bestIOU) << std::endl;
                             }
                         } 
                     }
@@ -1222,7 +1223,7 @@ void detectThread(Utility::param* parameters)
         }
         catch (const std::exception& e)
         {
-            std::cerr << e.what();
+            std::cerr << e.what() << std::endl;
             camera->release();
             throw std::runtime_error("Issue detecting target from video");
         }

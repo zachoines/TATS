@@ -2,7 +2,7 @@
 Target acquisition and tracking system. The aim of this repo is to use various deep learning techniques for detecting and tracking targets. Optimized for linux IOT systems like the Raspberry Pi and NVIDEA Jetson product lines.
 
 ## Requirements
-* libtorch 1.6.0
+* libtorch 1.7.0
 * libboost 1.61.0
 * OpenCV 4.4.0
 
@@ -24,8 +24,8 @@ Target acquisition and tracking system. The aim of this repo is to use various d
     * cd /home/{username}
 * Make Python3 Env
 	* sudo apt-get install python3-venv
-	  sudo python3 -m venv env
-	  source env/bin/activate 
+	* sudo python3 -m venv env
+	* source env/bin/activate 
 * OpenCV 4 c++
 	* [Here](https://cv-tricks.com/installation/opencv-4-1-ubuntu18-04/) is an excellent walkthrough of the process.
 
@@ -36,18 +36,35 @@ Target acquisition and tracking system. The aim of this repo is to use various d
 		* sudo pip3 install -U setuptools
 		* sudo pip3 install -r requirements.txt
 		* git submodule update --init --recursive
+		* Set args
+			* export USE_NCCL=0
+			* export DEBUG=1
+			* export USE_DISTRIBUTED=0      
+			* export USE_QNNPACK=0
+			* export USE_CUDA=1
+			* export USE_PYTORCH_QNNPACK=0
+			* export TORCH_CUDA_ARCH_LIST="5.3;6.2;7.2"
+			* export PYTORCH_BUILD_VERSION=1.7.1
+			* export PYTORCH_BUILD_NUMBER=0
+			* export NO_QNNPACK=1
+			* export BUILD_TEST=0
+			* export CC=
 		* sudo python3 setup.py develop
         * sudo python3 setup.py install
+	* Or just install (Nvidia Jetson Wheels)[https://forums.developer.nvidia.com/t/pytorch-for-jetson-version-1-7-0-now-available/72048] if local development is not intended.
 
 * lib Boost
 	* Sudo apt-get install libboost
 
 * Build TATS
-    * cmake -DCMAKE_PREFIX_PATH={path to build dir}/pytorch/build/lib.linux-aarch64-3.6/
-        * Its also possible to use python installation of Pytorch for the build
+	* cmake . 
+		* Make sure to set CMAKE_PREFIX_PATH for libtorch in CMakeLists.txt
+        * Use python installation of Pytorch by setting CMake to "{python libs}/python3.6/site-packages/torch/".
     * make TATS
     
 * Run install
-    * export LD_LIBRARY_PATH=/home/{username}/pytorch/build/lib:$LD_LIBRARY_PATH 
+    * May need to set lib search path for pytorch
+		* From source - export LD_LIBRARY_PATH={base bath here}/pytorch/build/lib:$LD_LIBRARY_PATH 
+		* Using python libs - export LD_LIBRARY_PATH={base bath here}/python3.6/site-packages/torch/:$LD_LIBRARY_PATH 
     * ./TATS
 
