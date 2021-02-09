@@ -39,7 +39,8 @@ namespace Detect {
             } 
 
             return detection;
-        } catch (...) {
+        } catch (c10::Error e) {
+            std::cerr << e.what() << std::endl;
             throw std::runtime_error("Issue running inferance on image");
         }
     }
@@ -65,12 +66,6 @@ namespace Detect {
                 int thickness = 1;
                 int baseline=0;
                 auto s_size = cv::getTextSize(s, font_face, font_scale, thickness, &baseline);
-
-                // cv::circle(
-				// 	image,
-				// 	detection.center,
-				// 	(int)(detection.boundingBox.width + detection.boundingBox.height) / 2 / 10,
-				// 	cv::Scalar(255), 2, 8, 0);
 
                 cv::rectangle(image,
                         cv::Point(box.tl().x, box.tl().y - s_size.height - 5),
@@ -319,7 +314,8 @@ namespace Detect {
         try {
             module_ = torch::jit::load(model_path);
         }
-        catch (const c10::Error& e) {
+        catch (c10::Error e) {
+            std::cerr << e.what() << std::endl;
             throw std::runtime_error("Error loading the model");
         }
 

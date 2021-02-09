@@ -293,7 +293,7 @@ namespace Utility {
             recheckFrequency(120),               // Num frames in-between revalidations of
             lossCountMax(5),                     // Max number of rechecks before episode is considered over. 
                                                  // In the case of usePOT, MAX uses of predictive object tracking.
-            updateRate(8),                       // Servo updates, update commands per second
+            updateRate(10),                      // Servo updates, update commands per second
             trainRate(1.0),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             

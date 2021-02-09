@@ -1,5 +1,5 @@
 # TATS
-Target acquisition and tracking system. The aim of this repo is to use various deep learning techniques for detecting and tracking targets. Optimized for linux IOT systems like the Raspberry Pi and NVIDEA Jetson product lines.
+Target acquisition and tracking system. The aim of this repo is to use various deep learning techniques for detecting and tracking targets. Optimized for linux IOT systems like the Raspberry Pi and NVIDIA Jetson product lines.
 
 ## Requirements
 * libtorch 1.7.0
@@ -48,7 +48,6 @@ Target acquisition and tracking system. The aim of this repo is to use various d
 			* export PYTORCH_BUILD_NUMBER=0
 			* export NO_QNNPACK=1
 			* export BUILD_TEST=0
-			* export CC=
 		* sudo python3 setup.py develop
         * sudo python3 setup.py install
 	* Or just install (Nvidia Jetson Wheels)[https://forums.developer.nvidia.com/t/pytorch-for-jetson-version-1-7-0-now-available/72048] if local development is not intended.
@@ -64,7 +63,7 @@ Target acquisition and tracking system. The aim of this repo is to use various d
     
 * Run install
     * May need to set lib search path for pytorch
-		* From source - export LD_LIBRARY_PATH={base bath here}/pytorch/build/lib:$LD_LIBRARY_PATH 
-		* Using python libs - export LD_LIBRARY_PATH={base bath here}/python3.6/site-packages/torch/:$LD_LIBRARY_PATH 
+		* From source - export LD_LIBRARY_PATH={base path here}/pytorch/build/lib:$LD_LIBRARY_PATH 
+		* Python libs - export LD_LIBRARY_PATH={base path here}/python3.6/site-packages/torch/:$LD_LIBRARY_PATH 
     * ./TATS
 
