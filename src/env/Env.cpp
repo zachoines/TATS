@@ -78,7 +78,7 @@ namespace TATS {
         }
         catch(const std::exception& e)
         {
-            std::cerr << e.what() << '\n';
+            std::cerr << e.what() << std::endl;
             throw std::runtime_error("cannot sync with servos");
         }
     }
@@ -109,7 +109,6 @@ namespace TATS {
     bool Env::isDone()
     {
 
-        // return true;
         bool done = true;
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             if (_disableServo[servo]) {
@@ -123,12 +122,15 @@ namespace TATS {
         return done;
     }
 
-    void Env::_resetEnv()
+    void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS])
     {
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
-            _servos->setAngle(servo, _resetAngles[servo]);
-            _lastAngles[servo] = _resetAngles[servo];
-            _currentAngles[servo] = _resetAngles[servo];
+            if (_disableServo[servo]) {
+                continue;
+            }
+            _servos->setAngle(servo, overrideResetAngles ? angles[servo] : _resetAngles[servo]);
+            _lastAngles[servo] =  _resetAngles[servo];
+            _currentAngles[servo] = overrideResetAngles ? angles[servo] : _resetAngles[servo];
             _pids[servo]->init();
             
             for (int i = 0; i < 5; i++) {
@@ -138,14 +140,17 @@ namespace TATS {
         }
     }
 
-    Utility::RD Env::reset()
+    Utility::RD Env::reset(bool useCurrentAngles)
     {
-        _resetEnv();
+        _resetEnv(useCurrentAngles, _currentAngles);
         _syncEnv();
 
         Utility::RD data = {};
 
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
+            if (_disableServo[servo]) {
+                continue;
+            }
             data.servos[servo].pidStateData = _pids[servo]->getState(true);
             data.servos[servo].obj =  _currentData[servo].obj;
             data.servos[servo].frame = _currentData[servo].frame;
@@ -153,16 +158,10 @@ namespace TATS {
             data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
             data.servos[servo].spf = _currentData[servo].spf;
     
-
-            for (int i = 0; i < 5; i++) {
-                _outputs[servo][i] = 0.0;
-                _errors[servo][i] = 0.0;
-            }
-
             double frameCenter = (_config->dims[servo] / 2.0);
             _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
             _errors[servo][0] = (_invert[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
-            // _errors[servo][0] = (_currentData[servo].obj - frameCenter) / frameCenter;
+            // _errors[servo][0] = Utility::mapOutput((_invert[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
             data.servos[servo].setData(_errors[servo], _outputs[servo]);
             _stateData[servo] = data.servos[servo];
             _predObjLoc[servo] = 0.0;
@@ -171,6 +170,35 @@ namespace TATS {
         return data;
     }
 
+    Utility::RD Env::reset(double angles[NUM_SERVOS]) {
+        _resetEnv(true, angles);
+        _syncEnv();
+
+        Utility::RD data = {};
+
+        for (int servo = 0; servo < NUM_SERVOS; servo++) {
+            if (_disableServo[servo]) {
+                continue;
+            }
+            data.servos[servo].pidStateData = _pids[servo]->getState(true);
+            data.servos[servo].obj =  _currentData[servo].obj;
+            data.servos[servo].frame = _currentData[servo].frame;
+            data.servos[servo].lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
+            data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
+            data.servos[servo].spf = _currentData[servo].spf;
+    
+            double frameCenter = (_config->dims[servo] / 2.0);
+            _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
+            _errors[servo][0] = (_invert[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
+            // _errors[servo][0] = Utility::mapOutput((_invert[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
+            data.servos[servo].setData(_errors[servo], _outputs[servo]);
+            _stateData[servo] = data.servos[servo];
+            _predObjLoc[servo] = 0.0;
+        }
+
+        return data;
+    }
+    
     // Using action, take step and return observation, reward, done, and actions for every servo. 
     // Note: SR[servo].currentState is always null. Retrieve currentState from previous 'step' or 'reset' call.
     Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, double rate)
@@ -190,12 +218,20 @@ namespace TATS {
 
                 // Derive output angle and object's next location from SAC output actions
                 stepResults.servos[servo].actions[0] = actions[servo][0];
-                stepResults.servos[servo].actions[1] = actions[servo][1];
+
+                if (_config->usePOT) {
+                    stepResults.servos[servo].actions[1] = actions[servo][1];
+                }
+                
 
                 if (rescale) {
                     rescaledActions[servo][0] = Utility::rescaleAction(actions[servo][0], _config->actionLow, _config->actionHigh); // Angle
-                    rescaledActions[servo][1] = Utility::rescaleAction(actions[servo][1], 0, _config->dims[servo]); // Estimate of location
-                    _predObjLoc[servo] = rescaledActions[servo][1];
+
+                    if (_config->usePOT) {
+                        rescaledActions[servo][1] = Utility::rescaleAction(actions[servo][1], 0, _config->dims[servo]); // Estimate of location
+                        _predObjLoc[servo] = rescaledActions[servo][1];
+                    }
+                    
                 } else {
                     for (int a = 0; a < NUM_ACTIONS; a++) {
                         rescaledActions[servo][a] = actions[servo][a];
@@ -225,10 +261,6 @@ namespace TATS {
                 newAngle = _pids[servo]->update(_currentData[servo].obj);
             }
 
-            // if (_invert[servo]) { 
-            //     newAngle = newAngle * -1.0; 
-            // }
-
             _lastAngles[servo] = _currentAngles[servo];
             _currentAngles[servo] = newAngle;
             _servos->setAngle(servo, newAngle);
@@ -251,8 +283,10 @@ namespace TATS {
             else {
                 stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, false);
                 stepResults.servos[servo].errors[0] = stepResults.servos[servo].reward;
-                stepResults.servos[servo].errors[1] = Utility::predictedObjectLocationToReward(rescaledActions[servo][1], _currentData[servo].obj, static_cast<double>(_config->dims[servo]), _currentData[servo].done);;
-                stepResults.servos[servo].reward += stepResults.servos[servo].errors[1];
+                if (_config->usePOT) {
+                    stepResults.servos[servo].errors[1] = Utility::predictedObjectLocationToReward(rescaledActions[servo][1], _currentData[servo].obj, static_cast<double>(_config->dims[servo]), _currentData[servo].done);;
+                    stepResults.servos[servo].reward += stepResults.servos[servo].errors[1];
+                }
             }
 
             // Update state information
@@ -272,10 +306,11 @@ namespace TATS {
                 _errors[servo][i + 1] = _errors[servo][i];
             }
 
-            // Scale to -1 to 1;
+            // Scale to 0.0 to 1;
             double frameCenter = (_config->dims[servo] / 2.0);
             _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
             _errors[servo][0] = (_invert[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
+            // _errors[servo][0] = Utility::mapOutput((_invert[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
             
             // Fill out the step results
             if (!_config->usePIDs) {
@@ -311,6 +346,27 @@ namespace TATS {
         }
     }
 
+    void Env::getCurrentAngle(double angles[NUM_SERVOS]) {
+        std::unique_lock<std::mutex> lck(_lock);
+        try
+        {
+            for (int servo = 0; servo < NUM_SERVOS; servo++) {
+                if (_disableServo[servo]) {
+                    continue;
+                }
+
+                angles[servo] = _currentAngles[servo];
+            }
+            
+            lck.unlock();
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << std::endl;
+            throw std::runtime_error("cannot get current servo angles");
+        }
+    }
+
     void Env::getPredictedObjectLocation(double locations[NUM_SERVOS]) {
         std::unique_lock<std::mutex> lck(_lock);
         try
@@ -327,7 +383,7 @@ namespace TATS {
         }
         catch(const std::exception& e)
         {
-            std::cerr << e.what() << '\n';
+            std::cerr << e.what() << std::endl;
             throw std::runtime_error("cannot get current object locations");
         }
     }

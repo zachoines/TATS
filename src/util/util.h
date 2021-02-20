@@ -269,12 +269,12 @@ namespace Utility {
 			}
 			
 			// Punish done, scale and clamp from -1 to 1
-			return std::clamp<double>((w1 * r1) + ( done ? -1.0 : 0.0), -2.0, 0.0);	
+			return std::clamp<double>((w1 * r1) + (w2 * r2) + ( done ? -1.0 : 0.0), -2.0, 0.0);	
 		}	
 	}
 
 	static double predictedObjectLocationToReward(double pred, double target, double max, bool done) {
-		return (done) ? 0.0 : -(std::fabs(target - pred) / max);
+		return (done) ? 0.0 : -2.0 * (std::fabs(target - pred) / max);
 	}
 
 	// Scale from -1.0 to 1.0 to low to high

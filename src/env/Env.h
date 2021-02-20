@@ -44,7 +44,7 @@ namespace TATS {
 
         void _sleep(double rate=5);
         void _syncEnv(double rate=5);
-        void _resetEnv(); // Resets servos and re-inits PID's. Call only once manually.
+        void _resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS]); // Resets servos and re-inits PID's. Call only once manually.
 
         control::Wire* _wire;
         control::PCA9685* _pwm;
@@ -57,10 +57,12 @@ namespace TATS {
         bool isDone();
         void setDisabled(bool servos[NUM_SERVOS]);
         void getDisabled(bool servos[NUM_SERVOS]);
-        Utility::RD reset();  // Steps with actions and waits for Env to update, then returns the current state.
+        Utility::RD reset(bool useCurrentAngles=false);  // Steps with actions and waits for Env to update, then returns the current state.
+        Utility::RD reset(double angles[NUM_SERVOS]);  // Override reset with provided angles
         Utility::SR step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale = true, double rate = 5);  // Steps with actions and waits for Env to update, then returns the current state.
         void update(Utility::ED eventDataArray[NUM_SERVOS]); // Called from another thread to update state variables
         void getCurrentState(Utility::SD state[NUM_SERVOS]);
         void getPredictedObjectLocation(double locations[NUM_SERVOS]);
+        void getCurrentAngle(double angles[NUM_SERVOS]);
     };
 };

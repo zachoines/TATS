@@ -138,10 +138,6 @@ int main(int argc, char** argv)
 
         // Init camera 3280 x 2464
         std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=60/1, format=NV12 ! nvvidconv flip-method=2 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
-        // std::string pipeline = "v4l2src device=/dev/video0 ! video/x-raw ! videoconvert ! appsink";
-        // std::string pipeline = "nvarguscamerasrc ! video/x-raw(memory:NVMM), width=(int)640, height=(int)480, format=(string)I420, framerate=(fraction)30/1 ! nvvidconv ! video/x-raw, format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink";
-        // std::string pipeline = "v4l2src device=/dev/video0 ! video/x-raw, width=1920, height=1080, framerate=30/1, format=YUY2' ! nvvidconv flip-method=2 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
-        // std::string pipeline = "/usr/src/jetson_multimedia_api/samples/v4l2cuda/capture-cuda device=/dev/video0 ! video/x-raw ! videoconvert ! appsink";
         // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
         
         camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
@@ -183,15 +179,6 @@ int main(int argc, char** argv)
         
     } else {
     
-        // Create the SAC agent for training
-        // torch::DeviceType device;
-        // if (torch::cuda::is_available()) {
-        //     std::cout << "Training PID auto-tuner with CUDA!" << std::endl;
-        //     device = torch::kCUDA;
-        // } else {
-        //     device = torch::kCPU;
-        // }
-        
         // Kill child if parent killed
         prctl(PR_SET_PDEATHSIG, SIGKILL); 
 
@@ -398,15 +385,17 @@ void panTiltThread(Utility::param* parameters) {
     SharedBuffer* trainingBuffer = segment.find<SharedBuffer>("SharedBuffer").first;
     ReplayBuffer* replayBuffer = new ReplayBuffer(config->maxBufferSize, trainingBuffer, config->multiProcess);
 
-    // Train records
+    // Program loop variants
     unsigned int totalSteps = 0;
+    bool recentlyReset = false;
+
+    // Train records
     int numEpisodes[NUM_SERVOS] = { 0 };
     double emaEpisodeRewardSum[NUM_SERVOS] = { 0.0 };
     double stepAverageRewards[NUM_SERVOS] = { 0.0 };
     double emaEpisodeStepSum[NUM_SERVOS] = { 0.0 };
     double totalEpisodeRewards[NUM_SERVOS] = { 0.0 };
     double totalEpisodeSteps[NUM_SERVOS] = { 0.0 };
-    int episodeEndCounts = 0.0;
 
     double totalEpisodeObjPredError[NUM_SERVOS] = { 0.0 };
     double stepAverageObjPredError[NUM_SERVOS] = { 0.0 };
@@ -452,8 +441,8 @@ void panTiltThread(Utility::param* parameters) {
         if (config->useAutoTuning) {
 
             if (!servos->isDone()) {
-                
-                // servos->getCurrentState(currentState);
+                recentlyReset = false;
+    
                 for (int i = 0; i < NUM_SERVOS; i++) {
 
                     // Query network and get PID gains
@@ -522,6 +511,7 @@ void panTiltThread(Utility::param* parameters) {
                     currentState[servo] = trainData[servo].nextState;
                     
                     if (config->trainMode) {
+                        
                         // If servo is disabled, null record
                         if (trainData[servo].empty) {
                             continue;
@@ -619,15 +609,23 @@ void panTiltThread(Utility::param* parameters) {
                             for (int j = 0; j < NUM_ACTIONS; j++) {
                                 std::cout << std::to_string(Utility::rescaleAction(trainData[servo].actions[j], config->actionLow, config->actionHigh)) << ", ";
                             }
+                            
                         } else {
                             std::cout << std::to_string(Utility::rescaleAction(trainData[servo].actions[0], config->actionLow, config->actionHigh)) << ", ";
-                            std::cout << std::to_string(Utility::rescaleAction(trainData[servo].actions[1], 0.0, config->dims[servo])) << std::endl;
+
+                            if (config->usePOT) {
+                                std::cout << std::to_string(Utility::rescaleAction(trainData[servo].actions[1], 0.0, config->dims[servo])) << std::endl;
+                            }
 
                             std::cout << "Here are the errors: ";
-                            std::cout << std::to_string(trainData[servo].errors[0]) << ", " << std::to_string(trainData[servo].errors[1]) << std::endl;
+                            std::cout << std::to_string(trainData[servo].errors[0]) << " "; 
+                            if (config->usePOT) {
+                                std::cout << std::to_string(trainData[servo].errors[1]);
+                            }
+                            std::cout << std::endl;
                         }
-                        
-                        std::cout << std::endl;
+                         std::cout << std::endl;
+                       
                     }    
 
                     if (config->trainMode) {
@@ -649,16 +647,16 @@ void panTiltThread(Utility::param* parameters) {
 
                 if (reset) { goto reset; }   
             }
-            else {
-                episodeEndCounts += 1;
+            //  || config->resetAngleChance > static_cast<float>(rand()) / static_cast <float> (RAND_MAX)
+            else if (!recentlyReset) {
+                recentlyReset = true;
 
                 reset:
-                resetResults = servos->reset();
-                
-                // Vary env sync rate to simulate slowdowns, high latency configurations, and other unique systems.
+
+                // Vary env sync rate to simulate different latency configurations
                 if (config->trainMode) {
                     rate = static_cast<double>(config->updateRate) - 1.0;
-                    _distribution = std::normal_distribution<double>(0.5, 0.1); 
+                    _distribution = std::normal_distribution<double>(0.5, 0.1); // Roughly between 0.0 and 1.0, centerpoint 0.5
                     rate = std::clamp<double>(2.0 * rate * _distribution(_generator) + 1.0, 1.0, 2.0 * rate + 1.0);
 
                     pthread_mutex_lock(&sleepLock);
@@ -677,10 +675,35 @@ void panTiltThread(Utility::param* parameters) {
                     pthread_mutex_unlock(&sleepLock);   
                 }
                 
+                // Vary angle of reset after set amount of time to enable AI to work at any reset angle
+                if (config->trainMode && config->varyResetAngles) {
+            
+                    double newAngles[NUM_SERVOS] = { 0.0 };
+                    for (int servo = 0; servo < NUM_SERVOS; servo++) {
+                        _distribution = std::normal_distribution<double>(0.0, 0.2); // Roughly between -0.5 and 0.5, centerpoint 0.0                            
+                        newAngles[servo] = config->resetAngles[servo] + std::clamp<double>( 2.0 * config->resetAngleVariance * _distribution(_generator), -config->resetAngleVariance, config->resetAngleVariance);
+                        // newAngles[servo] = config->resetAngleVariance * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
+                        
+                    }
+                    resetResults = servos->reset(newAngles);
+ 
+                } else { 
+                    resetResults = servos->reset(config->useCurrentAngleForReset);
+                }
+                
+                // Hold onto reset results
                 for (int servo = 0; servo < NUM_SERVOS; servo++) {
                     currentState[servo] = resetResults.servos[servo];
-                }		
-            }
+                }   		
+            } else {
+    
+                resetResults = servos->reset(config->useCurrentAngleForReset);            
+                
+                // Hold onto reset results
+                for (int servo = 0; servo < NUM_SERVOS; servo++) {
+                    currentState[servo] = resetResults.servos[servo];
+                }
+            }    
         }
         else {
             if (!servos->isDone()) {
@@ -708,7 +731,7 @@ void panTiltThread(Utility::param* parameters) {
             else {
 
                 try {
-                    resetResults = servos->reset();
+                    resetResults = servos->reset(config->useCurrentAngleForReset);
                 } catch (...) {
                     throw std::runtime_error("cannot reset servos");
                 }
@@ -750,6 +773,9 @@ void detectThread(Utility::param* parameters)
     bool isTracking = false;
     bool isSearching = false;
     int lossCount = 0;
+    int trackCount = 0;
+    int searchCount = 0;
+    int searchCountMax = 5;
     int lossCountMax = config->lossCountMax;
     std::vector<std::string> targets = config->targets;
     std::string currentTarget = "";
@@ -805,6 +831,8 @@ void detectThread(Utility::param* parameters)
         }
 
         if (isSearching) {
+            searchCount += 1;
+            
             // TODO:: Perform better search ruetine
             // For now servo thread detects when done and sends a reset command to servos
         }
@@ -826,7 +854,7 @@ void detectThread(Utility::param* parameters)
                 frame = frame(region).clone();
             } catch (const std::exception& e)
             {
-                std::cerr << e.what();
+                std::cerr << e.what() << std::endl;
                 camera->release();
                 throw std::runtime_error("could not get image from camera");
             }
@@ -844,6 +872,7 @@ void detectThread(Utility::param* parameters)
             lostTracking:
                     isTracking = false;
                     lossCount++;
+                    trackCount = 0;
                     currentTarget = "";
                     goto detect;
                 }
@@ -953,21 +982,22 @@ void detectThread(Utility::param* parameters)
                     } else {
                         // Vast magority of the time there will be overlap 
                         double bestIOU = 0.0;
-                        double bestDistance = 0.0;
+                        double bestDistance = static_cast<double>(config->dims[0]);
                     
                         for (auto res : results) {
                             
                             // If they intersect
                             if (currentTarget == res.target) {                                
-                                double area = (res.boundingBox & roi).area();
+                                // double area = (res.boundingBox & roi).area();
                                 double distance = Utility::distance(res.center, (roi.tl() + roi.br()) / 2.0);
 
-                                if (area >= bestIOU) {
-                                    bestDistance = distance;
-                                    bestIOU = area;
-                                    result = res;
-                                    roi = result.boundingBox;
-                                } else if (distance <= bestDistance) {
+                                // if (area >= bestIOU) {
+                                //     bestDistance = distance;
+                                //     bestIOU = area;
+                                //     result = res;
+                                //     roi = result.boundingBox;
+                                // } else 
+                                if (distance <= bestDistance) {
                                     bestDistance = distance;
                                     result = res;
                                     roi = result.boundingBox;
@@ -983,6 +1013,7 @@ void detectThread(Utility::param* parameters)
                     // Update loop variants
                     programStart = false;
                     lossCount = 0;
+                    trackCount = (trackCount + 1) % 5;
                     isSearching = false;
 
                     roi = result.boundingBox;
@@ -1055,7 +1086,7 @@ void detectThread(Utility::param* parameters)
 
                     // Target is out of sight, inform PID's, model, and servos
                     if (lossCount >= lossCountMax) {
-                        
+                        trackCount = 0;
                         isSearching = true;
                         isTracking = false;
                         lossCount = 0;
@@ -1106,7 +1137,7 @@ void detectThread(Utility::param* parameters)
                         } catch (...) {
                             throw std::runtime_error("cannot update event data");
                         }
-                    } else if (!isSearching and !programStart) {
+                    } else if (!isSearching and !programStart && trackCount > 3) {
                         // Get the prediction location of object relative to frame center
                         if (config->logOutput) {
                             std::cout << "Using Predictive Object Tracking: frame # " << std::to_string(lossCount) << std::endl;
@@ -1152,7 +1183,6 @@ void detectThread(Utility::param* parameters)
                         } catch (...) {
                             throw std::runtime_error("cannot update event data");
                         }
-
                     }
                 }
                 else {
@@ -1165,6 +1195,7 @@ void detectThread(Utility::param* parameters)
                         isSearching = true;
                         isTracking = false;
                         lossCount = 0;
+                        trackCount = 0;
 
                         ED tilt;
                         ED pan;
@@ -1172,12 +1203,10 @@ void detectThread(Utility::param* parameters)
                         // Object not on screen
                         frameCenterX = static_cast<double>(frame.cols) / 2.0;
                         frameCenterY = static_cast<double>(frame.rows) / 2.0;
-                        objX = 0;
-                        objY = 0;
 
                         // Max error
-                        tilt.error = frameCenterY;
-                        pan.error = frameCenterX;
+                        tilt.error = frame.rows;
+                        pan.error = frame.cols;
 
                         // Error state
                         // Enter State data

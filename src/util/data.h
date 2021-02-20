@@ -14,11 +14,12 @@
 
 namespace Utility {
     #define NUM_SERVOS 2                         // Number of servos used 
-    #define NUM_INPUT 10                         // Size of the state schema
+    #define NUM_INPUT 8                          // Size of the state schema
     #define NUM_HIDDEN 256                       // Number of nodes in each networls hidden layer
     #define USE_PIDS 0                           // When enabled AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
-    #define NUM_ACTIONS ((USE_PIDS) ? 3 : 2)     // Number of AI output logits. 3 when PID's are enabled, one for each PID gain. Othersize two for output angle and object location prediction.
-    
+    #define USE_POT 0                            // Use predictive object location
+    #define NUM_ACTIONS ((USE_PIDS) ? 3 : ((USE_POT) ? 2 : 1) ) 
+
     struct EventData { 
 
         bool done;                               // For when the targer is lost
@@ -138,10 +139,10 @@ namespace Utility {
                 state[3] = errors[1];
                 state[4] = outputs[2];
                 state[5] = errors[2];
-                state[6] = outputs[3];
-                state[7] = errors[3];
-                state[8] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                state[9] = deltaTime > 0.0 ? spf : 0.0;
+                // state[6] = outputs[3];
+                // state[7] = errors[3];
+                state[6] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                state[7] = deltaTime > 0.0 ? spf : 0.0;
             }
         } 
 
@@ -234,6 +235,10 @@ namespace Utility {
         bool variableFPS;
         double FPSVariance;
         double varyFPSChance;
+        double resetAngleVariance;
+        double resetAngleChance;
+        bool varyResetAngles;
+        bool useCurrentAngleForReset;
         
         // Tracking Options
         int lossCountMax;
@@ -279,26 +284,29 @@ namespace Utility {
             maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
             episodeEndCap(true),                 // End episode early
-            maxStepsPerEpisode(500),             // Max number of steps in an episode
+            maxStepsPerEpisode(200),             // Max number of steps in an episode
 
             batchSize(256),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
             numInitialRandomActions(2500),       // Number of random actions taken.
-            trainMode(false),                    // When autotuning is on, 'false' means network test mode.
+            trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
             variableFPS(true),                   // Vary the FPS in training
-            FPSVariance(7.0),                    // Average change in FPS
+            FPSVariance(6.0),                    // Average change in FPS
             varyFPSChance(0.5),                  // Percentage of frames that have variable FPS
+            resetAngleVariance(20.0),            // In training, the degree of variance in reset angles
+            resetAngleChance(0.05),              // Chance to randomly chance the current angle the servos are wating at
+            varyResetAngles(false),              // vary reset angles diring training
 
             recheckFrequency(120),               // Num frames in-between revalidations of
-            lossCountMax(5),                     // Max number of rechecks before episode is considered over. 
+            lossCountMax(2),                     // Max number of rechecks before episode is considered over. 
                                                  // In the case of usePOT, MAX uses of predictive object tracking.
-            updateRate(10),                      // Servo updates, update commands per second
-            trainRate(1.0),					     // Network updates, sessions per second
+            updateRate(8),                       // Servo updates, update commands per second
+            trainRate(.25),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             
-            disableServo({ false, false }),      // Disable the { Y, X } servos
-            invertServo({ true, false }),        // Flip output angles { Y, X } servos
+            disableServo({ true, false }),       // Disable the { Y, X } servos
+            invertServo({ false, false }),       // Flip output angles { Y, X } servos
             resetAngles({                        // Angle when reset
                 0.0, 0.0
             }),    
@@ -317,10 +325,11 @@ namespace Utility {
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN }
             useTracking(false),					 // Use openCV tracker instead of face detection
-            usePOT(true),                        // Predictive Object Tracking. If detection has failed, uses AI to predict objects next location
+            usePOT((bool)USE_POT),               // Predictive Object Tracking. If detection has failed, uses AI to predict objects next location
+            useCurrentAngleForReset(false),      // Use current angle as reset angle when target has lost track
             draw(false),						 // Draw target bounding box and center on frame
             showVideo(false),					 // Show camera feed
-            cascadeDetector(false),				 // Use faster cascade face detector
+            cascadeDetector(true),				 // Use faster cascade face detector
             usePIDs((bool)USE_PIDS),             // Network outputs PID gains, or network outputs angle directly
             actionHigh(                          // Max output to of policy network's logits   
                 USE_PIDS ? 0.1 : 45.0
@@ -338,10 +347,10 @@ namespace Utility {
             
             fps(60),                             // Camera capture rate
             multiProcess(true),                  // Enables autotuning in a seperate process. Otherwise its a thread.
-            // targets({"face"}),
+            targets({"face"}),
             
             yoloPath("/models/yolo/yolo5s_uno.torchscript.pt"),
-            targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
+            // targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
             classes({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"})
             
             // yoloPath("/models/yolo/yolov5s_coco.torchscript.pt"),

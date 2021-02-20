@@ -43,7 +43,7 @@ namespace control {
   #define MODE2_INVRT 0x10  /**< Output logic state inverted */
 
   #define PCA9685_I2C_ADDRESS 0x40      /**< Default PCA9685 I2C Slave Address */
-  #define FREQUENCY_OSCILLATOR 25000000 /**< Int. osc. frequency in datasheet */
+  #define FREQUENCY_OSCILLATOR 27000000 /**< Int. osc. frequency in datasheet */
 
   #define PCA9685_PRESCALE_MIN 3   /**< minimum prescale value */
   #define PCA9685_PRESCALE_MAX 255 /**< maximum prescale value */

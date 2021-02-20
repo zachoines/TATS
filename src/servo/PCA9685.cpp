@@ -30,7 +30,7 @@ namespace control {
       setExtClk(prescale);
     } else {
       // set a default frequency
-      setPWMFreq(1000);
+      setPWMFreq(50);
     }
     // set the default internal frequency
     setOscillatorFrequency(FREQUENCY_OSCILLATOR);
