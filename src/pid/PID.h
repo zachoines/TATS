@@ -31,7 +31,7 @@ class PID
     public:
         PID(double kP, double kI, double kD, double min, double max, double setpoint);
         void init();
-        double update(double input);
+        double update(double input, bool invert=false);
         void getWeights(double w[3]);
         void setWeights(double kP, double kI, double kD);
         void getPID(double w[3]);

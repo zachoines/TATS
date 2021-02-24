@@ -29,7 +29,8 @@ namespace TATS {
         Utility::ED _currentData[NUM_SERVOS] = {{}};
         Utility::SD _stateData[NUM_SERVOS] = {{}};
 
-        bool _invert[NUM_SERVOS];
+        bool _invertData[NUM_SERVOS];
+        bool _invertAngles[NUM_SERVOS];
         bool _disableServo[NUM_SERVOS];
         double _resetAngles[NUM_SERVOS];
         double _currentAngles[NUM_SERVOS] = { 0.0 };

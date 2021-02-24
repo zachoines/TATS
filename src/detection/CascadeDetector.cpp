@@ -16,7 +16,7 @@ namespace Detect {
 	}
 
 	std::vector<struct DetectionData> CascadeDetector::detect(cv::Mat& image) {
-		std::vector<cv::Rect> faces;
+		std::vector<cv::Rect2i> faces;
 		std::vector<struct DetectionData> detectionResults;
 
 		if (this->input_color) {
@@ -42,7 +42,7 @@ namespace Detect {
 		}
 
 		if (!faces.empty()) {
-			for (cv::Rect face : faces) {
+			for (cv::Rect2i face : faces) {
 
 				int x1 = face.x;
 				int y1 = face.y;
@@ -55,8 +55,8 @@ namespace Detect {
 					continue;
 				}
 
-				int centerX = x1 + width * 0.5;
-				int centerY = y1 + height * 0.5;
+				int centerX = x1 + (width * 0.5);
+				int centerY = y1 + (height * 0.5);
 
 				struct DetectionData detection = { 
 					.confidence = 1.0, 
@@ -66,6 +66,7 @@ namespace Detect {
 					.center = cv::Point2i(centerX, centerY), 
 					.boundingBox = face 
 				};
+				
 				detectionResults.push_back(detection);
 			}
 		}

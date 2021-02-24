@@ -14,10 +14,10 @@
 
 namespace Utility {
     #define NUM_SERVOS 2                         // Number of servos used 
-    #define NUM_INPUT 8                          // Size of the state schema
-    #define NUM_HIDDEN 256                       // Number of nodes in each networls hidden layer
+    #define NUM_INPUT 10                         // Size of the state schema
+    #define NUM_HIDDEN 256                       // Number of nodes in each networks hidden layer
     #define USE_PIDS 0                           // When enabled AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
-    #define USE_POT 0                            // Use predictive object location
+    #define USE_POT 1                            // Use predictive object location
     #define NUM_ACTIONS ((USE_PIDS) ? 3 : ((USE_POT) ? 2 : 1) ) 
 
     struct EventData { 
@@ -139,10 +139,10 @@ namespace Utility {
                 state[3] = errors[1];
                 state[4] = outputs[2];
                 state[5] = errors[2];
-                // state[6] = outputs[3];
-                // state[7] = errors[3];
-                state[6] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                state[7] = deltaTime > 0.0 ? spf : 0.0;
+                state[6] = outputs[3];
+                state[7] = errors[3];
+                state[8] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                state[9] = deltaTime > 0.0 ? spf : 0.0;
             }
         } 
 
@@ -259,7 +259,8 @@ namespace Utility {
 
         // Servo options
         struct control::Servo servoConfigurations[NUM_SERVOS];
-        bool invertServo[NUM_SERVOS];
+        bool invertData[NUM_SERVOS];
+        bool invertAngles[NUM_SERVOS];
         bool disableServo[NUM_SERVOS];
         double resetAngles[NUM_SERVOS];
         double anglesHigh[NUM_SERVOS];
@@ -284,29 +285,30 @@ namespace Utility {
             maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
             episodeEndCap(true),                 // End episode early
-            maxStepsPerEpisode(200),             // Max number of steps in an episode
+            maxStepsPerEpisode(500),             // Max number of steps in an episode
 
-            batchSize(256),                      // Network batch size.
+            batchSize(128),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
             numInitialRandomActions(2500),       // Number of random actions taken.
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
             variableFPS(true),                   // Vary the FPS in training
-            FPSVariance(6.0),                    // Average change in FPS
+            FPSVariance(5.0),                    // Average change in FPS
             varyFPSChance(0.5),                  // Percentage of frames that have variable FPS
-            resetAngleVariance(20.0),            // In training, the degree of variance in reset angles
+            resetAngleVariance(30.0),            // In training, the degree of variance in reset angles
             resetAngleChance(0.05),              // Chance to randomly chance the current angle the servos are wating at
-            varyResetAngles(false),              // vary reset angles diring training
+            varyResetAngles(true),               // vary reset angles diring training
 
             recheckFrequency(120),               // Num frames in-between revalidations of
-            lossCountMax(2),                     // Max number of rechecks before episode is considered over. 
+            lossCountMax(1),                     // Max number of rechecks before episode is considered over. 
                                                  // In the case of usePOT, MAX uses of predictive object tracking.
-            updateRate(8),                       // Servo updates, update commands per second
+            updateRate(4),                       // Servo updates, update commands per second
             trainRate(.25),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             
-            disableServo({ true, false }),       // Disable the { Y, X } servos
-            invertServo({ false, false }),       // Flip output angles { Y, X } servos
+            disableServo({ false, true }),       // Disable the { Y, X } servos
+            invertData({ false, false }),        // Flip input data { Y, X } servos
+            invertAngles({ false, false }),      // Flip output angles { Y, X } servos
             resetAngles({                        // Angle when reset
                 0.0, 0.0
             }),    
@@ -326,7 +328,7 @@ namespace Utility {
             trackerType(1),						 // { CSRT, MOSSE, GOTURN }
             useTracking(false),					 // Use openCV tracker instead of face detection
             usePOT((bool)USE_POT),               // Predictive Object Tracking. If detection has failed, uses AI to predict objects next location
-            useCurrentAngleForReset(false),      // Use current angle as reset angle when target has lost track
+            useCurrentAngleForReset(true),       // Use current angle as reset angle when target has lost track
             draw(false),						 // Draw target bounding box and center on frame
             showVideo(false),					 // Show camera feed
             cascadeDetector(true),				 // Use faster cascade face detector
@@ -339,7 +341,7 @@ namespace Utility {
             ),                      
             pidOutputHigh(45.0),                 // Max output allowed for PID's
             pidOutputLow(-45.0),				 // Min output allowed for PID's
-            defaultGains({ 1.0, 1.0, 1.0}),      // Gains fed to pids when initialized
+            defaultGains({ 0.08, 0.04, 0.002}),  // Gains fed to pids when initialized
             
             dims({ 720, 720 }),                  // The image crop dimensions. Applied before autotuning input.
             captureSize({ 720, 1280 }),          // The dimensions for capture device

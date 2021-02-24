@@ -58,13 +58,13 @@ SACAgent::SACAgent(int num_inputs, int num_hidden, int num_actions, double actio
         
     }
     else {
-        // _log_alpha = torch::log(_alpha).to(optionsDouble);
-        // _log_alpha.set_requires_grad(true);
+        _log_alpha = torch::log(_alpha).to(optionsDouble);
+        _log_alpha.set_requires_grad(true);
     }
 
     // TODO:: Make reinitializing alpha vs. reloading checkpoint a parameter for fine-tune training sessions
-    _log_alpha = torch::log(_alpha).to(optionsDouble);
-    _log_alpha.set_requires_grad(true);
+    // _log_alpha = torch::log(_alpha).to(optionsDouble);
+    // _log_alpha.set_requires_grad(true);
 
     if (_self_adjusting_alpha) {
         // Auto Entropy adjustment variables

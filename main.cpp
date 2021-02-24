@@ -506,6 +506,7 @@ void panTiltThread(Utility::param* parameters) {
                 bool updated = false;
                 for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
+                    // Next state becomes the current state next time we step
                     trainData[servo] = stepResults.servos[servo];
                     trainData[servo].currentState = currentState[servo];
                     currentState[servo] = trainData[servo].nextState;
@@ -517,12 +518,14 @@ void panTiltThread(Utility::param* parameters) {
                             continue;
                         }
 
+                        // If early episode termination
                         if (config->episodeEndCap) {
                             if (totalEpisodeSteps[servo] > config->maxStepsPerEpisode) {
                                 reset = true;
                             }
                         }
 
+                        // Add to replay buffer for training
                         if (replayBuffer->size() <= config->maxBufferSize) {
                             replayBuffer->add(trainData[servo]);
                         }
@@ -532,28 +535,27 @@ void panTiltThread(Utility::param* parameters) {
                         double percentage = (1.0 / 3.0);
                         double timePeriods = (2.0 / percentage) - 1.0;
                         double emaWeight = (2.0 / (timePeriods + 1.0));
-                    
-                        if (!trainData[servo].done && !reset) {
 
-                            // Average reward in a step
-                            totalEpisodeSteps[servo] += 1.0;						
-                            totalEpisodeRewards[servo] += trainData[servo].errors[0];
-                            totalEpisodeObjPredError[servo] += trainData[servo].errors[1];
+                        // Data logging
+                        // Average reward in a step
+                        totalEpisodeSteps[servo] += 1.0;						
+                        totalEpisodeRewards[servo] += trainData[servo].errors[0];
+                        totalEpisodeObjPredError[servo] += trainData[servo].errors[1];
 
-                            stepAverageRewards[servo] = (trainData[servo].errors[0] - stepAverageRewards[servo]) * emaWeight + stepAverageRewards[servo];
-                            stepAverageObjPredError[servo] = (trainData[servo].errors[1] - stepAverageObjPredError[servo]) * emaWeight + stepAverageObjPredError[servo];
+                        stepAverageRewards[servo] = (trainData[servo].errors[0] - stepAverageRewards[servo]) * emaWeight + stepAverageRewards[servo];
+                        stepAverageObjPredError[servo] = (trainData[servo].errors[1] - stepAverageObjPredError[servo]) * emaWeight + stepAverageObjPredError[servo];
 
-                            std::string stepData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
-                                                (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
-                                                + std::to_string(totalSteps) + ','
-                                                + std::to_string(trainData[servo].errors[0]) + ',' 
-                                                + std::to_string(stepAverageRewards[servo])  + ','
-                                                + std::to_string(trainData[servo].errors[1])  + ','
-                                                + std::to_string(stepAverageObjPredError[servo]);
+                        std::string stepData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
+                                            (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
+                                            + std::to_string(totalSteps) + ','
+                                            + std::to_string(trainData[servo].errors[0]) + ',' 
+                                            + std::to_string(stepAverageRewards[servo])  + ','
+                                            + std::to_string(trainData[servo].errors[1])  + ','
+                                            + std::to_string(stepAverageObjPredError[servo]);
 
-                            appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[1], stepData);
-                        }
-                        else {
+                        appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[1], stepData);
+                        
+                        if (trainData[servo].done || reset) {
                             
                             numEpisodes[servo] += 1;
                             emaEpisodeRewardSum[servo] = (totalEpisodeRewards[servo] - emaEpisodeRewardSum[servo]) * emaWeight + emaEpisodeRewardSum[servo];
@@ -579,17 +581,18 @@ void panTiltThread(Utility::param* parameters) {
                         }     
                     }
 
+                    // Debug output
                     if (config->logOutput) {
                         double state[NUM_INPUT];
                         std::cout << "Here is the next state: ";
-                        trainData[servo].currentState.getStateArray(state);
+                        trainData[servo].nextState.getStateArray(state);
                         for (int j = 0; j < NUM_INPUT; j++) {
                             std::cout << std::to_string(state[j]) << ", ";
                         }
                         std::cout << std::endl;
 
                         std::cout << "Here is the current state: ";
-                        trainData[servo].nextState.getStateArray(state);
+                        trainData[servo].currentState.getStateArray(state);
                         for (int j = 0; j < NUM_INPUT; j++) {
                             std::cout << std::to_string(state[j]) << ", ";
                         }
@@ -628,6 +631,7 @@ void panTiltThread(Utility::param* parameters) {
                        
                     }    
 
+                    // Start training thread/processes when ready
                     if (config->trainMode) {
                         // Inform child process to start training
                         if (config->multiProcess) {
@@ -680,9 +684,9 @@ void panTiltThread(Utility::param* parameters) {
             
                     double newAngles[NUM_SERVOS] = { 0.0 };
                     for (int servo = 0; servo < NUM_SERVOS; servo++) {
-                        _distribution = std::normal_distribution<double>(0.0, 0.2); // Roughly between -0.5 and 0.5, centerpoint 0.0                            
-                        newAngles[servo] = config->resetAngles[servo] + std::clamp<double>( 2.0 * config->resetAngleVariance * _distribution(_generator), -config->resetAngleVariance, config->resetAngleVariance);
-                        // newAngles[servo] = config->resetAngleVariance * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
+                        // _distribution = std::normal_distribution<double>(0.0, 0.2); // Roughly between -0.5 and 0.5, centerpoint 0.0                            
+                        // newAngles[servo] = config->resetAngles[servo] + std::clamp<double>( 2.0 * config->resetAngleVariance * _distribution(_generator), -config->resetAngleVariance, config->resetAngleVariance);
+                        newAngles[servo] = config->resetAngleVariance * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
                         
                     }
                     resetResults = servos->reset(newAngles);
@@ -781,19 +785,20 @@ void detectThread(Utility::param* parameters)
     std::string currentTarget = "";
 
     // Create object tracker to optimize detection performance
-    cv::Rect2d roi;
+    cv::Rect2i roi;
+    cv::Rect2d boundingBox;
     cv::Ptr<cv::Tracker> tracker;
     if (useTracking) {
         tracker = createOpenCVTracker(trackerType);
     }
 
     // Object center coordinates
-    double frameCenterX = 0;
-    double frameCenterY = 0;
+    int frameCenterX = 0;
+    int frameCenterY = 0;
 
     // Object coordinates
-    double objX = 0;
-    double objY = 0;
+    int objX = 0;
+    int objY = 0;
 
     cv::Mat frame;
     cv::Mat detection;
@@ -868,15 +873,17 @@ void detectThread(Utility::param* parameters)
                 isSearching = false;
 
                 // Get the new tracking result
-                if (!tracker->update(frame, roi)) {
+                if (!tracker->update(frame, boundingBox)) {
             lostTracking:
                     isTracking = false;
+                    frameCount = 0.0;
                     lossCount++;
                     trackCount = 0;
                     currentTarget = "";
                     goto detect;
                 }
-		
+
+                roi = boundingBox;
 
                 // Chance to revalidate object tracking quality
                 if (frameCount >= recheckFrequency) {
@@ -892,24 +899,24 @@ void detectThread(Utility::param* parameters)
                 ED pan;
 
                 // Determine object and frame centers
-                frameCenterX = static_cast<double>(frame.cols) / 2.0;
-                frameCenterY = static_cast<double>(frame.rows) / 2.0;
-                objX = roi.x + roi.width * 0.5;
-                objY = roi.y + roi.height * 0.5;
+                frameCenterX = frame.cols / 2;
+                frameCenterY = frame.rows / 2;
+                objX = roi.x + (roi.width / 2);
+                objY = roi.y + (roi.height / 2);
 
                 // Determine error
-                tilt.error = frameCenterY - objY;
-                pan.error = frameCenterX - objX;
+                tilt.error = static_cast<double>(frameCenterY - objY);
+                pan.error = static_cast<double>(frameCenterX - objX);
 
                 // Enter State data
-                pan.point = roi.x;
-                tilt.point = roi.y;
-                pan.size = roi.width;
-                tilt.size = roi.height;
-                pan.obj = objX;
-                tilt.obj = objY;
-                pan.frame = frameCenterX;
-                tilt.frame = frameCenterY;
+                pan.point = static_cast<double>(roi.x);
+                tilt.point = static_cast<double>(roi.y);
+                pan.size = static_cast<double>(roi.width);
+                tilt.size = static_cast<double>(roi.height);
+                pan.obj = static_cast<double>(objX);
+                tilt.obj = static_cast<double>(objY);
+                pan.frame = static_cast<double>(frameCenterX);
+                tilt.frame = static_cast<double>(frameCenterY);
                 pan.done = false;
                 tilt.done = false;
                 
@@ -972,38 +979,45 @@ void detectThread(Utility::param* parameters)
                         for (auto res : results) {
                             result = res;
                             
+                            // TODO::Determine criteria by which OpenCV Tracking is still accurate
                             // If they intersect
-                            if (((result.boundingBox & roi).area() > 0.0)) {
-                                goto validated; 
-                            }  
+                            // if (((result.boundingBox & roi).area() > 0.0)) {
+                            goto validated; 
+                            // }  
                         }
                         
                         goto lostTracking;
                     } else {
                         // Vast magority of the time there will be overlap 
-                        double bestIOU = 0.0;
-                        double bestDistance = static_cast<double>(config->dims[0]);
-                    
                         for (auto res : results) {
                             
-                            // If they intersect
-                            if (currentTarget == res.target) {                                
-                                // double area = (res.boundingBox & roi).area();
-                                double distance = Utility::distance(res.center, (roi.tl() + roi.br()) / 2.0);
-
-                                // if (area >= bestIOU) {
-                                //     bestDistance = distance;
-                                //     bestIOU = area;
-                                //     result = res;
-                                //     roi = result.boundingBox;
-                                // } else 
-                                if (distance <= bestDistance) {
-                                    bestDistance = distance;
-                                    result = res;
-                                    roi = result.boundingBox;
-                                }
+                            if (std::find(targets.begin(), targets.end(), res.target) != targets.end()) {
+                                result = res;
+                                roi = result.boundingBox;
+                                currentTarget = result.target;
+                                break;
                             }
-                        } 
+                        }  
+                        // double bestIOU = 0.0;
+                        // int bestDistance = config->dims[0];
+                    
+                        // for (auto res : results) {
+                            
+                        //     // If they intersect
+                        //     // TODO:: Assumption below potentially wrong, use POT in the future
+                        //     if (currentTarget == res.target) {                                
+
+                        //         cv::Point2i a = res.center;
+                        //         cv::Point2i b = (roi.tl() + roi.br()) / 2;
+                        //         int distance = std::sqrt<int>( (a.x-b.x) * (a.x-b.x) + (a.y-b.y) * (a.y-b.y) );
+
+                        //         if (distance <= bestDistance) {
+                        //             bestDistance = distance;
+                        //             result = res;
+                        //             roi = result.boundingBox;
+                        //         }
+                        //     }
+                        // } 
                     }
                 } 
                 
@@ -1016,20 +1030,18 @@ void detectThread(Utility::param* parameters)
                     trackCount = (trackCount + 1) % 5;
                     isSearching = false;
 
-                    roi = result.boundingBox;
-
                     ED tilt;
                     ED pan;
 
                     // Determine object and frame centers
-                    frameCenterX = static_cast<double>(frame.cols) / 2.0;
-                    frameCenterY = static_cast<double>(frame.rows) / 2.0;
-                    objX = static_cast<double>(result.center.x);
-                    objY = static_cast<double>(result.center.y);
+                    frameCenterX = frame.cols / 2;
+                    frameCenterY = frame.rows / 2;
+                    objX = result.center.x;
+                    objY = result.center.y;
 
                     // Determine error (negative is too far left or too far above)
-                    tilt.error = frameCenterY - objY;
-                    pan.error = frameCenterX - objX;
+                    tilt.error = static_cast<double>(frameCenterY - objY);
+                    pan.error = static_cast<double>(frameCenterX - objX);
 
                     // Other State data
                     auto now = std::chrono::high_resolution_clock::now();
@@ -1041,13 +1053,13 @@ void detectThread(Utility::param* parameters)
                     tilt.point = static_cast<double>(result.boundingBox.y);
                     pan.size = static_cast<double>(result.boundingBox.width);
                     tilt.size = static_cast<double>(result.boundingBox.height);
-                    pan.obj = objX;
-                    tilt.obj = objY;
-                    pan.frame = frameCenterX;
-                    tilt.frame = frameCenterY;
+                    pan.obj = static_cast<double>(objX);
+                    tilt.obj = static_cast<double>(objY);
+                    pan.frame = static_cast<double>(frameCenterX);
+                    tilt.frame = static_cast<double>(frameCenterY);
                     pan.done = false;
                     tilt.done = false;
-                
+
                     double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
                     pan.spf = seconds_per_frame;
                     tilt.spf = seconds_per_frame;
@@ -1067,12 +1079,10 @@ void detectThread(Utility::param* parameters)
                     if (useTracking && !isTracking) {
 
                         try {
-                            
                             tracker = createOpenCVTracker(trackerType);
-
                             if (tracker->init(frame, roi)) {
                                 isTracking = true;
-                            }
+                            } 
                         } catch (const std::exception& e) {
                             std::cerr << e.what() << std::endl;
                             camera->release();
@@ -1080,8 +1090,9 @@ void detectThread(Utility::param* parameters)
                         }
                     }
                 }
-                else if (config->usePOT) {
+                else if (!config->trainMode && config->usePOT) {
                     lossCount++;
+                    frameCount = 0.0;
                     rechecked = false;
 
                     // Target is out of sight, inform PID's, model, and servos
@@ -1095,14 +1106,12 @@ void detectThread(Utility::param* parameters)
                         ED pan;
                         
                         // Object not on screen
-                        frameCenterX = static_cast<double>(frame.cols) / 2.0;
-                        frameCenterY = static_cast<double>(frame.rows) / 2.0;
-                        objX = 0;
-                        objY = 0;
+                        frameCenterX = frame.cols / 2;
+                        frameCenterY = frame.rows / 2;
 
                         // Max error
-                        tilt.error = frameCenterY;
-                        pan.error = frameCenterX;
+                        tilt.error = static_cast<double>(frameCenterY);
+                        pan.error = static_cast<double>(frameCenterX);
 
                         // Error state
                         // Enter State data
@@ -1111,17 +1120,17 @@ void detectThread(Utility::param* parameters)
 
                         pan.timestamp = elapsed;
                         tilt.timestamp = elapsed;
-                        pan.point = 0;
-                        tilt.point = 0;
-                        pan.size = 0;
-                        tilt.size = 0;
-                        pan.obj = frameCenterX * 2;
-                        tilt.obj = frameCenterY * 2; // max error
-                        pan.frame = frameCenterX;
-                        tilt.frame = frameCenterY;
+                        pan.point = 0.0;
+                        tilt.point = 0.0;
+                        pan.size = 0.0;
+                        tilt.size = 0.0;
+                        pan.obj = static_cast<double>(frameCenterX * 2);
+                        tilt.obj = static_cast<double>(frameCenterY * 2); // max error
+                        pan.frame = static_cast<double>(frameCenterX);
+                        tilt.frame = static_cast<double>(frameCenterY);
                         pan.done = true;
                         tilt.done = true;
-                        
+
                         double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
                         pan.spf = seconds_per_frame;
                         tilt.spf = seconds_per_frame;
@@ -1149,22 +1158,20 @@ void detectThread(Utility::param* parameters)
                         ED tilt;
                         ED pan;
                         
-                        frameCenterX = static_cast<double>(config->dims[1]) / 2.0;
-                        frameCenterY = static_cast<double>(config->dims[0]) / 2.0;
-                        objX = locations[1];
-                        objY = locations[0];
+                        frameCenterX = config->dims[1] / 2;
+                        frameCenterY = config->dims[0] / 2;
                         
                         auto now = std::chrono::high_resolution_clock::now();
                         double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
 
                         pan.timestamp = elapsed;
                         tilt.timestamp = elapsed;
-                        pan.obj = objX;
-                        tilt.obj = objY;
-                        pan.frame = frameCenterX;
-                        tilt.frame = frameCenterY;
-                        tilt.error = frameCenterY - objY;
-                        pan.error = frameCenterX - objX;
+                        pan.obj = locations[1];
+                        tilt.obj = locations[0];
+                        pan.frame = static_cast<double>(frameCenterX);
+                        tilt.frame = static_cast<double>(frameCenterY);
+                        tilt.error = static_cast<double>(frameCenterY) - locations[0];
+                        pan.error = static_cast<double>(frameCenterX) - locations[1];
                         pan.done = false;
                         tilt.done = false;
                         
@@ -1201,12 +1208,12 @@ void detectThread(Utility::param* parameters)
                         ED pan;
                         
                         // Object not on screen
-                        frameCenterX = static_cast<double>(frame.cols) / 2.0;
-                        frameCenterY = static_cast<double>(frame.rows) / 2.0;
+                        frameCenterX = frame.cols / 2;
+                        frameCenterY = frame.rows / 2;
 
                         // Max error
-                        tilt.error = frame.rows;
-                        pan.error = frame.cols;
+                        tilt.error = static_cast<double>(frame.rows);
+                        pan.error = static_cast<double>(frame.cols);
 
                         // Error state
                         // Enter State data
@@ -1215,14 +1222,10 @@ void detectThread(Utility::param* parameters)
 
                         pan.timestamp = elapsed;
                         tilt.timestamp = elapsed;
-                        pan.point = 0;
-                        tilt.point = 0;
-                        pan.size = 0;
-                        tilt.size = 0;
-                        pan.obj = frameCenterX * 2;
-                        tilt.obj = frameCenterY * 2; // max error
-                        pan.frame = frameCenterX;
-                        tilt.frame = frameCenterY;
+                        pan.obj = static_cast<double>(frameCenterX * 2);
+                        tilt.obj = static_cast<double>(frameCenterY * 2); // max error
+                        pan.frame = static_cast<double>(frameCenterX);
+                        tilt.frame = static_cast<double>(frameCenterY);
                         pan.done = true;
                         tilt.done = true;
                         

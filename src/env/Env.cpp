@@ -25,7 +25,8 @@ namespace TATS {
             
             _resetAngles[servo] = _config->resetAngles[servo];
             _disableServo[servo] = _config->disableServo[servo];
-            _invert[servo] = _config->invertServo[servo];
+            _invertData[servo] = _config->invertData[servo];
+            _invertAngles[servo] = _config->invertAngles[servo];
             _currentAngles[servo] = _config->resetAngles[servo];
             _lastAngles[servo] = _config->resetAngles[servo];
 
@@ -128,7 +129,11 @@ namespace TATS {
             if (_disableServo[servo]) {
                 continue;
             }
-            _servos->setAngle(servo, overrideResetAngles ? angles[servo] : _resetAngles[servo]);
+            
+            double newAngle = overrideResetAngles ? angles[servo] : _resetAngles[servo];
+            _servos->setAngle(servo, (_invertAngles[servo]) ? -newAngle : newAngle);
+            // _servos->setAngle(servo, overrideResetAngles ? angles[servo] : _resetAngles[servo]);
+
             _lastAngles[servo] =  _resetAngles[servo];
             _currentAngles[servo] = overrideResetAngles ? angles[servo] : _resetAngles[servo];
             _pids[servo]->init();
@@ -152,16 +157,16 @@ namespace TATS {
                 continue;
             }
             data.servos[servo].pidStateData = _pids[servo]->getState(true);
-            data.servos[servo].obj =  _currentData[servo].obj;
+            data.servos[servo].obj = _currentData[servo].obj;
             data.servos[servo].frame = _currentData[servo].frame;
-            data.servos[servo].lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
-            data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
+            data.servos[servo].lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
+            data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
             data.servos[servo].spf = _currentData[servo].spf;
     
             double frameCenter = (_config->dims[servo] / 2.0);
-            _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
-            _errors[servo][0] = (_invert[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
-            // _errors[servo][0] = Utility::mapOutput((_invert[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
+            _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
+            // _errors[servo][0] = (_invertData[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
+            _errors[servo][0] = Utility::mapOutput((_invertData[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
             data.servos[servo].setData(_errors[servo], _outputs[servo]);
             _stateData[servo] = data.servos[servo];
             _predObjLoc[servo] = 0.0;
@@ -181,16 +186,16 @@ namespace TATS {
                 continue;
             }
             data.servos[servo].pidStateData = _pids[servo]->getState(true);
-            data.servos[servo].obj =  _currentData[servo].obj;
+            data.servos[servo].obj = _currentData[servo].obj;
             data.servos[servo].frame = _currentData[servo].frame;
-            data.servos[servo].lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
-            data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
+            data.servos[servo].lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
+            data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
             data.servos[servo].spf = _currentData[servo].spf;
     
             double frameCenter = (_config->dims[servo] / 2.0);
-            _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
-            _errors[servo][0] = (_invert[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
-            // _errors[servo][0] = Utility::mapOutput((_invert[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
+            _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
+            // _errors[servo][0] = (_invertData[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
+            _errors[servo][0] = Utility::mapOutput((_invertData[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
             data.servos[servo].setData(_errors[servo], _outputs[servo]);
             _stateData[servo] = data.servos[servo];
             _predObjLoc[servo] = 0.0;
@@ -258,12 +263,12 @@ namespace TATS {
             }
             else {
                 _pids[servo]->setWeights(rescaledActions[servo][0], rescaledActions[servo][1], rescaledActions[servo][2]);
-                newAngle = _pids[servo]->update(_currentData[servo].obj);
+                newAngle = _pids[servo]->update(_currentData[servo].obj, _invertData[servo]);
             }
 
             _lastAngles[servo] = _currentAngles[servo];
             _currentAngles[servo] = newAngle;
-            _servos->setAngle(servo, newAngle);
+            _servos->setAngle(servo, (_invertAngles[servo]) ? -newAngle : newAngle);
         }
         
         _syncEnv(rate);        
@@ -284,7 +289,7 @@ namespace TATS {
                 stepResults.servos[servo].reward = Utility::pidErrorToReward(currentError, lastError, static_cast<double>(_config->dims[servo]) / 2.0, _currentData[servo].done, 0.01, false);
                 stepResults.servos[servo].errors[0] = stepResults.servos[servo].reward;
                 if (_config->usePOT) {
-                    stepResults.servos[servo].errors[1] = Utility::predictedObjectLocationToReward(rescaledActions[servo][1], _currentData[servo].obj, static_cast<double>(_config->dims[servo]), _currentData[servo].done);;
+                    stepResults.servos[servo].errors[1] = Utility::predictedObjectLocationToReward(rescaledActions[servo][1], _currentData[servo].obj, static_cast<double>(_config->dims[servo]), _currentData[servo].done);
                     stepResults.servos[servo].reward += stepResults.servos[servo].errors[1];
                 }
             }
@@ -292,8 +297,8 @@ namespace TATS {
             // Update state information
             stepResults.servos[servo].nextState.obj = _currentData[servo].obj;
             stepResults.servos[servo].nextState.frame = _currentData[servo].frame;
-            stepResults.servos[servo].nextState.lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
-            stepResults.servos[servo].nextState.currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
+            stepResults.servos[servo].nextState.lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
+            stepResults.servos[servo].nextState.currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
             stepResults.servos[servo].nextState.spf = _currentData[servo].spf;
             stepResults.servos[servo].done = _currentData[servo].done;
             stepResults.servos[servo].empty = false;
@@ -308,9 +313,9 @@ namespace TATS {
 
             // Scale to 0.0 to 1;
             double frameCenter = (_config->dims[servo] / 2.0);
-            _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
-            _errors[servo][0] = (_invert[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
-            // _errors[servo][0] = Utility::mapOutput((_invert[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
+            _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
+            // _errors[servo][0] = (_invertData[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
+            _errors[servo][0] = Utility::mapOutput((_invertData[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
             
             // Fill out the step results
             if (!_config->usePIDs) {
