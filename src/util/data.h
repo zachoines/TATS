@@ -16,7 +16,7 @@ namespace Utility {
     #define NUM_SERVOS 2                         // Number of servos used 
     #define NUM_INPUT 10                         // Size of the state schema
     #define NUM_HIDDEN 256                       // Number of nodes in each networks hidden layer
-    #define USE_PIDS 0                           // When enabled AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
+    #define USE_PIDS 0                           // When enabled, AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
     #define USE_POT 1                            // Use predictive object location
     #define NUM_ACTIONS ((USE_PIDS) ? 3 : ((USE_POT) ? 2 : 1) ) 
 
