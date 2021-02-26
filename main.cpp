@@ -388,6 +388,7 @@ void panTiltThread(Utility::param* parameters) {
     // Program loop variants
     unsigned int totalSteps = 0;
     bool recentlyReset = false;
+    int doneCount = 0;
 
     // Train records
     int numEpisodes[NUM_SERVOS] = { 0 };
@@ -405,15 +406,6 @@ void panTiltThread(Utility::param* parameters) {
     bool initialRandomActions = config->initialRandomActions;
     int numInitialRandomActions = config->numInitialRandomActions;
     bool isTraining = false;
-
-    // For Alternating servos while training
-    int alternateCounter = 0;
-    int alternationMode = 0;
-    int numAlternations = 0;
-    int currentServo = 0;
-    bool enableAllServos[NUM_SERVOS] = { false };
-    bool currentServoMask[NUM_SERVOS] = { true };
-    currentServoMask[currentServo] = false;
     
     // Training data
     double predictedActions[NUM_SERVOS][NUM_ACTIONS] = { 0.0 };
@@ -442,6 +434,7 @@ void panTiltThread(Utility::param* parameters) {
 
             if (!servos->isDone()) {
                 recentlyReset = false;
+                doneCount = 0;
     
                 for (int i = 0; i < NUM_SERVOS; i++) {
 
@@ -653,6 +646,7 @@ void panTiltThread(Utility::param* parameters) {
             }
             //  || config->resetAngleChance > static_cast<float>(rand()) / static_cast <float> (RAND_MAX)
             else if (!recentlyReset) {
+                doneCount++;
                 recentlyReset = true;
 
                 reset:
@@ -700,8 +694,14 @@ void panTiltThread(Utility::param* parameters) {
                     currentState[servo] = resetResults.servos[servo];
                 }   		
             } else {
-    
-                resetResults = servos->reset(config->useCurrentAngleForReset);            
+                doneCount++;
+
+                if (doneCount >= config->resetAfterNInnactiveFrames) {
+                    doneCount = 0;
+                    resetResults = servos->reset();            
+                } else {
+                    resetResults = servos->reset(config->useCurrentAngleForReset);            
+                }
                 
                 // Hold onto reset results
                 for (int servo = 0; servo < NUM_SERVOS; servo++) {
@@ -989,35 +989,35 @@ void detectThread(Utility::param* parameters)
                         goto lostTracking;
                     } else {
                         // Vast magority of the time there will be overlap 
-                        for (auto res : results) {
-                            
-                            if (std::find(targets.begin(), targets.end(), res.target) != targets.end()) {
-                                result = res;
-                                roi = result.boundingBox;
-                                currentTarget = result.target;
-                                break;
-                            }
-                        }  
-                        // double bestIOU = 0.0;
-                        // int bestDistance = config->dims[0];
-                    
                         // for (auto res : results) {
                             
-                        //     // If they intersect
-                        //     // TODO:: Assumption below potentially wrong, use POT in the future
-                        //     if (currentTarget == res.target) {                                
-
-                        //         cv::Point2i a = res.center;
-                        //         cv::Point2i b = (roi.tl() + roi.br()) / 2;
-                        //         int distance = std::sqrt<int>( (a.x-b.x) * (a.x-b.x) + (a.y-b.y) * (a.y-b.y) );
-
-                        //         if (distance <= bestDistance) {
-                        //             bestDistance = distance;
-                        //             result = res;
-                        //             roi = result.boundingBox;
-                        //         }
+                        //     if (std::find(targets.begin(), targets.end(), res.target) != targets.end()) {
+                        //         result = res;
+                        //         roi = result.boundingBox;
+                        //         currentTarget = result.target;
+                        //         break;
                         //     }
-                        // } 
+                        // }  
+                        // double bestIOU = 0.0;
+                        int bestDistance = config->dims[0];
+                    
+                        for (auto res : results) {
+                            
+                            // If they intersect
+                            // TODO:: Assumption below potentially wrong, use POT in the future
+                            if (currentTarget == res.target) {                                
+
+                                cv::Point2i a = res.center;
+                                cv::Point2i b = (roi.tl() + roi.br()) / 2;
+                                int distance = std::sqrt<int>( (a.x-b.x) * (a.x-b.x) + (a.y-b.y) * (a.y-b.y) );
+
+                                if (distance <= bestDistance) {
+                                    bestDistance = distance;
+                                    result = res;
+                                    roi = result.boundingBox;
+                                }
+                            }
+                        } 
                     }
                 } 
                 
@@ -1027,7 +1027,7 @@ void detectThread(Utility::param* parameters)
                     // Update loop variants
                     programStart = false;
                     lossCount = 0;
-                    trackCount = (trackCount + 1) % 5;
+                    trackCount = (trackCount + 1) % CHAR_MAX; 
                     isSearching = false;
 
                     ED tilt;

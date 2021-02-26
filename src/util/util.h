@@ -272,7 +272,7 @@ namespace Utility {
 	}
 
 	static double predictedObjectLocationToReward(double pred, double target, double max, bool done) {
-		return (done) ? 0.0 : - std::clamp<double>(2.0 * (std::fabs(target - pred) / max), 0.0, 1.0);
+		return (done) ? 0.0 : - std::clamp<double>((std::fabs(target - pred) / max), 0.0, 1.0);
 	}
 
 	// Scale from -1.0 to 1.0 to low to high

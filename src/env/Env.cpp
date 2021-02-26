@@ -165,7 +165,6 @@ namespace TATS {
     
             double frameCenter = (_config->dims[servo] / 2.0);
             _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
-            // _errors[servo][0] = (_invertData[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
             _errors[servo][0] = Utility::mapOutput((_invertData[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
             data.servos[servo].setData(_errors[servo], _outputs[servo]);
             _stateData[servo] = data.servos[servo];
@@ -194,7 +193,6 @@ namespace TATS {
     
             double frameCenter = (_config->dims[servo] / 2.0);
             _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
-            // _errors[servo][0] = (_invertData[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
             _errors[servo][0] = Utility::mapOutput((_invertData[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
             data.servos[servo].setData(_errors[servo], _outputs[servo]);
             _stateData[servo] = data.servos[servo];
@@ -233,7 +231,13 @@ namespace TATS {
                     rescaledActions[servo][0] = Utility::rescaleAction(actions[servo][0], _config->actionLow, _config->actionHigh); // Angle
 
                     if (_config->usePOT) {
-                        rescaledActions[servo][1] = Utility::rescaleAction(actions[servo][1], 0, _config->dims[servo]); // Estimate of location
+                        if (_invertData[servo]) {
+                            rescaledActions[servo][1] = Utility::rescaleAction(-actions[servo][1], 0, _config->dims[servo]); 
+                            
+                        } else {
+                            rescaledActions[servo][1] = Utility::rescaleAction(actions[servo][1], 0, _config->dims[servo]);
+                        }
+                        
                         _predObjLoc[servo] = rescaledActions[servo][1];
                     }
                     
@@ -314,7 +318,6 @@ namespace TATS {
             // Scale to 0.0 to 1;
             double frameCenter = (_config->dims[servo] / 2.0);
             _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
-            // _errors[servo][0] = (_invertData[servo]) ? (frameCenter - _currentData[servo].obj) / frameCenter : (_currentData[servo].obj - frameCenter) / frameCenter;
             _errors[servo][0] = Utility::mapOutput((_invertData[servo]) ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter), -frameCenter, frameCenter, 0.0, 1.0);
             
             // Fill out the step results
@@ -380,8 +383,8 @@ namespace TATS {
                 if (_disableServo[servo]) {
                     continue;
                 }
-
-                locations[servo] = _predObjLoc[servo];
+                
+                locations[servo] = _predObjLoc[servo];            
             }
             
             lck.unlock();
