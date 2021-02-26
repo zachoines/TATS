@@ -15,6 +15,7 @@
 namespace Utility {
     #define NUM_SERVOS 2                         // Number of servos used 
     #define NUM_INPUT 10                         // Size of the state schema
+    #define ERROR_LIST_SIZE 5                    // Number of errors/outputs to hold onto accross application
     #define NUM_HIDDEN 256                       // Number of nodes in each networks hidden layer
     #define USE_PIDS 0                           // When enabled, AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
     #define USE_POT 1                            // Use predictive object location
@@ -59,14 +60,14 @@ namespace Utility {
         double currentAngle;
         double lastAngle;
         double angleMax;
-        double errors[5] = { 0.0 };
-        double outputs[5] = { 0.0 };
+        double errors[ERROR_LIST_SIZE] = { 0.0 };
+        double outputs[ERROR_LIST_SIZE] = { 0.0 };
         double obj;
         double frame;
         double e; 
         double spf;
 
-        void setData(double errs[5], double outs[5]) {
+        void setData(double errs[ERROR_LIST_SIZE], double outs[ERROR_LIST_SIZE]) {
             for (int i = 0; i < 5; i++) {
                 errors[i] = errs[i];
                 outputs[i] = outs[i];
@@ -307,8 +308,8 @@ namespace Utility {
             trainRate(.25),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             
-            disableServo({ false, false }),      // Disable the { Y, X } servos
-            invertData({ false, true }),        // Flip input data { Y, X } servos
+            disableServo({ false, true }),       // Disable the { Y, X } servos
+            invertData({ false, true }),         // Flip input data { Y, X } servos
             invertAngles({ false, false }),      // Flip output angles { Y, X } servos
             resetAngles({                        // Angle when reset
                 0.0, 0.0

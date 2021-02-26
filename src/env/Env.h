@@ -35,11 +35,11 @@ namespace TATS {
         double _resetAngles[NUM_SERVOS];
         double _currentAngles[NUM_SERVOS] = { 0.0 };
         double _lastAngles[NUM_SERVOS] = { 0.0 };
-        double _errors[NUM_SERVOS][10] = { 0.0 };
-        double _outputs[NUM_SERVOS][10] = { 0.0 };
+        double _errors[NUM_SERVOS][ERROR_LIST_SIZE] = { 0.0 };
+        double _outputs[NUM_SERVOS][ERROR_LIST_SIZE] = { 0.0 };
         double _predObjLoc[NUM_SERVOS] = { 0.0 };
         int _currentSteps; 
-        bool _forceEnable;
+        bool _recentReset;
 
         PID* _pids[NUM_SERVOS];
 

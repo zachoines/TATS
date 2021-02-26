@@ -13,7 +13,11 @@
 #include "opencv2/tracking.hpp"
 
 namespace Utility {
-
+	// return true if object is headinig right/up, and false left/down
+	static bool calculateDirectionOfObject(double error, bool inverted) {
+		bool direction = error < 0.0;
+		return inverted ? !direction : direction;
+	}
 
 	static void msleep(int milli) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(milli));

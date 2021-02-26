@@ -13,6 +13,7 @@ namespace TATS {
         _servos = new control::ServoKit(_pwm);
         _config = new Utility::Config();
         _currentSteps = 0;
+        _recentReset = true;
 
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             double setpoint = static_cast<double>(_config->dims[servo]) / 2.0;
@@ -32,10 +33,15 @@ namespace TATS {
 
             _servos->initServo(_config->servoConfigurations[servo]);
 
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < ERROR_LIST_SIZE; i++) {
                 _outputs[servo][i] = 0.0;
                 _errors[servo][i] = 0.0;
             }
+
+            // for (int i = _config->anglesLow[servo]; i < _config->anglesHigh[servo]; i += 5) {
+            //     _servos->setAngle(servo, i);
+            //     _sleep(5);
+            // }
         }
     }
 
@@ -125,6 +131,7 @@ namespace TATS {
 
     void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS])
     {
+        _recentReset = true;
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             if (_disableServo[servo]) {
                 continue;
@@ -132,13 +139,12 @@ namespace TATS {
             
             double newAngle = overrideResetAngles ? angles[servo] : _resetAngles[servo];
             _servos->setAngle(servo, (_invertAngles[servo]) ? -newAngle : newAngle);
-            // _servos->setAngle(servo, overrideResetAngles ? angles[servo] : _resetAngles[servo]);
 
             _lastAngles[servo] =  _resetAngles[servo];
             _currentAngles[servo] = overrideResetAngles ? angles[servo] : _resetAngles[servo];
             _pids[servo]->init();
             
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < ERROR_LIST_SIZE; i++) {
                 _errors[servo][i] = 0.0;
                 _outputs[servo][i] = 0.0;
             }
@@ -208,6 +214,7 @@ namespace TATS {
     {
         _currentSteps = (_currentSteps + 1) % INT_MAX; 
         double rescaledActions[NUM_SERVOS][NUM_ACTIONS];
+        bool empty = false;
 
         Utility::SR stepResults;
         
@@ -219,32 +226,55 @@ namespace TATS {
 
             if (!_config->usePIDs) {
 
-                // Derive output angle and object's next location from SAC output actions
-                stepResults.servos[servo].actions[0] = actions[servo][0];
-
-                if (_config->usePOT) {
-                    stepResults.servos[servo].actions[1] = actions[servo][1];
-                }
-                
-
-                if (rescale) {
-                    rescaledActions[servo][0] = Utility::rescaleAction(actions[servo][0], _config->actionLow, _config->actionHigh); // Angle
+                if (!_recentReset) { 
+                    
+                    // Derive output angle and object's next location from SAC output actions
+                    stepResults.servos[servo].actions[0] = actions[servo][0];
 
                     if (_config->usePOT) {
-                        if (_invertData[servo]) {
-                            rescaledActions[servo][1] = Utility::rescaleAction(-actions[servo][1], 0, _config->dims[servo]); 
-                            
-                        } else {
-                            rescaledActions[servo][1] = Utility::rescaleAction(actions[servo][1], 0, _config->dims[servo]);
-                        }
-                        
-                        _predObjLoc[servo] = rescaledActions[servo][1];
+                        stepResults.servos[servo].actions[1] = actions[servo][1];
                     }
                     
+
+                    if (rescale) {
+                        rescaledActions[servo][0] = Utility::rescaleAction(actions[servo][0], _config->actionLow, _config->actionHigh); // Angle
+
+                        if (_config->usePOT) {
+                            if (_invertData[servo]) {
+                                rescaledActions[servo][1] = Utility::rescaleAction(-actions[servo][1], 0, _config->dims[servo]); 
+                                
+                            } else {
+                                rescaledActions[servo][1] = Utility::rescaleAction(actions[servo][1], 0, _config->dims[servo]);
+                            }
+                            
+                            _predObjLoc[servo] = rescaledActions[servo][1];
+                        }
+                        
+                    } else {
+                        for (int a = 0; a < NUM_ACTIONS; a++) {
+                            rescaledActions[servo][a] = actions[servo][a];
+                        }  
+                    }
                 } else {
-                    for (int a = 0; a < NUM_ACTIONS; a++) {
-                        rescaledActions[servo][a] = actions[servo][a];
-                    }  
+                    /* Two datapoints should allow for far better movement by an AI, in exchange for this small observation delay
+                       Move a small amount now, preventing a blind over-shot by the AI
+                       Result is equivelent to a small dirivitive kick in PID systems, though minimized by AI */
+            
+                    _recentReset = false;
+                    empty = true;
+                    double frameCenter = (_config->dims[servo] / 2.0);
+                    double error = _invertData[servo] ? (frameCenter - _currentData[servo].obj) : (_currentData[servo].obj - frameCenter);
+
+                    if (error == 0.0) {
+                        rescaledActions[servo][0] = _currentAngles[servo];
+                    } else {
+                        // Move in the general direction of object, inverting if needed, while enforcing angle bounds.
+                        if (Utility::calculateDirectionOfObject(error, _invertData[servo])) {
+                            rescaledActions[servo][0] = std::clamp<double>(_currentAngles[servo] + 1, _config->anglesLow[servo], _config->anglesHigh[servo]);
+                        } else {
+                            rescaledActions[servo][0] = std::clamp<double>(_currentAngles[servo] - 1, _config->anglesLow[servo], _config->anglesHigh[servo]);
+                        }
+                    }   
                 }
             } else {
 
@@ -305,12 +335,12 @@ namespace TATS {
             stepResults.servos[servo].nextState.currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
             stepResults.servos[servo].nextState.spf = _currentData[servo].spf;
             stepResults.servos[servo].done = _currentData[servo].done;
-            stepResults.servos[servo].empty = false;
+            stepResults.servos[servo].empty = empty;
 
             _stateData[servo] = stepResults.servos[servo].nextState;
 
             // Store error and output history
-            for (int i = 4; i >= 0; i--) {
+            for (int i = ERROR_LIST_SIZE - 2; i >= 0; i--) {
                 _outputs[servo][i + 1] = _outputs[servo][i];
                 _errors[servo][i + 1] = _errors[servo][i];
             }
