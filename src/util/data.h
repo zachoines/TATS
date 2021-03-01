@@ -295,20 +295,20 @@ namespace Utility {
             trainMode(false),                    // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
             variableFPS(true),                   // Vary the FPS in training
-            FPSVariance(5.0),                    // Average change in FPS
+            FPSVariance(7.0),                    // Average change in FPS
             varyFPSChance(0.5),                  // Percentage of frames that have variable FPS
             resetAngleVariance(30.0),            // In training, the degree of variance in reset angles
             resetAngleChance(0.05),              // Chance to randomly chance the current angle the servos are wating at
             varyResetAngles(true),               // vary reset angles diring training
 
             recheckFrequency(120),               // Num frames in-between revalidations of
-            lossCountMax(20),                    // Max number of rechecks before episode is considered over. 
+            lossCountMax(30),                    // Max number of rechecks before episode is considered over. 
                                                  // In the case of usePOT, MAX uses of predictive object tracking.
-            updateRate(5),                       // Servo updates, update commands per second
+            updateRate(4),                       // Servo updates, update commands per second
             trainRate(.25),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             
-            disableServo({ false, true }),       // Disable the { Y, X } servos
+            disableServo({ false, false  }),       // Disable the { Y, X } servos
             invertData({ false, true }),         // Flip input data { Y, X } servos
             invertAngles({ false, false }),      // Flip output angles { Y, X } servos
             resetAngles({                        // Angle when reset
@@ -331,11 +331,11 @@ namespace Utility {
             useTracking(false),					 // Use openCV tracker instead of face detection
             usePOT((bool)USE_POT),               // Predictive Object Tracking. If detection has failed, uses AI to predict objects next location
             // usePOT(false),
-            resetAfterNInnactiveFrames(30),      // Reset to default angles after N frames. -1 indicates never resetting. 
+            resetAfterNInnactiveFrames(10),      // Reset to default angles after N frames. -1 indicates never resetting. 
             useCurrentAngleForReset(true),       // Use current angle as reset angle when target has lost track
             draw(false),						 // Draw target bounding box and center on frame
             showVideo(false),					 // Show camera feed
-            cascadeDetector(true),				 // Use faster cascade face detector
+            cascadeDetector(false),				 // Use faster cascade face detector
             usePIDs((bool)USE_PIDS),             // Network outputs PID gains, or network outputs angle directly
             actionHigh(                          // Max output to of policy network's logits   
                 USE_PIDS ? 0.1 : 45.0
@@ -353,8 +353,8 @@ namespace Utility {
             
             fps(60),                             // Camera capture rate
             multiProcess(true),                  // Enables autotuning in a seperate process. Otherwise its a thread.
-            targets({"face"}),
-            // targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
+            // targets({"face"}),
+            targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
             classes({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),            
             yoloPath("/models/yolo/yolo5s_uno.torchscript.pt")
             // yoloPath("/models/yolo/yolov5s_coco.torchscript.pt"),
