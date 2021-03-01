@@ -1,7 +1,7 @@
 # TATS
 Target acquisition and tracking system. The aim of this repo is to use various deep learning techniques for detecting and tracking targets on servo driven pan/tilt camera systems. Optimized for linux IOT devices like the Raspberry Pi and NVIDIA Jetson product lines.
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/5aenaehoWtQ" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+[![TATS Technical Overview](http://img.youtube.com/vi/5aenaehoWtQ/0.jpg)](http://www.youtube.com/watch?v=5aenaehoWtQ"TATS Technical Overview")
 
 ## Requirements
 * libtorch 1.7.0
