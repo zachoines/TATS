@@ -40,11 +40,12 @@ namespace TATS {
         double _predObjLoc[NUM_SERVOS] = { 0.0 };
         int _currentSteps; 
         bool _recentReset;
+        int _preSteps;
 
         PID* _pids[NUM_SERVOS];
 
-        void _sleep(double rate=5);
-        void _syncEnv(double rate=5);
+        void _sleep(double rate=10);
+        void _syncEnv(double rate=10);
         void _resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS]); // Resets servos and re-inits PID's. Call only once manually.
 
         control::Wire* _wire;

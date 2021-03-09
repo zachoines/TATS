@@ -18,7 +18,7 @@ torch::Tensor Normal::sample()
 
 torch::Tensor Normal::rsample() {
     torch::Tensor eps = torch::empty(loc.sizes());
-    torch::Tensor normal = loc + eps.normal_() * scale;
+    torch::Tensor normal = loc + (eps.normal_() * scale);
     return normal;
 }
 
@@ -28,11 +28,10 @@ torch::Tensor Normal::log_prob(torch::Tensor value)
     torch::Tensor log_scale = torch::log(scale);
     
     // return -(torch::pow(value - loc, 2.0) / (2.0 * var)) - log_scale - torch::log(torch::sqrt(torch::tensor({ 2.0 * M_PI })));
-    return -torch::pow(value - loc, 2.0) / (2.0 * var) - log_scale - torch::log(torch::sqrt(torch::tensor({ 2.0 * M_PI })));
+    return -(torch::pow(value - loc, 2.0)) / (2.0 * var) - log_scale - torch::log(torch::sqrt(torch::tensor({ 2.0 * M_PI })));
 }
-
 
 torch::Tensor Normal::log_prob(torch::Tensor z, torch::Tensor log_std, torch::Tensor mean)
 {
-    return -0.5 * (torch::pow(((z - loc) / (torch::exp(log_std) + 1e-6)), 2.0) + 2.0 * log_std + torch::log(torch::tensor({ 2.0 * M_PI })));
+    return -0.5 * (torch::pow(((z - mean) / (torch::exp(log_std) + 1e-6)), 2.0) + 2.0 * log_std + torch::log(torch::tensor({ 2.0 * M_PI })));
 }

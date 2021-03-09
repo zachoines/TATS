@@ -17,15 +17,15 @@ ValueNetwork::ValueNetwork(int num_inputs, int hidden_size, double init_w, doubl
     linear3 = register_module("linear3", torch::nn::Linear(hidden_size, 1));
 
     torch::autograd::GradMode::set_enabled(false);
-    // torch::nn::init::xavier_uniform_(linear1->weight, 1.0);
-    // torch::nn::init::xavier_uniform_(linear2->weight, 1.0);
-    // torch::nn::init::xavier_uniform_(linear3->weight, 1.0);
+    torch::nn::init::xavier_uniform_(linear1->weight, 1.0);
+    torch::nn::init::xavier_uniform_(linear2->weight, 1.0);
+    torch::nn::init::xavier_uniform_(linear3->weight, 1.0);
     torch::nn::init::constant_(linear1->bias, 0.0);
     torch::nn::init::constant_(linear2->bias, 0.0);
     torch::nn::init::constant_(linear3->bias, 0.0);
-    torch::nn::init::kaiming_normal_(linear1->weight);
-    torch::nn::init::kaiming_normal_(linear2->weight);
-    torch::nn::init::kaiming_normal_(linear3->weight);
+    // torch::nn::init::kaiming_normal_(linear1->weight);
+    // torch::nn::init::kaiming_normal_(linear2->weight);
+    // torch::nn::init::kaiming_normal_(linear3->weight);
    
     torch::autograd::GradMode::set_enabled(true);
 
@@ -48,8 +48,8 @@ torch::Tensor ValueNetwork::forward(torch::Tensor state, int batchSize, bool eva
 {
     torch::Tensor X;
 
-    X = torch::leaky_relu(linear1->forward(state));
-    X = torch::leaky_relu(linear2->forward(X));
+    X = torch::relu(linear1->forward(state));
+    X = torch::relu(linear2->forward(X));
     X = linear3->forward(X);
 
     return X;

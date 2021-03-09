@@ -136,13 +136,14 @@ int main(int argc, char** argv)
 
         parameters->pid = pid;
 
-        // Init camera 3280 x 2464
-        std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=1920, height=1080, framerate=60/1, format=NV12 ! nvvidconv flip-method=2 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
-        // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
+        // width=4056, height=3040, framerate=30/1
+        // width=1920, height=1080, framerate=60/1
+        std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=4056, height=3040, framerate=30/1, format=NV12 ! nvvidconv flip-method=2 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
+        camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
         
-        camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
-        camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
-        camera->set(cv::CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
+        // camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
+        // camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
+        // camera->set(cv::CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
         
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
@@ -442,8 +443,6 @@ void panTiltThread(Utility::param* parameters) {
                     if (config->trainMode) {
                         if (initialRandomActions && numInitialRandomActions >= 0) {
 
-                            numInitialRandomActions--;
-
                             for (int a = 0; a < config->numActions; a++) {
                                 predictedActions[i][a] = std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
                             }
@@ -509,6 +508,11 @@ void panTiltThread(Utility::param* parameters) {
                         // If servo is disabled, null record
                         if (trainData[servo].empty) {
                             continue;
+                        } else {
+                            if (initialRandomActions && !updated) {
+                                updated = true;
+                                numInitialRandomActions--;
+                            }
                         }
 
                         // If early episode termination
@@ -628,12 +632,12 @@ void panTiltThread(Utility::param* parameters) {
                     if (config->trainMode) {
                         // Inform child process to start training
                         if (config->multiProcess) {
-                            if (!isTraining && replayBuffer->size() > config->minBufferSize) {
+                            if (!isTraining && replayBuffer->size() > (config->minBufferSize + config->numTransferLearningSteps)) {
                                 std::cout << "Sending train signal..." << std::endl;
                                 isTraining = true;
                                 kill(parameters->pid, SIGUSR1);
                             } 
-                        } else if (!isTraining && replayBuffer->size() > config->minBufferSize) {
+                        } else if (!isTraining && replayBuffer->size() > (config->minBufferSize + config->numTransferLearningSteps)) {
                             // Inform autotune thread start training 
                             pthread_mutex_lock(&trainLock);
                             pthread_cond_broadcast(&trainCond);
@@ -653,16 +657,20 @@ void panTiltThread(Utility::param* parameters) {
 
                 // Vary env sync rate to simulate different latency configurations
                 if (config->trainMode) {
-                    rate = static_cast<double>(config->updateRate) - 1.0;
-                    _distribution = std::normal_distribution<double>(0.5, 0.1); // Roughly between 0.0 and 1.0, centerpoint 0.5
-                    rate = std::clamp<double>(2.0 * rate * _distribution(_generator) + 1.0, 1.0, 2.0 * rate + 1.0);
+                    // rate = static_cast<double>(config->updateRate) - 1.0;
+                    // _distribution = std::normal_distribution<double>(0.5, 0.2); // Roughly between 0.0 and 1.0, centerpoint 0.5
+                    // rate = std::clamp<double>(2.0 * rate * _distribution(_generator) + 1.0, 1.0, 2.0 * rate + 1.0);
+                    rate = static_cast<double>(config->updateRate);
+                    double adjustment =  (( rate ) / 2.0) * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
+                    rate += adjustment;
 
                     pthread_mutex_lock(&sleepLock);
                     
                     if (config->variableFPS && config->varyFPSChance < static_cast<float>(rand()) / static_cast <float> (RAND_MAX)) {
                         
-                        _distribution = std::normal_distribution<double>(0.5, 0.1); 
-                        additionalDelay = std::clamp<double>(2.0 * config->FPSVariance * _distribution(_generator) + 1.0, 0.0, 2.0 * config->FPSVariance + 1.0);  
+                        // _distribution = std::normal_distribution<double>(0.5, 0.1); 
+                        // additionalDelay = std::clamp<double>(2.0 * config->FPSVariance * _distribution(_generator) + 1.0, 0.0, 2.0 * config->FPSVariance + 1.0);  
+                        additionalDelay = config->FPSVariance * std::uniform_real_distribution<double>{ 0, 1.0 }(eng);
                         variableFPS = true;
                         
                     } else {
@@ -697,8 +705,17 @@ void panTiltThread(Utility::param* parameters) {
                 doneCount++;
 
                 if (doneCount >= config->resetAfterNInnactiveFrames) {
+                    if (config->trainMode) {
+                        double newAngles[NUM_SERVOS] = { 0.0 };
+                        for (int servo = 0; servo < NUM_SERVOS; servo++) {
+                            newAngles[servo] = config->resetAngleVariance * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
+                        }
+                        resetResults = servos->reset(newAngles);
+                    } else {
+                        resetResults = servos->reset();            
+                    }
                     doneCount = 0;
-                    resetResults = servos->reset();            
+                    
                 } else {
                     resetResults = servos->reset(config->useCurrentAngleForReset);            
                 }
@@ -1049,10 +1066,6 @@ void detectThread(Utility::param* parameters)
                     pan.timestamp = elapsed;
                     tilt.timestamp = elapsed;
 
-                    pan.point = static_cast<double>(result.boundingBox.x);
-                    tilt.point = static_cast<double>(result.boundingBox.y);
-                    pan.size = static_cast<double>(result.boundingBox.width);
-                    tilt.size = static_cast<double>(result.boundingBox.height);
                     pan.obj = static_cast<double>(objX);
                     tilt.obj = static_cast<double>(objY);
                     pan.frame = static_cast<double>(frameCenterX);
@@ -1120,10 +1133,6 @@ void detectThread(Utility::param* parameters)
 
                         pan.timestamp = elapsed;
                         tilt.timestamp = elapsed;
-                        pan.point = 0.0;
-                        tilt.point = 0.0;
-                        pan.size = 0.0;
-                        tilt.size = 0.0;
                         pan.obj = static_cast<double>(frameCenterX * 2);
                         tilt.obj = static_cast<double>(frameCenterY * 2); // max error
                         pan.frame = static_cast<double>(frameCenterX);

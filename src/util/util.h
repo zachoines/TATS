@@ -147,120 +147,122 @@ namespace Utility {
 
 	*/
 
-	static double pidErrorToReward(double n, double o, double max, bool d, double threshold = 0.005, bool alt = true) {
-
-
-		double absMax = max;
-		double errorThreshold = threshold;
-		bool done = d;
-		double center = absMax;
-
-		// Relative weight to rewards/error
-		double w1 = 1.0;
-		double w2 = 1.0; 
-		double w3 = 1.0; 
-
+	static double pidErrorToReward(int newError, int oldError, int center, bool done, double threshold = 0.1, bool alt = true) {
 		// Rewards
-		double r1 = 0.0; // Threshhold bonus, alive bonus, done rewards/error
-		double r2 = 0.0; // baseline error
-		double r3 = 0.0; // Transition rewards/error
+		double r1 = 0.0; // baseline error
+		double r2 = 0.0; // transition error
 
 		// scale from 0.0 to 1.0
-		double errorOldScaled = std::fabs(center - std::fabs(o)) / center;
-		double errorNewScaled = std::fabs(center - std::fabs(n)) / center;
+		double errorOldScaled = static_cast<double>(std::abs(center - oldError)) / static_cast<double>(center);
+		double errorNewScaled = static_cast<double>(std::abs(center - newError)) / static_cast<double>(center);
+
+		if (errorNewScaled <= threshold) {
+			r1 = 0.0;
+		} else {
+			r1 = - errorNewScaled;
+		}
+		
+		if (errorNewScaled <= errorOldScaled) {
+			r2 = 0.0;
+		}
+		else {
+			r2 = errorNewScaled - errorOldScaled;
+		}
+		
+		return done ? -10.0 : (r1 + r2);	
 
 		// If marginal transitional rewards are considered
-		if (alt) {
+		// if (alt) {
 
-			if (done) {
-				r1 = -1.0;
-			} else if (errorNewScaled <= errorThreshold) {
-				r1 = 0.0;
-			}
+		// 	if (done) {
+		// 		r1 = -1.0;
+		// 	} else if (errorNewScaled <= errorThreshold) {
+		// 		r1 = 0.0;
+		// 	}
 			                                 
-			// r2 += Utility::mapOutput(1.0 - errorNewScaled, 0.0, 1.0, -0.50, 0.50);
-			// r2 += errorNewScaled;
+		// 	// r2 += Utility::mapOutput(1.0 - errorNewScaled, 0.0, 1.0, -0.50, 0.50);
+		// 	// r2 += errorNewScaled;
 
-			// Rewards R3
-			bool direction_old = false;
-			bool direction_new = false;
+		// 	// Rewards R3
+		// 	bool direction_old = false;
+		// 	bool direction_new = false;
 
-			double targetCenterNew = n;
-			double targetCenterOld = o;
+		// 	double targetCenterNew = n;
+		// 	double targetCenterOld = o;
 
-			if (targetCenterNew == targetCenterOld) {
-				r3 = 0.0;
-			} else {
+		// 	if (targetCenterNew == targetCenterOld) {
+		// 		r3 = 0.0;
+		// 	} else {
 
-				// The target in ref to the center of frame. Left is F, right is T.
-				if (targetCenterNew < center) { // target is left of frame center
-					direction_new = false;
-				}
-				else { // target is right of frame center
-					direction_new = true;
-				}
+		// 		// The target in ref to the center of frame. Left is F, right is T.
+		// 		if (targetCenterNew < center) { // target is left of frame center
+		// 			direction_new = false;
+		// 		}
+		// 		else { // target is right of frame center
+		// 			direction_new = true;
+		// 		}
 
-				if (targetCenterOld < center) { // target is left of frame center
-					direction_old = false;
-				}
-				else { // target is right of frame center
-					direction_old = true;
-				}
+		// 		if (targetCenterOld < center) { // target is left of frame center
+		// 			direction_old = false;
+		// 		}
+		// 		else { // target is right of frame center
+		// 			direction_old = true;
+		// 		}
 
-				//  Both to the right of frame center, situation #1;
-				if (direction_old && direction_new) {
+		// 		//  Both to the right of frame center, situation #1;
+		// 		if (direction_old && direction_new) {
 
-					double reward = std::fabs(errorNewScaled - errorOldScaled);
+		// 			double reward = std::fabs(errorNewScaled - errorOldScaled);
 
-					if (targetCenterNew > targetCenterOld) { // frame center has moved furthure to object's left
-						r3 = -reward;
-					}
-					else { // frame center has moved closer to object's left
-						r3 = reward;
-					}
-				}
+		// 			if (targetCenterNew > targetCenterOld) { // frame center has moved furthure to object's left
+		// 				r3 = -reward;
+		// 			}
+		// 			else { // frame center has moved closer to object's left
+		// 				r3 = reward;
+		// 			}
+		// 		}
 
-				// both to left of frame center, situation #2
-				else if (!direction_old && !direction_new) {
+		// 		// both to left of frame center, situation #2
+		// 		else if (!direction_old && !direction_new) {
 
-					double reward = std::fabs(errorOldScaled - errorNewScaled);
+		// 			double reward = std::fabs(errorOldScaled - errorNewScaled);
 
-					if (targetCenterNew > targetCenterOld) {  // frame center has moved closer to objects right
-						r3 = reward;
-					}
-					else { // frame center has moved further from objects right
-						r3 = -reward;
-					}
+		// 			if (targetCenterNew > targetCenterOld) {  // frame center has moved closer to objects right
+		// 				r3 = reward;
+		// 			}
+		// 			else { // frame center has moved further from objects right
+		// 				r3 = -reward;
+		// 			}
 
-				}
+		// 		}
 
-				// Frame center has overshot target. Old is oposite sides of center to new, situation #3
-				else  { 
+		// 		// Frame center has overshot target. Old is oposite sides of center to new, situation #3
+		// 		else  { 
 
-					double error_old_corrected = std::fabs(std::fabs(targetCenterOld) - center);
-					double error_new_corrected = std::fabs(std::fabs(targetCenterNew) - center);
-					double difference = std::fabs(error_new_corrected - error_old_corrected);
-					double reward = difference / center;
+		// 			double error_old_corrected = std::fabs(std::fabs(targetCenterOld) - center);
+		// 			double error_new_corrected = std::fabs(std::fabs(targetCenterNew) - center);
+		// 			double difference = std::fabs(error_new_corrected - error_old_corrected);
+		// 			double reward = difference / center;
 
-					if (error_old_corrected > error_new_corrected) {  // If move has resulted in a marginally lower error (closer to center)
-						r3 = reward;
-					}
-					else {
-						r3 = -reward;
-					}
-				}
-			}
+		// 			if (error_old_corrected > error_new_corrected) {  // If move has resulted in a marginally lower error (closer to center)
+		// 				r3 = reward;
+		// 			}
+		// 			else {
+		// 				r3 = -reward;
+		// 			}
+		// 		}
+		// 	}
 
-			return ((w1 * r1) + (w2 * r2) + (w3 * r3));
+		// 	return ((w1 * r1) + (w2 * r2) + (w3 * r3));
 	
-		} else {
+		// } else {
 			
-	        // Another varient with only negative rewards
-			// if (errorNewScaled < errorThreshold) {
-			// 	r1 = 0.0;
-			// } else {
-			r1 = - errorNewScaled;
-			// // }
+	        // // Another varient with only negative rewards
+			// // if (errorNewScaled < errorThreshold) {
+			// // 	r1 = 0.0;
+			// // } else {
+			// r1 = - errorNewScaled;
+			// // // }
 
 			// if (errorNewScaled <= errorOldScaled) {
 			//  	r2 = 0.0;
@@ -269,14 +271,14 @@ namespace Utility {
 			//  	r2 = errorNewScaled - errorOldScaled;
 			// }
 			
-			// Punish done, scale and clamp from -1 to 1
-			// return std::clamp<double>((w1 * r1) + (w2 * r2) + ( done ? -1.0 : 0.0), -1.0, 0.0);	
-			return std::clamp<double>((w1 * r1) + ( done ? -1.0 : 0.0), -2.0, 0.0);	
-		}	
+			// // Punish done, scale and clamp from -1 to 1
+			// // return std::clamp<double>((w1 * r1) + (w2 * r2) + ( done ? -1.0 : 0.0), -1.0, 0.0);	
+			// return std::clamp<double>((w1 * r1) + ( done ? -1.0 : 0.0), -1.0, 0.0);	
+		// }	
 	}
 
-	static double predictedObjectLocationToReward(double pred, double target, double max, bool done) {
-		return (done) ? 0.0 : - std::clamp<double>((std::fabs(target - pred) / max), 0.0, 1.0);
+	static double predictedObjectLocationToReward(int pred, int target, int max, bool done) {
+		return (done) ? -1.0 : - static_cast<double>(std::abs(target - pred)) / static_cast<double>(max);
 	}
 
 	// Scale from -1.0 to 1.0 to low to high

@@ -29,15 +29,15 @@ PolicyNetwork::PolicyNetwork(int num_inputs, int num_actions, int hidden_size, d
 
     // Initialize params
     torch::autograd::GradMode::set_enabled(false);
-    // torch::nn::init::xavier_uniform_(linear1->weight, 1.0);
-    // torch::nn::init::xavier_uniform_(linear2->weight, 1.0);
-    // torch::nn::init::xavier_uniform_(mean_Linear->weight, 1.0);
-    // torch::nn::init::xavier_uniform_(log_std_linear->weight, 1.0);
+    torch::nn::init::xavier_uniform_(linear1->weight, 1.0);
+    torch::nn::init::xavier_uniform_(linear2->weight, 1.0);
+    torch::nn::init::xavier_uniform_(mean_Linear->weight, 1.0);
+    torch::nn::init::xavier_uniform_(log_std_linear->weight, 1.0);
 
-    torch::nn::init::kaiming_normal_(linear1->weight);
-    torch::nn::init::kaiming_normal_(linear2->weight);
-    torch::nn::init::kaiming_normal_(mean_Linear->weight);
-    torch::nn::init::kaiming_normal_(log_std_linear->weight);
+    // torch::nn::init::kaiming_normal_(linear1->weight);
+    // torch::nn::init::kaiming_normal_(linear2->weight);
+    // torch::nn::init::kaiming_normal_(mean_Linear->weight);
+    // torch::nn::init::kaiming_normal_(log_std_linear->weight);
     torch::nn::init::constant_(linear1->bias, 0.0);
     torch::nn::init::constant_(linear2->bias, 0.0);
     torch::nn::init::constant_(mean_Linear->bias, 0.0);
@@ -64,8 +64,8 @@ PolicyNetwork::~PolicyNetwork() {
 torch::Tensor PolicyNetwork::forward(torch::Tensor state, int batchSize, bool eval) {
     torch::Tensor X, mean, log_std, test;
 
-    X = torch::leaky_relu(linear1->forward(state));
-    X = torch::leaky_relu(linear2->forward(X)); 
+    X = torch::relu(linear1->forward(state));
+    X = torch::relu(linear2->forward(X)); 
     mean = mean_Linear->forward(X);
     log_std = log_std_min + 0.5 * (log_std_max - log_std_min) * (torch::tanh(log_std_linear->forward(X)) + 1.0);
     // log_std = torch::clamp(log_std_linear->forward(X), log_std_min, log_std_max);
@@ -86,9 +86,9 @@ torch::Tensor PolicyNetwork::sample(torch::Tensor state, int batchSize, double e
     Normal normal = Normal(mean, std); 
     torch::Tensor z = normal.rsample(); // Reparameterization
     torch::Tensor action = torch::tanh(z);
-    // torch::Tensor log_probs = normal.log_prob(z, log_std, mean);
-    torch::Tensor log_probs = normal.log_prob(z);
+    torch::Tensor log_probs = normal.log_prob(z, log_std, mean);
+    // torch::Tensor log_probs = normal.log_prob(z);
 
-    log_probs = log_probs - torch::log(1.0 - torch::pow(action, 2.0) + epsilon);
+    // log_probs = log_probs - torch::log(1.0 - torch::pow(action, 2.0) + epsilon);
     return torch::cat({ { action }, { log_probs }, { torch::tanh(mean) }, { std }, { z }, { mean }, { log_std } }, 0);
 }

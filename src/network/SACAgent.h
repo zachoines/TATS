@@ -15,7 +15,7 @@ private:
     double _action_max, _action_min, _action_scale, _action_bias;
     int _current_update = 0;
     int _current_save_delay = 0;
-    int _max_save_delay = 500;
+    int _max_save_delay = 750;
     int _max_delay = 2;
     unsigned long _total_update = 0;
 

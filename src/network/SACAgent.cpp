@@ -320,6 +320,7 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         torch::Tensor log_std = reshapedResult[5];
         torch::Tensor unsquashed_mean = reshapedResult[6];
         log_pi_t = log_pi_t.sum(1, true);
+        log_pi_t -= (torch::log(1.0 - torch::pow(new_actions_t, 2.0) + 1e-6)).sum(1, true);
 
         // Update alpha temperature
         if (_self_adjusting_alpha) {
@@ -467,7 +468,6 @@ void SACAgent::_save_to_array(torch::nn::Module& from, Utility::sharedString* s)
 }
 
 void SACAgent::_load_from_array(torch::nn::Module& to, Utility::sharedString* s) {
-
     // Load from stream
     std::istringstream stream(std::string(s->begin(), s->end()));
     torch::serialize::InputArchive archive;
