@@ -136,9 +136,7 @@ int main(int argc, char** argv)
 
         parameters->pid = pid;
 
-        // width=4056, height=3040, framerate=30/1
-        // width=1920, height=1080, framerate=60/1
-        std::string pipeline = "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM), width=4056, height=3040, framerate=30/1, format=NV12 ! nvvidconv flip-method=2 ! video/x-raw, width=1280, height=720, format=BGRx ! videoconvert ! video/x-raw, format=BGR ! appsink";
+        std::string pipeline = Utility::gstreamer_pipeline(0, 4056, 3040, 1280, 720, 30, 2);
         camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
         
         // camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);

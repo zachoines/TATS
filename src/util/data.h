@@ -307,7 +307,7 @@ namespace Utility {
             recheckFrequency(15),                // Num frames in-between revalidations of
             lossCountMax(1),                     // Max number of rechecks before episode is considered over. 
                                                  // In the case of usePOT, MAX uses of predictive object tracking.
-            updateRate(4),                       // Servo updates, update commands per second
+            updateRate(5),                       // Servo updates, update commands per second
             trainRate(1.0),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             
@@ -324,15 +324,15 @@ namespace Utility {
                 -45.0, -45.0
             }),         
             servoConfigurations(                 // Hardware settings for individual servos         
-                // {                             
-                //     { 0, -56.5, 56.5, 0.750, 2.250, 0.0 }, 
-                //     { 1, -56.5, 56.5, 0.750, 2.250, 0.0 } // HS7985MG
-                // }
-
                 {                             
-                    { 0, -65.0, 65.0, 0.900, 2.1, 0.0 }, 
-                    { 1, -65.0, 65.0, 0.900, 2.1, 0.0 } // SB2272MG
+                    { 0, -56.5, 56.5, 0.750, 2.250, 0.0 }, 
+                    { 1, -56.5, 56.5, 0.750, 2.250, 0.0 } // HS7985MG
                 }
+
+                // {                             
+                //     { 0, -65.0, 65.0, 0.900, 2.1, 0.0 }, 
+                //     { 1, -65.0, 65.0, 0.900, 2.1, 0.0 } // SB2272MG
+                // }
             ),    
 
             trackerType(1),						 // { CSRT, MOSSE, GOTURN }
