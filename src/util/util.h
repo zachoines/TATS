@@ -105,180 +105,191 @@ namespace Utility {
 	/* 
 		####################################
 		## When alt 'true' #################
-		## Reward bounds are -2.0 to +2.0 ##
+		## Reward bounds are -2.0 to +1.0 ##
 		####################################
 		
-		Basline error/rewards between -0.5 and 0.5 baased on total current error
-
-		+0.0 bonus within { threshold }% error
-		0.0 to +1.0 reward for marginally better transitions
-
-		-2.0 punishment for done state
-		0.0 to -1.0 punishment for marginally worse transitions
+		Done state: 
+			-2.0
+		Basline rewards: 
+			-0.5 <--> 0.5
+		Transition bonus:
+			marginally better: 0.0 <--> 0.5
+			marginally worse: -0.5 <--> 0.0
 	
 		######################################
 		## When alt 'false' ##################
-		## Reward bounds from -3.0 to 0.0 ####
+		## Reward bounds from -2.0 to 0.0 ####
 		######################################
 		
-		-1.0 for done state
-		0.0 to -1.0 - { threshold } depending on current error
-		0.0 to -1.0 for marginally worse transitions
-		0.0 reward for any improvement
+		Done state: 
+			-2.0
+		Basline rewards:
+			if withing threshold: 0.0 
+			otherwise: -0.5 <--> 0.0
+		Transition bonus:
+			marginally worse: -.50 <--> 0.0
+			marginally better: 0.0
 
 		#####################
 		## key differences ##
 		#####################
 		
-		* The first incorperates positive rewards
-		* The first will show a nicer episode average graph 
-			* Episode average rewards will increase exponentially. 
-			* Step rewards will be noisy and less clear improvement
-		
-		* The first only has negative rewards
-		* The second will show a nicer step rewards graph 
-			* Step error will decrease logorithmically. 
-			* Episode average rewards will decrease exponentially (accumulation of error)
-		
-		* Both will increase episode steps exponentially
+		* The first incorperates positive rewards		
+		* The second only has negative rewards
 		* They both have similar loss curves 
-		* Both teach fundamentally similar skills 
-			* To favor trasitions that lead to lower error
+		* Both teach fundamentally similar skills -- to favor trasitions that lead to lower error
+		* Different average vs. step reward graphs
 
 	*/
-
-	static double pidErrorToReward(int newError, int oldError, int center, bool done, double threshold = 0.1, bool alt = true) {
+	static double pidErrorToReward(int newError, int oldError, int center, bool done, double threshold = 0.05, bool alt = true) {
+		
 		// Rewards
 		double r1 = 0.0; // baseline error
 		double r2 = 0.0; // transition error
+		double w1 = 0.5; // baseline error weight
+		double w2 = 0.5; // transition error weight
+		
+		// Indicate target direction
+		const bool RIGHT = true;
+		const bool LEFT = false;
 
 		// scale from 0.0 to 1.0
 		double errorOldScaled = static_cast<double>(std::abs(center - oldError)) / static_cast<double>(center);
 		double errorNewScaled = static_cast<double>(std::abs(center - newError)) / static_cast<double>(center);
 
-		if (errorNewScaled <= threshold) {
-			r1 = 0.0;
-		} else {
-			r1 = - errorNewScaled;
-		}
-		
-		if (errorNewScaled <= errorOldScaled) {
-			r2 = 0.0;
-		}
-		else {
-			r2 = errorNewScaled - errorOldScaled;
-		}
-		
-		return done ? -10.0 : (r1 + r2);	
+		if (alt) {
 
-		// If marginal transitional rewards are considered
-		// if (alt) {
+			// Baseline rewards
+			if (done) {
+				return -2.0;
+			} else {
+				r1 = Utility::mapOutput(1.0 - errorNewScaled, 0.0, 1.0, -1.0, 1.0);
+			}                            
+			
 
-		// 	if (done) {
-		// 		r1 = -1.0;
-		// 	} else if (errorNewScaled <= errorThreshold) {
-		// 		r1 = 0.0;
-		// 	}
-			                                 
-		// 	// r2 += Utility::mapOutput(1.0 - errorNewScaled, 0.0, 1.0, -0.50, 0.50);
-		// 	// r2 += errorNewScaled;
+			// Transition rewards
+			bool direction_old = false;
+			bool direction_new = false;
 
-		// 	// Rewards R3
-		// 	bool direction_old = false;
-		// 	bool direction_new = false;
+			double targetCenterNew = newError;
+			double targetCenterOld = oldError;
 
-		// 	double targetCenterNew = n;
-		// 	double targetCenterOld = o;
+			if (targetCenterNew == targetCenterOld) {
+				r2 = 0.0;
+			} else {
 
-		// 	if (targetCenterNew == targetCenterOld) {
-		// 		r3 = 0.0;
-		// 	} else {
+				// Determine target deirection in ref to the center of frame. Left is F, right is T.
+				targetCenterNew < center ? direction_new = LEFT : direction_new = RIGHT;
+				targetCenterOld < center ? direction_old = LEFT : direction_old = RIGHT;
 
-		// 		// The target in ref to the center of frame. Left is F, right is T.
-		// 		if (targetCenterNew < center) { // target is left of frame center
-		// 			direction_new = false;
-		// 		}
-		// 		else { // target is right of frame center
-		// 			direction_new = true;
-		// 		}
+				//  Both to the right of frame center, situation #1;
+				if (direction_old == RIGHT && direction_new == RIGHT) {
 
-		// 		if (targetCenterOld < center) { // target is left of frame center
-		// 			direction_old = false;
-		// 		}
-		// 		else { // target is right of frame center
-		// 			direction_old = true;
-		// 		}
+					double reward = std::fabs(errorNewScaled - errorOldScaled);
 
-		// 		//  Both to the right of frame center, situation #1;
-		// 		if (direction_old && direction_new) {
+					if (targetCenterNew > targetCenterOld) { // frame center has moved furthure to object's left
+						r2 = -reward;
+					}
+					else { // frame center has moved closer to object's left
+						r2 = reward;
+					}
+				}
 
-		// 			double reward = std::fabs(errorNewScaled - errorOldScaled);
+				// both to left of frame center, situation #2
+				else if (direction_old == LEFT && direction_new == LEFT) {
 
-		// 			if (targetCenterNew > targetCenterOld) { // frame center has moved furthure to object's left
-		// 				r3 = -reward;
-		// 			}
-		// 			else { // frame center has moved closer to object's left
-		// 				r3 = reward;
-		// 			}
-		// 		}
+					double reward = std::fabs(errorOldScaled - errorNewScaled);
 
-		// 		// both to left of frame center, situation #2
-		// 		else if (!direction_old && !direction_new) {
+					if (targetCenterNew > targetCenterOld) {  // frame center has moved closer to objects right
+						r2 = reward;
+					}
+					else { // frame center has moved further from objects right
+						r2 = -reward;
+					}
 
-		// 			double reward = std::fabs(errorOldScaled - errorNewScaled);
+				}
 
-		// 			if (targetCenterNew > targetCenterOld) {  // frame center has moved closer to objects right
-		// 				r3 = reward;
-		// 			}
-		// 			else { // frame center has moved further from objects right
-		// 				r3 = -reward;
-		// 			}
+				// Frame center has overshot target. Old is oposite sides of center to new, situation #3
+				else  { 
 
-		// 		}
+					double error_old_corrected = std::fabs(std::fabs(targetCenterOld) - center);
+					double error_new_corrected = std::fabs(std::fabs(targetCenterNew) - center);
+					double difference = std::fabs(error_new_corrected - error_old_corrected);
+					double reward = difference / center;
 
-		// 		// Frame center has overshot target. Old is oposite sides of center to new, situation #3
-		// 		else  { 
+					if (error_old_corrected > error_new_corrected) {  // If move has resulted in a marginally lower error (closer to center)
+						r2 = reward;
+					}
+					else {
+						r2 = -reward;
+					}
+				}
+			}
 
-		// 			double error_old_corrected = std::fabs(std::fabs(targetCenterOld) - center);
-		// 			double error_new_corrected = std::fabs(std::fabs(targetCenterNew) - center);
-		// 			double difference = std::fabs(error_new_corrected - error_old_corrected);
-		// 			double reward = difference / center;
-
-		// 			if (error_old_corrected > error_new_corrected) {  // If move has resulted in a marginally lower error (closer to center)
-		// 				r3 = reward;
-		// 			}
-		// 			else {
-		// 				r3 = -reward;
-		// 			}
-		// 		}
-		// 	}
-
-		// 	return ((w1 * r1) + (w2 * r2) + (w3 * r3));
+			return std::clamp<double>((w1 * r1) + (w2 * r2), -1.0, 1.0);
 	
-		// } else {
+		} else {
+			if (errorNewScaled <= threshold) {
+				r1 = 0.0;
+			} else {
+				r1 = - errorNewScaled;
+			}
 			
-	        // // Another varient with only negative rewards
-			// // if (errorNewScaled < errorThreshold) {
-			// // 	r1 = 0.0;
-			// // } else {
-			// r1 = - errorNewScaled;
-			// // // }
-
-			// if (errorNewScaled <= errorOldScaled) {
-			//  	r2 = 0.0;
-			// }
-			// else {
-			//  	r2 = errorNewScaled - errorOldScaled;
-			// }
+			if (errorNewScaled <= errorOldScaled) {
+				r2 = 0.0;
+			}
+			else {
+				r2 = errorNewScaled - errorOldScaled;
+			}
 			
-			// // Punish done, scale and clamp from -1 to 1
-			// // return std::clamp<double>((w1 * r1) + (w2 * r2) + ( done ? -1.0 : 0.0), -1.0, 0.0);	
-			// return std::clamp<double>((w1 * r1) + ( done ? -1.0 : 0.0), -1.0, 0.0);	
-		// }	
+			return done ? -2.0 : ((r1 * w1) + (r2 * w2));	
+	       
+		}	
 	}
 
-	static double predictedObjectLocationToReward(int pred, int target, int max, bool done) {
-		return (done) ? -1.0 : - static_cast<double>(std::abs(target - pred)) / static_cast<double>(max);
+	/* 
+		####################################
+		## When alt 'true' #################
+		## Reward bounds are -1.0 to +0.5 ##
+		####################################
+		
+		Done state: 
+			-1.0
+		Rewards: 
+			-0.5 <--> 0.5
+	
+		######################################
+		## When alt 'false' ##################
+		## Reward bounds from -1.0 to 0.0 ####
+		######################################
+		
+		Done state: 
+			-1.0
+		Rewards:			
+			otherwise: -1.0 <--> 0.0
+
+
+	*/
+	static double predictedObjectLocationToReward(int pred, int target, int max, bool done, double threshold = 0.05, bool alt = true) {
+
+		if (done) {
+			return -1.0;
+		}
+
+		if (alt) {
+			return Utility::mapOutput(1.0 - (std::abs(target - pred) / static_cast<double>(max)), 0.0, 1.0, -.5, .5);
+		} else {
+			double error = static_cast<double>(std::abs(target - pred)) / static_cast<double>(max);
+
+			if (error <= threshold) {
+				return 0.0;
+			} else {
+				return -error;
+			}
+		}
+		
+		
+		
 	}
 
 	// Scale from -1.0 to 1.0 to low to high

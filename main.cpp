@@ -74,8 +74,7 @@ pid_t pid = -1;
 SACAgent* pidAutoTuner = nullptr;
 TATS::Env* servos = nullptr;
 cv::VideoCapture* camera = nullptr;
-double additionalDelay = 0.0;
-bool variableFPS = false;
+int additionalDelay = 0;
 
 // Log files
 std::string logs[2] = {
@@ -136,12 +135,12 @@ int main(int argc, char** argv)
 
         parameters->pid = pid;
 
-        std::string pipeline = Utility::gstreamer_pipeline(0, 4056, 3040, 1280, 720, 30, 2);
-        camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
+        // std::string pipeline = Utility::gstreamer_pipeline(0, 1920, 1080, 1920, 1080, 60, 2);
+        // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
         
-        // camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
-        // camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
-        // camera->set(cv::CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
+        camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
+        camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
+        camera->set(cv::CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
         
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
@@ -338,8 +337,6 @@ void syncThread(Utility::param* parameters) {
 
         // Update weights on signal received from autotune thread
         if (signum == SIGUSR1 && info.si_pid == pid) {
-            // std::cout << "Received sync signal..." << std::endl;
-
             try {
                 pidAutoTuner->load_policy(s);
             } catch (...) {
@@ -532,24 +529,6 @@ void panTiltThread(Utility::param* parameters) {
                         double emaWeight = (2.0 / (timePeriods + 1.0));
 
                         // Data logging
-                        // Average reward in a step
-                        totalEpisodeSteps[servo] += 1.0;						
-                        totalEpisodeRewards[servo] += trainData[servo].errors[0];
-                        totalEpisodeObjPredError[servo] += trainData[servo].errors[1];
-
-                        stepAverageRewards[servo] = (trainData[servo].errors[0] - stepAverageRewards[servo]) * emaWeight + stepAverageRewards[servo];
-                        stepAverageObjPredError[servo] = (trainData[servo].errors[1] - stepAverageObjPredError[servo]) * emaWeight + stepAverageObjPredError[servo];
-
-                        std::string stepData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
-                                            (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
-                                            + std::to_string(totalSteps) + ','
-                                            + std::to_string(trainData[servo].errors[0]) + ',' 
-                                            + std::to_string(stepAverageRewards[servo])  + ','
-                                            + std::to_string(trainData[servo].errors[1])  + ','
-                                            + std::to_string(stepAverageObjPredError[servo]);
-
-                        appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[1], stepData);
-                        
                         if (trainData[servo].done || reset) {
                             
                             numEpisodes[servo] += 1;
@@ -573,7 +552,26 @@ void panTiltThread(Utility::param* parameters) {
                             totalEpisodeSteps[servo] = 0.0;
                             totalEpisodeRewards[servo] = 0.0;
                             totalEpisodeObjPredError[servo] = 0.0;
-                        }     
+                        } else {
+                            // Average reward in a step
+                            totalEpisodeSteps[servo] += 1.0;						
+                            totalEpisodeRewards[servo] += trainData[servo].errors[0];
+                            totalEpisodeObjPredError[servo] += trainData[servo].errors[1];
+
+                            stepAverageRewards[servo] = (trainData[servo].errors[0] - stepAverageRewards[servo]) * emaWeight + stepAverageRewards[servo];
+                            stepAverageObjPredError[servo] = (trainData[servo].errors[1] - stepAverageObjPredError[servo]) * emaWeight + stepAverageObjPredError[servo];
+
+                            std::string stepData = std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>
+                                                (std::chrono::system_clock::now().time_since_epoch()).count()) + ','
+                                                + std::to_string(totalSteps) + ','
+                                                + std::to_string(trainData[servo].errors[0]) + ',' 
+                                                + std::to_string(stepAverageRewards[servo])  + ','
+                                                + std::to_string(trainData[servo].errors[1])  + ','
+                                                + std::to_string(stepAverageObjPredError[servo]);
+
+                            appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[1], stepData);
+                        
+                        }   
                     }
 
                     // Debug output
@@ -591,6 +589,10 @@ void panTiltThread(Utility::param* parameters) {
                         for (int j = 0; j < NUM_INPUT; j++) {
                             std::cout << std::to_string(state[j]) << ", ";
                         }
+                        std::cout << std::endl;
+
+                        std::cout << "Here is the fps delay: ";
+                        std::cout << std::to_string(additionalDelay);
                         std::cout << std::endl;
 
                         std::cout << "Here is reward: ";
@@ -646,37 +648,24 @@ void panTiltThread(Utility::param* parameters) {
 
                 if (reset) { goto reset; }   
             }
-            //  || config->resetAngleChance > static_cast<float>(rand()) / static_cast <float> (RAND_MAX)
             else if (!recentlyReset) {
                 doneCount++;
                 recentlyReset = true;
 
                 reset:
 
-                // Vary env sync rate to simulate different latency configurations
+                // Vary env sync rate and FPS to simulate different latency configurations
                 if (config->trainMode) {
-                    // rate = static_cast<double>(config->updateRate) - 1.0;
-                    // _distribution = std::normal_distribution<double>(0.5, 0.2); // Roughly between 0.0 and 1.0, centerpoint 0.5
-                    // rate = std::clamp<double>(2.0 * rate * _distribution(_generator) + 1.0, 1.0, 2.0 * rate + 1.0);
                     rate = static_cast<double>(config->updateRate);
                     double adjustment =  (( rate ) / 2.0) * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
                     rate += adjustment;
 
+                    // Race condition on additionalDelay with detectThread, but changes relatively seldomly. 
                     pthread_mutex_lock(&sleepLock);
-                    
                     if (config->variableFPS && config->varyFPSChance < static_cast<float>(rand()) / static_cast <float> (RAND_MAX)) {
-                        
-                        // _distribution = std::normal_distribution<double>(0.5, 0.1); 
-                        // additionalDelay = std::clamp<double>(2.0 * config->FPSVariance * _distribution(_generator) + 1.0, 0.0, 2.0 * config->FPSVariance + 1.0);  
-                        additionalDelay = config->FPSVariance * std::uniform_real_distribution<double>{ 0, 1.0 }(eng);
-                        variableFPS = true;
-                        
-                    } else {
-                        variableFPS = false;
-                        additionalDelay = 0.0;
-                    }
-
-                    pthread_mutex_unlock(&sleepLock);   
+                        additionalDelay = static_cast<int>(std::round(config->FPSVariance * std::uniform_real_distribution<double>{ 0, 1.0 }(eng)));
+                    } 
+                    pthread_mutex_unlock(&sleepLock);
                 }
                 
                 // Vary angle of reset after set amount of time to enable AI to work at any reset angle
@@ -684,10 +673,7 @@ void panTiltThread(Utility::param* parameters) {
             
                     double newAngles[NUM_SERVOS] = { 0.0 };
                     for (int servo = 0; servo < NUM_SERVOS; servo++) {
-                        // _distribution = std::normal_distribution<double>(0.0, 0.2); // Roughly between -0.5 and 0.5, centerpoint 0.0                            
-                        // newAngles[servo] = config->resetAngles[servo] + std::clamp<double>( 2.0 * config->resetAngleVariance * _distribution(_generator), -config->resetAngleVariance, config->resetAngleVariance);
                         newAngles[servo] = config->resetAngleVariance * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
-                        
                     }
                     resetResults = servos->reset(newAngles);
  
@@ -828,7 +814,7 @@ void detectThread(Utility::param* parameters)
 
     // load the network
     if (cascadeDetector) {
-        detector = new Detect::CascadeDetector ("./models/haar/haarcascade_frontalface_alt2.xml");
+        detector = new Detect::CascadeDetector ("./models/haar/haarcascade_frontalface_default.xml");
     } else {
         std::vector<std::string> class_names = config->classes;
         std::string path = get_current_dir_name();
@@ -843,10 +829,12 @@ void detectThread(Utility::param* parameters)
         auto start = std::chrono::high_resolution_clock::now(); // For delay
         
         // Vary FPS during training. 
-        // Don't bother wrapping globals variableFPS/additionalDelay in mutexes, changes relatively seldomly
-        if (config->trainMode && variableFPS) {
+        if (config->trainMode && config->variableFPS) {
             pthread_mutex_lock(&sleepLock);
-            Utility::msleep(static_cast<int>(additionalDelay));
+            if (additionalDelay > 1) {
+                cv::waitKey(additionalDelay);
+                // Utility::msleep(additionalDelay);
+            }
             pthread_mutex_unlock(&sleepLock);
         }
 

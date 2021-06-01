@@ -78,4 +78,3 @@ Target acquisition and tracking system. The aim of this repo is to use various d
 		* From source - export LD_LIBRARY_PATH={base path here}/pytorch/build/lib:$LD_LIBRARY_PATH 
 		* Python libs - export LD_LIBRARY_PATH={base path here}/python3.6/site-packages/torch/:$LD_LIBRARY_PATH 
     * ./TATS
-

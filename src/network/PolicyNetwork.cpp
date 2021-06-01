@@ -86,8 +86,8 @@ torch::Tensor PolicyNetwork::sample(torch::Tensor state, int batchSize, double e
     Normal normal = Normal(mean, std); 
     torch::Tensor z = normal.rsample(); // Reparameterization
     torch::Tensor action = torch::tanh(z);
-    torch::Tensor log_probs = normal.log_prob(z, log_std, mean);
-    // torch::Tensor log_probs = normal.log_prob(z);
+    // torch::Tensor log_probs = normal.log_prob(z, log_std, mean);
+    torch::Tensor log_probs = normal.log_prob(z);
 
     // log_probs = log_probs - torch::log(1.0 - torch::pow(action, 2.0) + epsilon);
     return torch::cat({ { action }, { log_probs }, { torch::tanh(mean) }, { std }, { z }, { mean }, { log_std } }, 0);
