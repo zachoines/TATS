@@ -9,7 +9,7 @@
 
 
 #include "../util/util.h"
-#include "../util/data.h"
+#include "../util/config.h"
 
 
 ReplayBuffer::ReplayBuffer(int maxBufferSize, Utility::SharedBuffer* buffer, bool multiprocess)

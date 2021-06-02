@@ -48,11 +48,12 @@
 #include "./src/detection/CascadeDetector.h"
 #include "./src/detection/RCNNDetector.h"
 #include "./src/detection/YoloDetector.h"
+#include "./src/detection/ArucoDetector.h"
 #include "./src/wire/Wire.h"
 #include "./src/servo/PCA9685.h"
 #include "./src/servo/ServoKit.h"
 #include "./src/util/util.h"
-#include "./src/util/data.h"
+#include "./src/util/config.h"
 #include "./src/network/SACAgent.h"
 #include "./src/network/ReplayBuffer.h"
 #include "./src/env/Env.h"
@@ -770,7 +771,6 @@ void detectThread(Utility::param* parameters)
     bool useTracking = config->useTracking;
     bool draw = config->draw;
     bool showVideo = config->showVideo;
-    bool cascadeDetector = config->cascadeDetector;
 
     // program state variables
     bool programStart = true;
@@ -810,20 +810,27 @@ void detectThread(Utility::param* parameters)
         throw std::runtime_error("cannot initialize camera");
     }
 
-    Detect::ObjectDetector* detector;
-
     // load the network
-    if (cascadeDetector) {
-        detector = new Detect::CascadeDetector ("./models/haar/haarcascade_frontalface_default.xml");
-    } else {
-        std::vector<std::string> class_names = config->classes;
-        std::string path = get_current_dir_name();
-        std::string weights = path + config->yoloPath;
-        detector = new Detect::YoloDetector(weights, class_names);
+    Detect::ObjectDetector* detector;
+    std::string path = get_current_dir_name();
+    std::string weights = path + config->detectorPath;
+    std::vector<std::string> class_names = config->classes;
+
+    switch(config->detector) {
+        case Utility::DetectorType::CASCADE:
+            detector = new Detect::CascadeDetector(weights);
+            break; 
+        case Utility::DetectorType::ARUCO:
+            detector = new Detect::ArucoDetector();
+            break; 
+        case Utility::DetectorType::YOLO:
+            detector = new Detect::YoloDetector(weights, class_names);
+            break; 
+        default : 
+            detector = new Detect::CascadeDetector(weights);
     }
 
     std::vector<struct Detect::DetectionData> results;
-
     while (true) {
 
         auto start = std::chrono::high_resolution_clock::now(); // For delay

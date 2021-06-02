@@ -5,7 +5,7 @@
 #include <mutex>
 #include <bits/stdc++.h>
 
-#include "../util/data.h"
+#include "../util/config.h"
 #include "../util/util.h"
 #include "../servo/PCA9685.h"
 #include "../servo/ServoKit.h"

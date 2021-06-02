@@ -150,6 +150,33 @@ main.cpp.s:
 	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/main.cpp.s
 .PHONY : main.cpp.s
 
+src/detection/ArucoDetector.o: src/detection/ArucoDetector.cpp.o
+
+.PHONY : src/detection/ArucoDetector.o
+
+# target to build an object file
+src/detection/ArucoDetector.cpp.o:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/ArucoDetector.cpp.o
+.PHONY : src/detection/ArucoDetector.cpp.o
+
+src/detection/ArucoDetector.i: src/detection/ArucoDetector.cpp.i
+
+.PHONY : src/detection/ArucoDetector.i
+
+# target to preprocess a source file
+src/detection/ArucoDetector.cpp.i:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/ArucoDetector.cpp.i
+.PHONY : src/detection/ArucoDetector.cpp.i
+
+src/detection/ArucoDetector.s: src/detection/ArucoDetector.cpp.s
+
+.PHONY : src/detection/ArucoDetector.s
+
+# target to generate assembly for a file
+src/detection/ArucoDetector.cpp.s:
+	$(MAKE) -f CMakeFiles/TATS.dir/build.make CMakeFiles/TATS.dir/src/detection/ArucoDetector.cpp.s
+.PHONY : src/detection/ArucoDetector.cpp.s
+
 src/detection/CascadeDetector.o: src/detection/CascadeDetector.cpp.o
 
 .PHONY : src/detection/CascadeDetector.o
@@ -567,6 +594,9 @@ help:
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"
+	@echo "... src/detection/ArucoDetector.o"
+	@echo "... src/detection/ArucoDetector.i"
+	@echo "... src/detection/ArucoDetector.s"
 	@echo "... src/detection/CascadeDetector.o"
 	@echo "... src/detection/CascadeDetector.i"
 	@echo "... src/detection/CascadeDetector.s"

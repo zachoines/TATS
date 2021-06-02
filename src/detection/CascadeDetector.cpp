@@ -37,8 +37,8 @@ namespace Detect {
 			// cv::equalizeHist(smallImg, smallImg);
 
 			// Detect faces of different sizes using cascade classifier  
-			this->cascade.detectMultiScale(gray, faces, 1.3,
-				2, 0 | cv::CASCADE_SCALE_IMAGE, cv::Size(75, 75));
+			this->cascade.detectMultiScale(gray, faces, 1.05,
+				1, 0 | cv::CASCADE_SCALE_IMAGE, cv::Size(30, 30));
 		}
 
 		if (!faces.empty()) {

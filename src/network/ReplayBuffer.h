@@ -15,7 +15,7 @@
 #include <boost/interprocess/sync/named_mutex.hpp>
 
 #include "../util/util.h"
-#include "../util/data.h"
+#include "../util/config.h"
 
 #include <condition_variable>
 #include <mutex>

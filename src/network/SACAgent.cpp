@@ -9,7 +9,7 @@
 #include "PolicyNetwork.h"
 #include "QNetwork.h"
 #include "Normal.h"
-#include "../util/data.h"
+#include "../util/config.h"
 #include "../util/util.h"
 
 SACAgent::SACAgent(int num_inputs, int num_hidden, int num_actions, double action_max, double action_min, bool alphaAdjuster, double gamma, double tau, double alpha, double q_lr, double p_lr, double a_lr, torch::DeviceType device)

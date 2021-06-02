@@ -4,7 +4,7 @@
 #include "QNetwork.h"
 #include "ValueNetwork.h"
 #include "../util/util.h"
-#include "../util/data.h"
+#include "../util/config.h"
 
 class SACAgent
 {
