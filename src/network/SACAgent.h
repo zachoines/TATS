@@ -20,6 +20,7 @@ private:
     unsigned long _total_update = 0;
 
     bool _self_adjusting_alpha;
+    bool _eval_mode;
 
     // log stats to file
     std::string _lossFileName, _lossPath;

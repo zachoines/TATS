@@ -400,9 +400,11 @@ void panTiltThread(Utility::param* parameters) {
     double emaEpisodeObjPredErrorSum[NUM_SERVOS] = { 0.0 };
 
     // training state variables
+    bool isTraining = false;
     bool initialRandomActions = config->initialRandomActions;
     int numInitialRandomActions = config->numInitialRandomActions;
-    bool isTraining = false;
+    bool stepsWithPretrainedModel = config->stepsWithPretrainedModel;
+    int numTransferLearningSteps = config->numTransferLearningSteps;
     
     // Training data
     double predictedActions[NUM_SERVOS][NUM_ACTIONS] = { 0.0 };
@@ -437,10 +439,23 @@ void panTiltThread(Utility::param* parameters) {
 
                     // Query network and get PID gains
                     if (config->trainMode) {
-                        if (initialRandomActions && numInitialRandomActions >= 0) {
-
+                        
+                        if (initialRandomActions && numInitialRandomActions > 0) {
                             for (int a = 0; a < config->numActions; a++) {
                                 predictedActions[i][a] = std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
+                            }
+                        } else if (stepsWithPretrainedModel && numTransferLearningSteps > 0) {
+                            currentState[i].getStateArray(stateArray);
+                            at::Tensor actions = pidAutoTuner->get_action(torch::from_blob(stateArray, { 1, config->numInput }, options), true);
+                            actions.to(torch::kCPU);
+                            if (config->numActions > 1) {
+                                auto actions_a = actions.accessor<double, 1>();
+                                for (int a = 0; a < config->numActions; a++) {
+                                    predictedActions[i][a] = actions_a[a];
+                                }
+                            }
+                            else {
+                                predictedActions[i][0] = actions.item().toDouble();
                             }
                         }
                         else {
@@ -448,6 +463,9 @@ void panTiltThread(Utility::param* parameters) {
                             if (initialRandomActions) {
                                 initialRandomActions = false;
                                 std::cout << "WARNING: Done generating initial random actions" << std::endl;
+                            } else if (stepsWithPretrainedModel) {
+                                stepsWithPretrainedModel = false;
+                                std::cout << "WARNING: Done taking steps with pre-trained model in evaluation mode" << std::endl;
                             }
                             
                             // Perform Inference, get action(s) 
@@ -508,6 +526,11 @@ void panTiltThread(Utility::param* parameters) {
                             if (initialRandomActions && !updated) {
                                 updated = true;
                                 numInitialRandomActions--;
+                            }
+
+                            if (stepsWithPretrainedModel && !updated) {
+                                updated = true;
+                                numTransferLearningSteps--;
                             }
                         }
 
@@ -633,12 +656,12 @@ void panTiltThread(Utility::param* parameters) {
                     if (config->trainMode) {
                         // Inform child process to start training
                         if (config->multiProcess) {
-                            if (!isTraining && replayBuffer->size() > (config->minBufferSize + config->numTransferLearningSteps)) {
+                            if (!isTraining && replayBuffer->size() > (config->minBufferSize)) {
                                 std::cout << "Sending train signal..." << std::endl;
                                 isTraining = true;
                                 kill(parameters->pid, SIGUSR1);
                             } 
-                        } else if (!isTraining && replayBuffer->size() > (config->minBufferSize + config->numTransferLearningSteps)) {
+                        } else if (!isTraining && replayBuffer->size() > (config->minBufferSize)) {
                             // Inform autotune thread start training 
                             pthread_mutex_lock(&trainLock);
                             pthread_cond_broadcast(&trainCond);
@@ -858,10 +881,6 @@ void detectThread(Utility::param* parameters)
                 // crop the image to generate equal setpoints for PIDs
                 frame = GetImageFromCamera(camera);
                 
-                // if (config->resize[0] != config->captureSize[0] || config->resize[1] != config->captureSize[1]) {
-                //     cv::resize(frame, frame, cv::Size(config->resize[1], config->resize[0]), 0, 0, CV_INTER_LINEAR);
-                // }
-                
                 int cropSize = config->dims[0];
                 int offsetW = (frame.cols - cropSize) / 2;
                 int offsetH = (frame.rows - cropSize) / 2;
@@ -905,44 +924,38 @@ void detectThread(Utility::param* parameters)
                 }
 
             validated:
-                ED tilt;
-                ED pan;
-
                 // Determine object and frame centers
                 frameCenterX = frame.cols / 2;
                 frameCenterY = frame.rows / 2;
                 objX = roi.x + (roi.width / 2);
                 objY = roi.y + (roi.height / 2);
 
-                // Determine error
-                tilt.error = static_cast<double>(frameCenterY - objY);
-                pan.error = static_cast<double>(frameCenterX - objX);
-
                 // Enter State data
-                pan.point = static_cast<double>(roi.x);
-                tilt.point = static_cast<double>(roi.y);
-                pan.size = static_cast<double>(roi.width);
-                tilt.size = static_cast<double>(roi.height);
-                pan.obj = static_cast<double>(objX);
-                tilt.obj = static_cast<double>(objY);
-                pan.frame = static_cast<double>(frameCenterX);
-                tilt.frame = static_cast<double>(frameCenterY);
-                pan.done = false;
-                tilt.done = false;
-                
                 auto now = std::chrono::high_resolution_clock::now();
                 double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
-                pan.timestamp = elapsed;
-                tilt.timestamp = elapsed;
-
                 double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
-                pan.spf = seconds_per_frame;
-                tilt.spf = seconds_per_frame;
                 
-                // Fresh data
                 ED eventDataArray[2] {
-                    tilt,
-                    pan
+                    {
+                        false,
+                        static_cast<double>(frameCenterY - objY),
+                        static_cast<double>(frameCenterY),
+                        static_cast<double>(roi.height),
+                        static_cast<double>(roi.y),
+                        static_cast<double>(objY),
+                        elapsed,
+                        seconds_per_frame
+                    },
+                    {
+                        false,
+                        static_cast<double>(frameCenterX - objX),
+                        static_cast<double>(frameCenterX),
+                        static_cast<double>(roi.width),
+                        static_cast<double>(roi.x),
+                        static_cast<double>(objX),
+                        elapsed,
+                        seconds_per_frame
+                    }
                 };
 
                 try {
@@ -1040,42 +1053,40 @@ void detectThread(Utility::param* parameters)
                     trackCount = (trackCount + 1) % CHAR_MAX; 
                     isSearching = false;
 
-                    ED tilt;
-                    ED pan;
-
                     // Determine object and frame centers
                     frameCenterX = frame.cols / 2;
                     frameCenterY = frame.rows / 2;
                     objX = result.center.x;
                     objY = result.center.y;
-
-                    // Determine error (negative is too far left or too far above)
-                    tilt.error = static_cast<double>(frameCenterY - objY);
-                    pan.error = static_cast<double>(frameCenterX - objX);
-
-                    // Other State data
+                    
+                    // Fill out state data
                     auto now = std::chrono::high_resolution_clock::now();
                     double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
-                    pan.timestamp = elapsed;
-                    tilt.timestamp = elapsed;
-
-                    pan.obj = static_cast<double>(objX);
-                    tilt.obj = static_cast<double>(objY);
-                    pan.frame = static_cast<double>(frameCenterX);
-                    tilt.frame = static_cast<double>(frameCenterY);
-                    pan.done = false;
-                    tilt.done = false;
-
                     double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
-                    pan.spf = seconds_per_frame;
-                    tilt.spf = seconds_per_frame;
 
-                    // Fresh data
                     ED eventDataArray[2] {
-                        tilt,
-                        pan
+                        {
+                            false,
+                            static_cast<double>(frameCenterY - objY),
+                            static_cast<double>(frameCenterY),
+                            static_cast<double>(roi.height),
+                            static_cast<double>(roi.y),
+                            static_cast<double>(objY),
+                            elapsed,
+                            seconds_per_frame
+                        },
+                        {
+                            false,
+                            static_cast<double>(frameCenterX - objX),
+                            static_cast<double>(frameCenterX),
+                            static_cast<double>(roi.width),
+                            static_cast<double>(roi.x),
+                            static_cast<double>(objX),
+                            elapsed,
+                            seconds_per_frame
+                        }
                     };
-                    
+
                     try {
                         servos->update(eventDataArray);
                     } catch (...) {
@@ -1108,39 +1119,34 @@ void detectThread(Utility::param* parameters)
                         isTracking = false;
                         lossCount = 0;
 
-                        ED tilt;
-                        ED pan;
-                        
-                        // Object not on screen
+                        // Enter state data
                         frameCenterX = frame.cols / 2;
                         frameCenterY = frame.rows / 2;
-
-                        // Max error
-                        tilt.error = static_cast<double>(frameCenterY);
-                        pan.error = static_cast<double>(frameCenterX);
-
-                        // Error state
-                        // Enter State data
                         auto now = std::chrono::high_resolution_clock::now();
                         double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
-
-                        pan.timestamp = elapsed;
-                        tilt.timestamp = elapsed;
-                        pan.obj = static_cast<double>(frameCenterX * 2);
-                        tilt.obj = static_cast<double>(frameCenterY * 2); // max error
-                        pan.frame = static_cast<double>(frameCenterX);
-                        tilt.frame = static_cast<double>(frameCenterY);
-                        pan.done = true;
-                        tilt.done = true;
-
                         double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
-                        pan.spf = seconds_per_frame;
-                        tilt.spf = seconds_per_frame;
 
-                        // Fresh data
                         ED eventDataArray[2] {
-                            tilt,
-                            pan
+                            {
+                                true,
+                                static_cast<double>(frameCenterY),
+                                static_cast<double>(frameCenterY),
+                                0.0,
+                                0.0,
+                                static_cast<double>(frameCenterY * 2), // Max error
+                                elapsed,
+                                seconds_per_frame
+                            },
+                            {
+                                true,
+                                static_cast<double>(frameCenterX),
+                                static_cast<double>(frameCenterX),
+                                0.0,
+                                0.0,
+                                static_cast<double>(frameCenterX * 2),
+                                elapsed,
+                                seconds_per_frame
+                            }
                         };
                         
                         try {
@@ -1154,37 +1160,36 @@ void detectThread(Utility::param* parameters)
                             std::cout << "Using Predictive Object Tracking: frame # " << std::to_string(lossCount) << std::endl;
                         }
                         
+                        // Enter state data
                         double locations[NUM_SERVOS] = { 0.0 };
                         servos->getPredictedObjectLocation(locations);
-
-                        ED tilt;
-                        ED pan;
-                        
                         frameCenterX = config->dims[1] / 2;
                         frameCenterY = config->dims[0] / 2;
-                        
                         auto now = std::chrono::high_resolution_clock::now();
-                        double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
-
-                        pan.timestamp = elapsed;
-                        tilt.timestamp = elapsed;
-                        pan.obj = locations[1];
-                        tilt.obj = locations[0];
-                        pan.frame = static_cast<double>(frameCenterX);
-                        tilt.frame = static_cast<double>(frameCenterY);
-                        tilt.error = static_cast<double>(frameCenterY) - locations[0];
-                        pan.error = static_cast<double>(frameCenterX) - locations[1];
-                        pan.done = false;
-                        tilt.done = false;
-                        
+                        double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;                        
                         double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
-                        pan.spf = seconds_per_frame;
-                        tilt.spf = seconds_per_frame;
 
-                        // Fresh data
                         ED eventDataArray[2] {
-                            tilt,
-                            pan
+                            {
+                                false,
+                                static_cast<double>(frameCenterY) - locations[0],
+                                static_cast<double>(frameCenterY),
+                                0.0,
+                                0.0,
+                                locations[0], // Predicted location
+                                elapsed,
+                                seconds_per_frame
+                            },
+                            {
+                                false,
+                                static_cast<double>(frameCenterX) - locations[1],
+                                static_cast<double>(frameCenterX),
+                                0.0,
+                                0.0,
+                                locations[1],
+                                elapsed,
+                                seconds_per_frame
+                            }
                         };
                         
                         try {
@@ -1206,39 +1211,34 @@ void detectThread(Utility::param* parameters)
                         lossCount = 0;
                         trackCount = 0;
 
-                        ED tilt;
-                        ED pan;
-                        
-                        // Object not on screen
+                        // Enter State data
                         frameCenterX = frame.cols / 2;
                         frameCenterY = frame.rows / 2;
-
-                        // Max error
-                        tilt.error = static_cast<double>(frame.rows);
-                        pan.error = static_cast<double>(frame.cols);
-
-                        // Error state
-                        // Enter State data
                         auto now = std::chrono::high_resolution_clock::now();
-                        double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
-
-                        pan.timestamp = elapsed;
-                        tilt.timestamp = elapsed;
-                        pan.obj = static_cast<double>(frameCenterX * 2);
-                        tilt.obj = static_cast<double>(frameCenterY * 2); // max error
-                        pan.frame = static_cast<double>(frameCenterX);
-                        tilt.frame = static_cast<double>(frameCenterY);
-                        pan.done = true;
-                        tilt.done = true;
-                        
+                        double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;                        
                         double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
-                        pan.spf = seconds_per_frame;
-                        tilt.spf = seconds_per_frame;
 
-                        // Fresh data
                         ED eventDataArray[2] {
-                            tilt,
-                            pan
+                            {
+                                true,
+                                static_cast<double>(frame.rows), // Obj not on screen, Max error
+                                static_cast<double>(frameCenterY),
+                                0.0,
+                                0.0,
+                                static_cast<double>(frameCenterY * 2), 
+                                elapsed,
+                                seconds_per_frame
+                            },
+                            {
+                                true,
+                                static_cast<double>(frame.cols),
+                                static_cast<double>(frameCenterX),
+                                0.0,
+                                0.0,
+                                static_cast<double>(frameCenterX * 2),
+                                elapsed,
+                                seconds_per_frame
+                            }
                         };
                         
                         try {

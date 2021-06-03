@@ -14,7 +14,7 @@
 
 namespace Utility {
     #define NUM_SERVOS 2                         // Number of servos used 
-    #define NUM_INPUT 8                         // Size of the state schema
+    #define NUM_INPUT 8                          // Size of the state schema
     #define ERROR_LIST_SIZE 5                    // Number of errors/outputs to hold onto accross application
     #define NUM_HIDDEN 256                       // Number of nodes in each networks hidden layer
     #define USE_PIDS 0                           // When enabled, AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
@@ -59,6 +59,18 @@ namespace Utility {
             timestamp(0.0),
             spf(0.0)
         {}
+
+        EventData( bool done, double error, double frame, double size, double point, double obj, double timestamp, double spf )
+        {
+            this->done = done;
+            this->error = error;
+            this->frame = frame;
+            this->size = size;
+            this->point = point;
+            this->obj = obj;
+            this->timestamp = timestamp;
+            this->spf = spf;
+        }
     } typedef ED;
 
     // Current state of servo/pid
@@ -126,29 +138,12 @@ namespace Utility {
                 state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
                 state[8] = spf;
             } else {
-                // double integral = 0.0;
-                // for (int i = 0; i < 5; i++) {
-                //     integral += (errors[i] * pidStateData.dt);
-                // }
-
-                // state[0] = outputs[0];
-                // state[1] = errors[0];
-                // state[2] = integral;
-                // state[3] = deltaTime > 0.0 ? ((errors[0] - errors[1]) / deltaTime) * 100.0 : 0.0;
-                // state[4] = deltaTime > 0.0 ? ((errors[0] - ( 2.0 * errors[1] ) + errors[2]) / std::pow<double>(deltaTime, 2.0)) * 100.0 : 0.0; 
-                // state[5] = deltaTime > 0.0 ? ((outputs[0] - outputs[1]) / deltaTime) * 100.0 : 0.0;
-                // state[6] = deltaTime > 0.0 ? ((outputs[0] - ( 2.0 * outputs[1] ) + outputs[2]) / std::pow<double>(deltaTime, 2.0)) * 100.0 : 0.0; 
-                // state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                // state[8] = deltaTime > 0.0 ? spf : 0.0;
-
                 state[0] = outputs[0];
                 state[1] = errors[0];
                 state[2] = outputs[1];
                 state[3] = errors[1];
                 state[4] = outputs[2];
                 state[5] = errors[2];
-                // state[6] = outputs[3];
-                // state[7] = errors[3];
                 state[6] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
                 state[7] = deltaTime > 0.0 ? spf : 0.0;
             }
@@ -233,6 +228,7 @@ namespace Utility {
         int updateRate;
         int maxTrainingSessions;
         int batchSize;
+        int stepsWithPretrainedModel;
         int numInitialRandomActions;
         int numTransferLearningSteps;
         bool trainMode;
@@ -279,9 +275,7 @@ namespace Utility {
         // Other 
         int dims[2];
         int captureSize[2];
-        int resizeDims[2];
         int fps;
-        bool resizeImage;
         bool multiProcess;
     
         Config() :
@@ -299,26 +293,27 @@ namespace Utility {
             maxStepsPerEpisode(150),             // Max number of steps in an episode
 
             batchSize(256),                      // Network batch size.
-            initialRandomActions(true),          // Enable random actions.
-            numInitialRandomActions(2500),       // Number of random actions taken.
-            numTransferLearningSteps(0),         // Number of steps to take on a pre-trained model
-            trainMode(false),                    // When autotuning is on, 'false' means network test mode.
+            initialRandomActions(false),          // Enable random actions.
+            numInitialRandomActions(0),       // Number of random actions taken.
+            stepsWithPretrainedModel(true),      // After random steps, uses loaded save to perform steps in evaluation mode
+            numTransferLearningSteps(5000),      // Number of steps to take on a pre-trained model in evaluation mode, done after random steps
+            trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
             variableFPS(true),                   // Vary the FPS in training
-            FPSVariance(10.0),                   // Average change in FPS
+            FPSVariance(5.0),                   // Average change in FPS
             varyFPSChance(.5),                   // Percentage of frames that have variable FPS
             resetAngleVariance(30.0),            // In training, the degree of variance in reset angles
             resetAngleChance(0.05),              // Chance to randomly chance the current angle the servos are wating at
             varyResetAngles(true),               // vary reset angles diring training
 
             recheckFrequency(15),                // Num frames in-between revalidations of
-            lossCountMax(20),                    // Max number of rechecks before episode is considered over. 
+            lossCountMax(2),                     // Max number of rechecks before episode is considered over. 
                                                  // In the case of usePOT, MAX uses of predictive object tracking.
-            updateRate(6),                       // Servo updates, update commands per second
+            updateRate(8),                       // Servo updates, update commands per second
             trainRate(.50),					     // Network updates, sessions per second
-            logOutput(true),                    // Prints various info to console
+            logOutput(true),                     // Prints various info to console
             
-            disableServo({ false, false }),      // Disable the { Y, X } servos
+            disableServo({ true, false }),       // Disable the { Y, X } servos
             invertData({ true, false }),         // Flip input data { Y, X } servos
             invertAngles({ false, false }),      // Flip output angles { Y, X } servos
             resetAngles({                        // Angle when reset
@@ -347,8 +342,8 @@ namespace Utility {
             usePOT((bool)USE_POT),               // Predictive Object Tracking. If detection has failed, uses AI to predict objects next location
             resetAfterNInnactiveFrames(15),      // Reset to default angles after N frames. -1 indicates never resetting. 
             useCurrentAngleForReset(true),       // Use current angle as reset angle when target has lost track
-            draw(true),  					     // Draw target bounding box and center on frame
-            showVideo(true),					 // Show camera feed
+            draw(false),  					     // Draw target bounding box and center on frame
+            showVideo(false),					 // Show camera feed
             usePIDs((bool)USE_PIDS),             // Network outputs PID gains, or network outputs angle directly
             actionHigh(                          // Max output to of policy network's logits   
                 USE_PIDS ? 0.1 : 40.0
@@ -362,8 +357,6 @@ namespace Utility {
             
             dims({ 1080, 1080 }),                // The image crop dimensions. Applied before autotuning input.
             captureSize({ 1080, 1920 }),         // The dimensions for capture device
-            resizeDims({ 1080, 1920 }),          // The dimensions to scale to before cropping
-            resizeImage(false),                  // Reduce pixel count to resizeDims with linear interpolation
             
             fps(60),                             // Camera capture rate
             multiProcess(true),                  // Enables autotuning in a seperate process. Otherwise its a thread.

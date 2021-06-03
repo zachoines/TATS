@@ -10,14 +10,14 @@ x_axis = ['x', 'runtime']
 metric_types = ["episodeStepRewards", "episodeAverages", "trainingLoss"]
 metric_names = [
     # ["runtime", "x", "startingRange", "currentBufferSize"],
-    ["runtime", "x", "Step_Reward", "EMA_Step_Rewards"],
-    ["runtime", "x", "EpisodeAverageRewardsPerStep", "TotalEpisodeSteps", "EMAEpisodeStepRewards", "EMATotalEpisodeSteps"],
+    ["runtime", "x", "Step_Reward", "EMA_Step_Rewards", "Step_Obj_Pred_Error", "EMA_Obj_Pred_Error"],
+    ["runtime", "x", "episodeNumber", "EpisodeAverageRewardsPerStep", "TotalEpisodeSteps", "EMAEpisodeStepRewards", "EMATotalEpisodeSteps", "EMAEpisodeObjPredError"],
     ["runtime", "x", "policy_loss", "value_loss", "q_loss_1", "q_loss_2", "_alpha"]
 ]
 
 
 for names, dimension in zip(metric_names, metric_types):
-    data = np.genfromtxt(os.path.join(os.getcwd(), "stat/" + dimension + ".txt"), delimiter=',', dtype=None, names=names)
+    data = np.genfromtxt(os.path.join(os.getcwd(), "stat/v4/" + dimension + ".txt"), delimiter=',', dtype=None, names=names)
     data.sort(order=["runtime"])
 
     # 'runtime' and 'x' should not be plotted

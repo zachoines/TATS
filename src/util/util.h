@@ -279,12 +279,12 @@ namespace Utility {
 		if (alt) {
 			return Utility::mapOutput(1.0 - (std::abs(target - pred) / static_cast<double>(max)), 0.0, 1.0, -.5, .5);
 		} else {
-			double error = static_cast<double>(std::abs(target - pred)) / static_cast<double>(max);
+			double error = 1.0 - (static_cast<double>(std::abs(target - pred)) / static_cast<double>(max));
 
 			if (error <= threshold) {
 				return 0.0;
 			} else {
-				return -error;
+				return error;
 			}
 		}
 		
