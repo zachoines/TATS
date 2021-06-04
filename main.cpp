@@ -77,12 +77,6 @@ TATS::Env* servos = nullptr;
 cv::VideoCapture* camera = nullptr;
 int additionalDelay = 0;
 
-// Log files
-std::string logs[2] = {
-    "/episodeAverages.txt",
-    "/episodeStepRewards.txt"
-};
-
 // Signal handlers
 static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* context);
 volatile sig_atomic_t sig_value1;
@@ -109,20 +103,23 @@ int main(int argc, char** argv)
     SharedBuffer* sharedTrainingBuffer = segment.construct<SharedBuffer>("SharedBuffer")(alloc_inst);
     Utility::sharedString *s = segment.construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
 
-    // Setup stats files
+    // Setup stats dirs and remove old logs
+    std::string losspath = "/trainingLoss.txt";
+    std::string avePath = "/episodeAverages.txt";
+    std::string stepPath = "/episodeStepRewards.txt";
+
     std::string path = get_current_dir_name();
     std::string statDir = "/stat/";
     std::string statPath = path + statDir;
     mkdir(statPath.c_str(), 0755);
+    std::remove(( statPath + losspath ).c_str());
+
     for (int servo = 0; servo < NUM_SERVOS; servo++) {
         std::string servoPath = statPath + std::to_string(servo);
         mkdir(servoPath.c_str(), 0755);
-
-        for (int log = 0; log < 2; log++) {
-            // Remove old logs
-            std::string logPath = servoPath + logs[log];
-            std::remove(logPath.c_str());
-        }
+        
+        std::remove(( servoPath + avePath ).c_str());
+        std::remove(( servoPath + stepPath ).c_str());
     }
 
     // Parent process is image recognition PID/servo controller, second is SAC PID Autotuner
@@ -571,7 +568,7 @@ void panTiltThread(Utility::param* parameters) {
                                                     + std::to_string(emaEpisodeStepSum[servo]) + ','
                                                     + std::to_string(emaEpisodeObjPredErrorSum[servo] / emaEpisodeStepSum[servo]);
                             
-                            appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[0], episodeData);
+                            appendLineToFile(path + "/stat/" + std::to_string(servo) + "/episodeAverages.txt", episodeData);
 
                             totalEpisodeSteps[servo] = 0.0;
                             totalEpisodeRewards[servo] = 0.0;
@@ -593,7 +590,7 @@ void panTiltThread(Utility::param* parameters) {
                                                 + std::to_string(trainData[servo].errors[1])  + ','
                                                 + std::to_string(stepAverageObjPredError[servo]);
 
-                            appendLineToFile(path + "/stat/" + std::to_string(servo) + logs[1], stepData);
+                            appendLineToFile(path + "/stat/" + std::to_string(servo) + "/episodeStepRewards.txt", stepData);
                         
                         }   
                     }

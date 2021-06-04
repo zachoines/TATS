@@ -14,11 +14,11 @@
 
 namespace Utility {
     #define NUM_SERVOS 2                         // Number of servos used 
-    #define NUM_INPUT 8                          // Size of the state schema
+    #define NUM_INPUT 10                         // Size of the state schema
     #define ERROR_LIST_SIZE 5                    // Number of errors/outputs to hold onto accross application
     #define NUM_HIDDEN 256                       // Number of nodes in each networks hidden layer
     #define USE_PIDS 0                           // When enabled, AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
-    #define USE_POT 1                            // Use predictive object location
+    #define USE_POT 0                            // Use predictive object location
     #define NUM_ACTIONS ((USE_PIDS) ? 3 : ((USE_POT) ? 2 : 1) ) 
 
     enum DetectorType {
@@ -144,8 +144,10 @@ namespace Utility {
                 state[3] = errors[1];
                 state[4] = outputs[2];
                 state[5] = errors[2];
-                state[6] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                state[7] = deltaTime > 0.0 ? spf : 0.0;
+                state[6] = outputs[3];
+                state[7] = errors[3];
+                state[8] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                state[9] = deltaTime > 0.0 ? spf : 0.0;
             }
         } 
 
@@ -285,24 +287,24 @@ namespace Utility {
             numInput(NUM_INPUT),                 // Number of elements in policy/value network's input vectors
 
             maxTrainingSessions(1),              // Number of training sessions on model params
-            maxBufferSize(500000),               // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(2000),                 // Min replay buffer size before training size.
-            maxTrainingSteps(500000),			 // Max training steps agent takes.
+            maxBufferSize(250000),               // Max size of buffer. When full, oldest elements are kicked out.
+            minBufferSize(1000),                 // Min replay buffer size before training size.
+            maxTrainingSteps(250000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
             episodeEndCap(true),                 // End episode early
-            maxStepsPerEpisode(150),             // Max number of steps in an episode
+            maxStepsPerEpisode(200),             // Max number of steps in an episode
 
-            batchSize(256),                      // Network batch size.
-            initialRandomActions(false),          // Enable random actions.
-            numInitialRandomActions(0),       // Number of random actions taken.
-            stepsWithPretrainedModel(true),      // After random steps, uses loaded save to perform steps in evaluation mode
+            batchSize(128),                      // Network batch size.
+            initialRandomActions(true),          // Enable random actions.
+            numInitialRandomActions(1250),       // Number of random actions taken.
+            stepsWithPretrainedModel(false),     // After random steps, uses loaded save to perform steps in evaluation mode
             numTransferLearningSteps(5000),      // Number of steps to take on a pre-trained model in evaluation mode, done after random steps
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
             variableFPS(true),                   // Vary the FPS in training
-            FPSVariance(5.0),                   // Average change in FPS
+            FPSVariance(5.0),                    // Average change in FPS
             varyFPSChance(.5),                   // Percentage of frames that have variable FPS
-            resetAngleVariance(30.0),            // In training, the degree of variance in reset angles
+            resetAngleVariance(35.0),            // In training, the degree of variance in reset angles
             resetAngleChance(0.05),              // Chance to randomly chance the current angle the servos are wating at
             varyResetAngles(true),               // vary reset angles diring training
 
@@ -320,10 +322,10 @@ namespace Utility {
                 0.0, 0.0
             }),    
             anglesHigh({                         // Max allowable output angle to servos
-                40.0, 40.0
+                45.0, 45.0
             }),          
             anglesLow({                          // Min allowable output angle to servos
-                -40.0, -40.0
+                -45.0, -45.0
             }),         
             servoConfigurations(                 // Hardware settings for individual servos         
                 {                             
@@ -346,13 +348,13 @@ namespace Utility {
             showVideo(false),					 // Show camera feed
             usePIDs((bool)USE_PIDS),             // Network outputs PID gains, or network outputs angle directly
             actionHigh(                          // Max output to of policy network's logits   
-                USE_PIDS ? 0.1 : 40.0
+                USE_PIDS ? 0.1 : 45.0
             ),                     
             actionLow(                           // Min output to of policy network's logits
-                USE_PIDS ? 0.0 : -40.0
+                USE_PIDS ? 0.0 : -45.0
             ),                      
-            pidOutputHigh(40.0),                 // Max output allowed for PID's
-            pidOutputLow(-40.0),				 // Min output allowed for PID's
+            pidOutputHigh(45.0),                 // Max output allowed for PID's
+            pidOutputLow(-45.0),				 // Min output allowed for PID's
             defaultGains({ 0.04, 0.02, 0.001}),  // Gains fed to pids when initialized
             
             dims({ 1080, 1080 }),                // The image crop dimensions. Applied before autotuning input.
