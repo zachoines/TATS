@@ -362,7 +362,7 @@ static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* co
     sig_value1 = sig_number;
 }
 
-// TODO: Seperate panTiltThread into a trainManager and servoControl class....
+// TODO: Seperate panTiltThread into a trainThread and evaluationThread functons....
 void panTiltThread(Utility::param* parameters) {
     using namespace TATS;
     using namespace Utility;

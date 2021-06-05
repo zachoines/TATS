@@ -13,6 +13,16 @@
 #include "opencv2/tracking.hpp"
 
 namespace Utility {
+
+	/***
+	 * @brief Rounds to the nearest tenth 
+	 * @param value - number to round
+	 * @return rounded value
+	 */
+	static double roundToNearestTenth(double value){
+		return double(int(value * 10 + 0.5)) / 10;
+	}
+
 	// return true if object is headinig right/up, and false left/down
 	static bool calculateDirectionOfObject(double error, bool inverted) {
 		bool direction = error < 0.0;

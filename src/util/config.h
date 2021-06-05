@@ -292,7 +292,7 @@ namespace Utility {
             maxTrainingSteps(250000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
             episodeEndCap(true),                 // End episode early
-            maxStepsPerEpisode(200),             // Max number of steps in an episode
+            maxStepsPerEpisode(500),             // Max number of steps in an episode
 
             batchSize(128),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.

@@ -218,6 +218,7 @@ namespace TATS {
 
         Utility::SR stepResults;
         
+        // Foreach servo, calculate predicted object locations and new servo angles
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
             if (_disableServo[servo]) {
@@ -225,34 +226,6 @@ namespace TATS {
             }
 
             if (!_config->usePIDs) {
-
-                // Derive output angle and object's next location from SAC output actions
-                // stepResults.servos[servo].actions[0] = actions[servo][0];
-
-                // if (_config->usePOT) {
-                //     stepResults.servos[servo].actions[1] = actions[servo][1];
-                // }
-                
-
-                // if (rescale) {
-                //     rescaledActions[servo][0] = Utility::rescaleAction(actions[servo][0], _config->actionLow, _config->actionHigh); // Angle
-
-                //     if (_config->usePOT) {
-                //         if (_invertData[servo]) {
-                //             rescaledActions[servo][1] = Utility::rescaleAction(-actions[servo][1], 0, _config->dims[servo]); 
-                            
-                //         } else {
-                //             rescaledActions[servo][1] = Utility::rescaleAction(actions[servo][1], 0, _config->dims[servo]);
-                //         }
-                        
-                //         _predObjLoc[servo] = rescaledActions[servo][1];
-                //     }
-                    
-                // } else {
-                //     for (int a = 0; a < NUM_ACTIONS; a++) {
-                //         rescaledActions[servo][a] = actions[servo][a];
-                //     }  
-                // }
 
                 if (!_recentReset) { 
                     _preSteps = 0;
@@ -327,11 +300,11 @@ namespace TATS {
 
             double newAngle = 0.0;
             if (!_config->usePIDs) {
-                newAngle = rescaledActions[servo][0];
+                newAngle = Utility::roundToNearestTenth(rescaledActions[servo][0]);
             }
             else {
                 _pids[servo]->setWeights(rescaledActions[servo][0], rescaledActions[servo][1], rescaledActions[servo][2]);
-                newAngle = _pids[servo]->update(_currentData[servo].obj, _invertData[servo]);
+                newAngle = Utility::roundToNearestTenth(_pids[servo]->update(_currentData[servo].obj, _invertData[servo]));
             }
 
             _lastAngles[servo] = _currentAngles[servo];
