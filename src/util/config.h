@@ -287,16 +287,16 @@ namespace Utility {
             numInput(NUM_INPUT),                 // Number of elements in policy/value network's input vectors
 
             maxTrainingSessions(1),              // Number of training sessions on model params
-            maxBufferSize(250000),               // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(1000),                 // Min replay buffer size before training size.
-            maxTrainingSteps(250000),			 // Max training steps agent takes.
+            maxBufferSize(500000),               // Max size of buffer. When full, oldest elements are kicked out.
+            minBufferSize(2000),                 // Min replay buffer size before training size.
+            maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
             episodeEndCap(true),                 // End episode early
-            maxStepsPerEpisode(500),             // Max number of steps in an episode
+            maxStepsPerEpisode(300),             // Max number of steps in an episode
 
-            batchSize(128),                      // Network batch size.
+            batchSize(256),                      // Network batch size.
             initialRandomActions(true),          // Enable random actions.
-            numInitialRandomActions(1250),       // Number of random actions taken.
+            numInitialRandomActions(2500),       // Number of random actions taken.
             stepsWithPretrainedModel(false),     // After random steps, uses loaded save to perform steps in evaluation mode
             numTransferLearningSteps(5000),      // Number of steps to take on a pre-trained model in evaluation mode, done after random steps
             trainMode(true),                     // When autotuning is on, 'false' means network test mode.
@@ -304,14 +304,14 @@ namespace Utility {
             variableFPS(true),                   // Vary the FPS in training
             FPSVariance(5.0),                    // Average change in FPS
             varyFPSChance(.5),                   // Percentage of frames that have variable FPS
-            resetAngleVariance(35.0),            // In training, the degree of variance in reset angles
+            resetAngleVariance(40.0),            // In training, the degree of variance in reset angles
             resetAngleChance(0.05),              // Chance to randomly chance the current angle the servos are wating at
             varyResetAngles(true),               // vary reset angles diring training
 
             recheckFrequency(15),                // Num frames in-between revalidations of
             lossCountMax(2),                     // Max number of rechecks before episode is considered over. 
                                                  // In the case of usePOT, MAX uses of predictive object tracking.
-            updateRate(8),                       // Servo updates, update commands per second
+            updateRate(6),                       // Servo updates, update commands per second
             trainRate(.50),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             

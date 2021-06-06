@@ -300,11 +300,13 @@ namespace TATS {
 
             double newAngle = 0.0;
             if (!_config->usePIDs) {
-                newAngle = Utility::roundToNearestTenth(rescaledActions[servo][0]);
+                // newAngle = Utility::roundToNearestTenth(rescaledActions[servo][0]);
+                newAngle = rescaledActions[servo][0];
             }
             else {
                 _pids[servo]->setWeights(rescaledActions[servo][0], rescaledActions[servo][1], rescaledActions[servo][2]);
-                newAngle = Utility::roundToNearestTenth(_pids[servo]->update(_currentData[servo].obj, _invertData[servo]));
+                // newAngle = Utility::roundToNearestTenth(_pids[servo]->update(_currentData[servo].obj, _invertData[servo]));
+                _pids[servo]->update(_currentData[servo].obj, _invertData[servo]);
             }
 
             _lastAngles[servo] = _currentAngles[servo];

@@ -44,18 +44,86 @@ private:
     void _load_from_array(torch::nn::Module& to, Utility::sharedString* s);
     
 public:
+
+    /***
+	 * @brief Soft actor critic agent's constructor
+	 * @param filepath Input file to write line too
+     * @param num_inputs Number of inputs to SAC agents internal NN 
+     * @param num_hidden Number of elements in the hidden layer of SAC agents internal NN 
+     * @param num_actions Number of outputs of the of SAC agent's internal policy network
+     * @param action_max Max output value of SAC agent's policy network 
+     * @param action_min Min output value of SAC agent's policy network
+     * @param alphaAdjuster Enable the auto-adjustment of alpha
+     * @param gamma Discount value applied to target Q-Values 
+     * @param tau Discount factor applied to policy network params
+     * @param alpha Initial value applied to Alpha
+     * @param q_lr Q-Network learning rate
+     * @param policy_lr Policy-Network learning rate
+     * @param a_lr Alpha-adjuster learning rate
+     * @param device Device SAC agent trains on
+	 */
     SACAgent(int num_inputs, int num_hidden, int num_actions, double action_max, double action_min, bool alphaAdjuster = true, double gamma = 0.99, double tau = 5e-3, double alpha = 0.2, double q_lr = 3e-4, double policy_lr = 3e-4, double a_lr = 3e-4, torch::DeviceType device = torch::kCPU);
     ~SACAgent();
 
+    /***
+	 * @brief Sets SAC agent's policy network to evaluation mode
+	 * @return void
+	 */
     void eval();
+
+    /***
+	 * @brief Updates SAC agents internal networks with collected batch of experiences
+	 * @param batchSize Size of batch to update SAC agent on 
+	 * @param replayBuffer buffer passed by reference with collected batch of experiences
+	 * @return void
+	 */
     void update(int batchSize, Utility::TrainBuffer* replayBuffer);
+
+    /***
+	 * @brief Gets predicted action(s) from the SAC agent's policy network
+	 * @param state Tensor with input state
+	 * @param trainMode Whether to retrieve agents in evaluation mode
+	 * @return Tensor with predicted action(s)
+	 */
     torch::Tensor get_action(torch::Tensor state, bool trainMode = true);
 
+    /***
+	 * @brief Save current checkpoint with provided version number
+	 * @param versionNo Number assigned to save
+	 * @return void
+	 */
     void save_checkpoint(int versionNo);
+
+    /***
+	 * @brief Loads all network parameters from most recent save 
+	 * @return boolean
+	 */
     bool load_checkpoint();
-    void load_policy(); 
+
+    /***
+	 * @brief Loads policy network from save
+	 * @return void
+	 */
+    void load_policy();
+
+    /***
+	 * @brief Saves current policy network to file
+	 * @return void
+	 */ 
     void save_policy();
+
+    /***
+	 * @brief Loads policy network from string buffer (used in multi-process syncing of SAC agent)
+     * @param s String buffer to write policy network params
+	 * @return void
+	 */
     void load_policy(Utility::sharedString* s);
+
+    /***
+	 * @brief Saves policy network to string buffer (used in multi-process syncing of SAC agent)
+     * @param s String buffer to write policy network params
+	 * @return void
+	 */
     void save_policy(Utility::sharedString* s);
 };
 
