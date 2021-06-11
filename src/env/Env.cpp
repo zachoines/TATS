@@ -7,14 +7,19 @@ namespace TATS {
         _lastData;
         _currentData;
 
-        // Setup I2C and PWM
+        // Setup I2C and PWM for servos
         _wire = new control::Wire();
         _pwm = new control::PCA9685(0x40, _wire);
         _servos = new control::ServoKit(_pwm);
+
+        // Setup default env state variables
         _config = new Utility::Config();
         _currentSteps = 0;
         _recentReset = true;
         _preSteps = 0;
+        _maxPreSteps = 2;
+        _preStepAngleAmount = 0.0;
+        _errorThreshold  = 0.005;
 
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             double setpoint = static_cast<double>(_config->dims[servo]) / 2.0;
@@ -75,8 +80,6 @@ namespace TATS {
                 _lastData[servo] = _currentData[servo];
                 _currentData[servo] = _eventData[servo];
                 _lastTimeStamp[servo] = _currentData[servo].timestamp;
-
-                // std::cout << "Here is the obj location: " << std::to_string(_currentData[servo].error) << std::endl;
             }
 
             lck.unlock();
@@ -235,9 +238,18 @@ namespace TATS {
                     if (_config->usePOT) {
                         stepResults.servos[servo].actions[1] = actions[servo][1];
                     }
-                    
 
                     if (rescale) {
+
+                        // int frameCenter = _config->dims[servo] / 2;
+                        // double error = _invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) : static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter)  / static_cast<double>(frameCenter);
+
+                        // If error is negligible, then dont move at all
+                        // if (std::abs<double>(error) <= _errorThreshold) {
+                        //     rescaledActions[servo][0] = _currentAngles[servo];
+                        // } else {
+                        //     rescaledActions[servo][0] = Utility::rescaleAction(actions[servo][0], _config->actionLow, _config->actionHigh); // Angle
+                        // }                 
                         rescaledActions[servo][0] = Utility::rescaleAction(actions[servo][0], _config->actionLow, _config->actionHigh); // Angle
 
                         if (_config->usePOT) {
@@ -248,7 +260,7 @@ namespace TATS {
                                 rescaledActions[servo][1] = Utility::rescaleAction(actions[servo][1], 0, _config->dims[servo]);
                             }
                             
-                            _predObjLoc[servo] = std::floor(rescaledActions[servo][1]); // Pixel location cannot have arbitrary precision
+                            _predObjLoc[servo] = std::round(rescaledActions[servo][1]); // Pixel location cannot have arbitrary precision
                         }
                         
                     } else {
@@ -257,11 +269,20 @@ namespace TATS {
                         }  
                     }
                 } else {
-                    /* Three datapoints should allow for far better movement by an AI, in exchange for this small observation delay
-                       Move a small amount now, preventing a blind over-shot by the AI
-                       Result is equivelent to a small dirivitive kick in PID systems, though minimized by AI */
+                    /* 
                     
-                    if (_preSteps >= 1) {
+                        Three datapoints should allow for far better movement by an AI, in exchange for this small observation delay.
+                        Move a small amount now, preventing a blind over-shot by the AI (Equivelent to dirivitive kick in PID controllers).
+                        This dirivitive kick is better minimized by AI with more datapoints. This is due to the fact that it is impossible
+                        to determine speed (two datapoints) or acceleration (three datapoints) with a single datapoint in a dynamic system.
+
+                        Formulas for first and second order delta error: 
+                        1.) (E(t_i) - E(t_i + 1)) / T == Speed
+                        2.) (E(t_i) - ( 2.0 * E(t_i + 1) ) + E(t_i + 2)) / T^2 == Acceleration
+                       
+                    */
+                    
+                    if (_preSteps >= _maxPreSteps) {
                         _recentReset = false;
                         _preSteps = 0;
                     } else {
@@ -270,18 +291,19 @@ namespace TATS {
                     
                     empty = true;
                     int frameCenter = _config->dims[servo] / 2;
-                    double error = _invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) : static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter);
+                    double error = _invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) : static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter)  / static_cast<double>(frameCenter);
 
-                    if (error == 0.0) {
+                    // If error is negligible, then dont move at all
+                    if (std::abs<double>(error) <= _errorThreshold || _preStepAngleAmount == 0.0) {
                         rescaledActions[servo][0] = _currentAngles[servo];
                     } else {
-                        // Move a little in the general direction of object, inverting if needed, while enforcing angle bounds.
+                        // inverting if needed, while enforcing angle bounds. 
                         if (Utility::calculateDirectionOfObject(error, _invertData[servo])) {
-                            rescaledActions[servo][0] = std::clamp<double>(_currentAngles[servo] - 0.5, _config->anglesLow[servo], _config->anglesHigh[servo]);
+                            rescaledActions[servo][0] = std::clamp<double>(_currentAngles[servo] - _preStepAngleAmount, _config->anglesLow[servo], _config->anglesHigh[servo]);
                         } else {
-                            rescaledActions[servo][0] = std::clamp<double>(_currentAngles[servo] + 0.5, _config->anglesLow[servo], _config->anglesHigh[servo]);
+                            rescaledActions[servo][0] = std::clamp<double>(_currentAngles[servo] + _preStepAngleAmount, _config->anglesLow[servo], _config->anglesHigh[servo]);
                         }
-                    }   
+                    } 
                 }
             } else {
 
@@ -300,13 +322,13 @@ namespace TATS {
 
             double newAngle = 0.0;
             if (!_config->usePIDs) {
-                // newAngle = Utility::roundToNearestTenth(rescaledActions[servo][0]);
-                newAngle = rescaledActions[servo][0];
+                newAngle = Utility::roundToNearestTenth(rescaledActions[servo][0]);
+                // newAngle = rescaledActions[servo][0];
             }
             else {
                 _pids[servo]->setWeights(rescaledActions[servo][0], rescaledActions[servo][1], rescaledActions[servo][2]);
-                // newAngle = Utility::roundToNearestTenth(_pids[servo]->update(_currentData[servo].obj, _invertData[servo]));
-                _pids[servo]->update(_currentData[servo].obj, _invertData[servo]);
+                newAngle = Utility::roundToNearestTenth(_pids[servo]->update(_currentData[servo].obj, _invertData[servo]));
+                // newAngle = _pids[servo]->update(_currentData[servo].obj, _invertData[servo]);
             }
 
             _lastAngles[servo] = _currentAngles[servo];
@@ -325,14 +347,15 @@ namespace TATS {
             double lastError = _lastData[servo].obj;
             double currentError = _currentData[servo].obj;
 
+            // Calculate rewards
             if (_lastData[servo].done) {
                 throw std::runtime_error("State must represent a complete transition");
             }
             else {
-                stepResults.servos[servo].reward = Utility::pidErrorToReward(static_cast<int>(currentError), static_cast<int>(lastError), _config->dims[servo] / 2, _currentData[servo].done, 0.01, true);
+                stepResults.servos[servo].reward = Utility::pidErrorToReward(static_cast<int>(currentError), static_cast<int>(lastError), _config->dims[servo] / 2, _currentData[servo].done, false, 0.0);
                 stepResults.servos[servo].errors[0] = stepResults.servos[servo].reward;
                 if (_config->usePOT) {
-                    stepResults.servos[servo].errors[1] = Utility::predictedObjectLocationToReward(static_cast<int>(rescaledActions[servo][1]), static_cast<int>(_currentData[servo].obj), _config->dims[servo], _currentData[servo].done);
+                    stepResults.servos[servo].errors[1] = Utility::predictedObjectLocationToReward(static_cast<int>(rescaledActions[servo][1]), static_cast<int>(_currentData[servo].obj), _config->dims[servo], _currentData[servo].done, false, 0.0);
                     stepResults.servos[servo].reward += stepResults.servos[servo].errors[1];
                 }
             }

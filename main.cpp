@@ -136,9 +136,11 @@ int main(int argc, char** argv)
         // std::string pipeline = Utility::gstreamer_pipeline(0, 1920, 1080, 1920, 1080, 60, 2);
         // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
         
-        camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
+        // camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
+        camera = new cv::VideoCapture(0, cv::CAP_V4L2);
         camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
         camera->set(cv::CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
+        camera->set(cv::CAP_PROP_AUTOFOCUS, 0 );
         
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
@@ -177,8 +179,7 @@ int main(int argc, char** argv)
     
         // Kill child if parent killed
         prctl(PR_SET_PDEATHSIG, SIGKILL); 
-
-        
+ 
         // SACAgent* pidAutoTunerChild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow, true, 0.99, 5e-3, 0.2, 3e-4, 3e-4, 3e-4, device);
         SACAgent* pidAutoTunerChild = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
 
@@ -681,9 +682,9 @@ void panTiltThread(Utility::param* parameters) {
                     double adjustment =  (( rate ) / 2.0) * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
                     rate += adjustment;
 
-                    // Race condition on additionalDelay with detectThread, but changes relatively seldomly. 
+                    // Locked to avoid race condition on additionalDelay with detectThread
                     pthread_mutex_lock(&sleepLock);
-                    if (config->variableFPS && config->varyFPSChance < static_cast<float>(rand()) / static_cast <float> (RAND_MAX)) {
+                    if (config->variableFPS) {
                         additionalDelay = static_cast<int>(std::round(config->FPSVariance * std::uniform_real_distribution<double>{ 0, 1.0 }(eng)));
                     } 
                     pthread_mutex_unlock(&sleepLock);
@@ -719,6 +720,7 @@ void panTiltThread(Utility::param* parameters) {
                     } else {
                         resetResults = servos->reset();            
                     }
+                    
                     doneCount = 0;
                     
                 } else {
@@ -823,7 +825,6 @@ void detectThread(Utility::param* parameters)
 
     cv::Mat frame;
     cv::Mat detection;
-    std::chrono::steady_clock::time_point Tbegin, Tend;
     auto execbegin = std::chrono::high_resolution_clock::now();
 
     if (!camera->isOpened()) {
@@ -853,16 +854,19 @@ void detectThread(Utility::param* parameters)
     std::vector<struct Detect::DetectionData> results;
     while (true) {
 
-        auto start = std::chrono::high_resolution_clock::now(); // For delay
+        std::chrono::steady_clock::time_point detectLoopStart = std::chrono::steady_clock::now(); // For delay
         
         // Vary FPS during training. 
         if (config->trainMode && config->variableFPS) {
             pthread_mutex_lock(&sleepLock);
-            if (additionalDelay > 1) {
-                cv::waitKey(additionalDelay);
-                // Utility::msleep(additionalDelay);
-            }
+            int sleepTime = 0;
+            sleepTime = additionalDelay;
             pthread_mutex_unlock(&sleepLock);
+            
+            if (sleepTime > 0) {
+                // Anything less than 10 milliseconds doesn't register well with std::chrono::steady_clock
+                Utility::msleep(sleepTime);
+            }
         }
 
         if (isSearching) {
@@ -928,9 +932,12 @@ void detectThread(Utility::param* parameters)
                 objY = roi.y + (roi.height / 2);
 
                 // Enter State data
-                auto now = std::chrono::high_resolution_clock::now();
-                double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
-                double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
+                auto wall_now = std::chrono::high_resolution_clock::now();
+                double timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_now - execbegin).count() * 1e-9;
+                
+                std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+                std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
+                double seconds_per_frame = std::clamp<double>(double(elapsed.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
                 
                 ED eventDataArray[2] {
                     {
@@ -940,7 +947,7 @@ void detectThread(Utility::param* parameters)
                         static_cast<double>(roi.height),
                         static_cast<double>(roi.y),
                         static_cast<double>(objY),
-                        elapsed,
+                        timestamp,
                         seconds_per_frame
                     },
                     {
@@ -950,7 +957,7 @@ void detectThread(Utility::param* parameters)
                         static_cast<double>(roi.width),
                         static_cast<double>(roi.x),
                         static_cast<double>(objX),
-                        elapsed,
+                        timestamp,
                         seconds_per_frame
                     }
                 };
@@ -987,6 +994,7 @@ void detectThread(Utility::param* parameters)
                     if (programStart || isSearching) {
                         for (auto res : results) {
                             
+                            // Pick the first one we see
                             if (std::find(targets.begin(), targets.end(), res.target) != targets.end()) {
                                 result = res;
                                 roi = result.boundingBox;
@@ -1007,37 +1015,31 @@ void detectThread(Utility::param* parameters)
                         }
                         
                         goto lostTracking;
-                    } else {
-                        // Vast magority of the time there will be overlap 
-                        // for (auto res : results) {
+                    } else {                
+                        if (results.size() > 1) {
                             
-                        //     if (std::find(targets.begin(), targets.end(), res.target) != targets.end()) {
-                        //         result = res;
-                        //         roi = result.boundingBox;
-                        //         currentTarget = result.target;
-                        //         break;
-                        //     }
-                        // }  
-                        // double bestIOU = 0.0;
-                        int bestDistance = config->dims[0];
-                    
-                        for (auto res : results) {
-                            
-                            // If they intersect
-                            // TODO:: Assumption below potentially wrong, use POT in the future
-                            if (currentTarget == res.target) {                                
+                            int bestDistance = config->dims[0];
+                            for (auto res : results) {
+                                // TODO:: Assumption below potentially wrong, use POT in the future
+                                if (currentTarget == res.target) {                                
 
-                                cv::Point2i a = res.center;
-                                cv::Point2i b = (roi.tl() + roi.br()) / 2;
-                                int distance = std::sqrt<int>( (a.x-b.x) * (a.x-b.x) + (a.y-b.y) * (a.y-b.y) );
+                                    cv::Point2i a = res.center;
+                                    cv::Point2i b = (roi.tl() + roi.br()) / 2;
+                                    int distance = std::sqrt<int>( (a.x-b.x) * (a.x-b.x) + (a.y-b.y) * (a.y-b.y) );
 
-                                if (distance <= bestDistance) {
-                                    bestDistance = distance;
-                                    result = res;
-                                    roi = result.boundingBox;
+                                    if (distance <= bestDistance) {
+                                        bestDistance = distance;
+                                        result = res;
+                                        roi = result.boundingBox;
+                                    }
                                 }
+                            } 
+                        } else {
+                            if (currentTarget == results[0].target) {
+                                result = results[0];
+                                roi = result.boundingBox;
                             }
-                        } 
+                        }
                     }
                 } 
                 
@@ -1057,9 +1059,12 @@ void detectThread(Utility::param* parameters)
                     objY = result.center.y;
                     
                     // Fill out state data
-                    auto now = std::chrono::high_resolution_clock::now();
-                    double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
-                    double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
+                    auto wall_now = std::chrono::high_resolution_clock::now();
+                    double timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_now - execbegin).count() * 1e-9;
+                    
+                    std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+                    std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
+                    double seconds_per_frame = std::clamp<double>(double(elapsed.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
 
                     ED eventDataArray[2] {
                         {
@@ -1069,7 +1074,7 @@ void detectThread(Utility::param* parameters)
                             static_cast<double>(roi.height),
                             static_cast<double>(roi.y),
                             static_cast<double>(objY),
-                            elapsed,
+                            timestamp,
                             seconds_per_frame
                         },
                         {
@@ -1079,7 +1084,7 @@ void detectThread(Utility::param* parameters)
                             static_cast<double>(roi.width),
                             static_cast<double>(roi.x),
                             static_cast<double>(objX),
-                            elapsed,
+                            timestamp,
                             seconds_per_frame
                         }
                     };
@@ -1119,9 +1124,13 @@ void detectThread(Utility::param* parameters)
                         // Enter state data
                         frameCenterX = frame.cols / 2;
                         frameCenterY = frame.rows / 2;
-                        auto now = std::chrono::high_resolution_clock::now();
-                        double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;
-                        double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
+                        
+                        auto wall_now = std::chrono::high_resolution_clock::now();
+                        double timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_now - execbegin).count() * 1e-9;
+                        
+                        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+                        std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
+                        double seconds_per_frame = std::clamp<double>(double(elapsed.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
 
                         ED eventDataArray[2] {
                             {
@@ -1131,7 +1140,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 0.0,
                                 static_cast<double>(frameCenterY * 2), // Max error
-                                elapsed,
+                                timestamp,
                                 seconds_per_frame
                             },
                             {
@@ -1141,7 +1150,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 0.0,
                                 static_cast<double>(frameCenterX * 2),
-                                elapsed,
+                                timestamp,
                                 seconds_per_frame
                             }
                         };
@@ -1151,7 +1160,7 @@ void detectThread(Utility::param* parameters)
                         } catch (...) {
                             throw std::runtime_error("cannot update event data");
                         }
-                    } else if (!isSearching and !programStart && trackCount > 3) {
+                    } else if (!isSearching && !programStart && trackCount > 3) {
                         // Get the prediction location of object relative to frame center
                         if (config->logOutput) {
                             std::cout << "Using Predictive Object Tracking: frame # " << std::to_string(lossCount) << std::endl;
@@ -1162,9 +1171,13 @@ void detectThread(Utility::param* parameters)
                         servos->getPredictedObjectLocation(locations);
                         frameCenterX = config->dims[1] / 2;
                         frameCenterY = config->dims[0] / 2;
-                        auto now = std::chrono::high_resolution_clock::now();
-                        double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;                        
-                        double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
+                        
+                        auto wall_now = std::chrono::high_resolution_clock::now();
+                        double timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_now - execbegin).count() * 1e-9;
+                        
+                        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+                        std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
+                        double seconds_per_frame = std::clamp<double>(double(elapsed.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
 
                         ED eventDataArray[2] {
                             {
@@ -1174,7 +1187,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 0.0,
                                 locations[0], // Predicted location
-                                elapsed,
+                                timestamp,
                                 seconds_per_frame
                             },
                             {
@@ -1184,7 +1197,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 0.0,
                                 locations[1],
-                                elapsed,
+                                timestamp,
                                 seconds_per_frame
                             }
                         };
@@ -1211,9 +1224,13 @@ void detectThread(Utility::param* parameters)
                         // Enter State data
                         frameCenterX = frame.cols / 2;
                         frameCenterY = frame.rows / 2;
-                        auto now = std::chrono::high_resolution_clock::now();
-                        double elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - execbegin).count() * 1e-9;                        
-                        double seconds_per_frame = ((double)std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count()) / 1000.0;
+                        
+                        auto wall_now = std::chrono::high_resolution_clock::now();
+                        double timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_now - execbegin).count() * 1e-9;
+                        
+                        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+                        std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
+                        double seconds_per_frame = std::clamp<double>(double(elapsed.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
 
                         ED eventDataArray[2] {
                             {
@@ -1223,7 +1240,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 0.0,
                                 static_cast<double>(frameCenterY * 2), 
-                                elapsed,
+                                timestamp,
                                 seconds_per_frame
                             },
                             {
@@ -1233,7 +1250,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 0.0,
                                 static_cast<double>(frameCenterX * 2),
-                                elapsed,
+                                timestamp,
                                 seconds_per_frame
                             }
                         };

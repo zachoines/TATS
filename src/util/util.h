@@ -4,6 +4,8 @@
 #include <string>
 #include <thread>
 #include <chrono>
+#include <errno.h>
+#include <time.h>
 
 #include <unistd.h>
 
@@ -22,7 +24,6 @@ namespace Utility {
 	static double roundToNearestTenth(double value){
 		return double(int(value * 10 + 0.5)) / 10;
 	}
-
 	
 	/***
 	 * @brief Returns true if object is headinig right/up, and false left/down 
@@ -42,6 +43,26 @@ namespace Utility {
 	 */
 	static void msleep(int milli) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(milli));
+	}
+
+	static int sleep_ms(long tms) {
+		struct timespec ts;
+		int ret;
+
+		if (tms < 0)
+		{
+			errno = EINVAL;
+			return -1;
+		}
+
+		ts.tv_sec = tms / 1000;
+		ts.tv_nsec = (tms % 1000) * 1000000;
+
+		do {
+			ret = nanosleep(&ts, &ts);
+		} while (ret && errno == EINTR);
+
+		return ret;
 	}
 
 	/***
@@ -227,7 +248,7 @@ namespace Utility {
 		* Different average vs. step reward graphs
 
 	*/
-	static double pidErrorToReward(int newError, int oldError, int center, bool done, double threshold = 0.05, bool alt = true) {
+	static double pidErrorToReward(int newError, int oldError, int center, bool done, bool alt = true, double threshold = 0.005) {
 		
 		// Rewards
 		double r1 = 0.0; // baseline error
@@ -320,6 +341,8 @@ namespace Utility {
 			} else {
 				r1 = - errorNewScaled;
 			}
+
+			//  r1 = - errorNewScaled;
 			
 			if (errorNewScaled <= errorOldScaled) {
 				r2 = 0.0;
@@ -329,7 +352,6 @@ namespace Utility {
 			}
 			
 			return done ? -2.0 : ((r1 * w1) + (r2 * w2));	
-	       
 		}	
 	}
 
@@ -356,7 +378,7 @@ namespace Utility {
 
 
 	*/
-	static double predictedObjectLocationToReward(int pred, int target, int max, bool done, double threshold = 0.05, bool alt = true) {
+	static double predictedObjectLocationToReward(int pred, int target, int max, bool done, bool alt = true, double threshold = 0.05) {
 
 		if (done) {
 			return -1.0;
@@ -365,12 +387,11 @@ namespace Utility {
 		if (alt) {
 			return Utility::mapOutput(1.0 - (std::abs(target - pred) / static_cast<double>(max)), 0.0, 1.0, -.5, .5);
 		} else {
-			double error = 1.0 - (static_cast<double>(std::abs(target - pred)) / static_cast<double>(max));
-
+			double error = (static_cast<double>(std::abs(target - pred)) / static_cast<double>(max));
 			if (error <= threshold) {
 				return 0.0;
 			} else {
-				return error;
+				return -error;
 			}
 		}
 	}

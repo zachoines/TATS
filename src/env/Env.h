@@ -41,6 +41,9 @@ namespace TATS {
         int _currentSteps; 
         bool _recentReset;
         int _preSteps;
+        int _maxPreSteps;
+        int _preStepAngleAmount;
+        double  _errorThreshold;
 
         PID* _pids[NUM_SERVOS];
 
