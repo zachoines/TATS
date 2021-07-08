@@ -68,8 +68,9 @@ Target acquisition and tracking system. The aim of this repo is to use various d
 * lib Boost
 	* Sudo apt-get install libboost
 
-* Unzip Yolo models
+* Unzip models
 	* tar -xvzf yoloModel.tar.gz
+	* tar -xvzf haarModel.tar.gz
 
 * Build TATS
 	* cmake . 
