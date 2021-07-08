@@ -288,18 +288,18 @@ namespace Utility {
 
             maxTrainingSessions(1),              // Number of training sessions on model params
             maxBufferSize(500000),               // Max size of buffer. When full, oldest elements are kicked out.
-            minBufferSize(1000),                 // Min replay buffer size before training size.
+            minBufferSize(2000),                 // Min replay buffer size before training size.
             maxTrainingSteps(500000),			 // Max training steps agent takes.
             numUpdates(5),                       // Num updates per training session.
             episodeEndCap(true),                 // End episode early
             maxStepsPerEpisode(250),             // Max number of steps in an episode
 
-            batchSize(128),                      // Network batch size.
-            initialRandomActions(true),          // Enable random actions.
-            numInitialRandomActions(1500),       // Number of random actions taken.
-            stepsWithPretrainedModel(false),     // After random steps, uses loaded save to perform steps in evaluation mode
+            batchSize(512),                      // Network batch size.
+            initialRandomActions(false),         // Enable random actions.
+            numInitialRandomActions(2500),       // Number of random actions taken.
+            stepsWithPretrainedModel(true),      // After random steps, uses loaded save to perform steps in evaluation mode
             numTransferLearningSteps(5000),      // Number of steps to take on a pre-trained model in evaluation mode, done after random steps
-            trainMode(true),                     // When autotuning is on, 'false' means network test mode.
+            trainMode(false),                    // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
             variableFPS(true),                   // Vary the FPS in training
             FPSVariance(35),                     // Average change in FPS
@@ -307,13 +307,13 @@ namespace Utility {
             resetAngleChance(0.05),              // Chance to randomly chance the current angle the servos are wating at
             varyResetAngles(true),               // vary reset angles diring training
             recheckFrequency(20),                // Num frames in-between revalidations of
-            lossCountMax(0),                     // Max number of rechecks before episode is considered over. 
+            lossCountMax(2),                     // Max number of rechecks before episode is considered over. 
                                                  // In the case of usePOT, MAX uses of predictive object tracking.
-            updateRate(7),                       // Servo updates, update commands per second
+            updateRate(8),                       // Servo updates, update commands per second
             trainRate(.25),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             
-            disableServo({ true, false }),       // Disable the { Y, X } servos
+            disableServo({ false, false }),      // Disable the { Y, X } servos
             invertData({ true, false }),         // Flip input data { Y, X } servos
             invertAngles({ false, false }),      // Flip output angles { Y, X } servos
             resetAngles({                        // Angle when reset
@@ -366,15 +366,16 @@ namespace Utility {
             // targets({"ArUco"}),
             // classes({"ArUco"})           
             
-            detector(DetectorType::CASCADE),
-            detectorPath("/models/haar/haarcascade_frontalface_default.xml"),
-            targets({"face"}),
-            classes({"face"})
+            // detector(DetectorType::CASCADE),
+            // detectorPath("/models/haar/haarcascade_frontalface_default.xml"),
+            // targets({"face"}),
+            // classes({"face"})
 
-            // detector(DetectorType::YOLO),
-            // detectorPath("/models/yolo/yolo5s6_uno.torchscript.pt"),
-            // targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
-            // classes({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"})
+            detector(DetectorType::YOLO),
+            // detectorPath("/models/yolo/yolo5m6_uno.torchscript.pt"),
+            detectorPath("/models/yolo/yolo5s6_uno_v2.torchscript.pt"),
+            targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
+            classes({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"})
 
             // detector(DetectorType::YOLO),
             // yoloPath("/models/yolo/yolov5s_coco.torchscript.pt"),

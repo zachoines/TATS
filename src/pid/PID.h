@@ -59,7 +59,6 @@ class PID
 
         std::chrono::steady_clock::time_point _currTime;
         std::chrono::steady_clock::time_point _prevTime;
-        std::chrono::steady_clock::duration _deltTime;
 
         double _prevError;
         double _sumError;

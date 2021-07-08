@@ -43,28 +43,8 @@ namespace Utility {
 	 */
 	static void msleep(int milli) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(milli));
-	}
-
-	static int sleep_ms(long tms) {
-		struct timespec ts;
-		int ret;
-
-		if (tms < 0)
-		{
-			errno = EINVAL;
-			return -1;
-		}
-
-		ts.tv_sec = tms / 1000;
-		ts.tv_nsec = (tms % 1000) * 1000000;
-
-		do {
-			ret = nanosleep(&ts, &ts);
-		} while (ret && errno == EINTR);
-
-		return ret;
-	}
-
+	} 
+	
 	/***
 	 * @brief Maps x from [in-range min, in-range max] to [out-range min, out-range max]
 	 * @param x Input value

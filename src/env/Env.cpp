@@ -15,14 +15,14 @@ namespace TATS {
         // Setup default env state variables
         _config = new Utility::Config();
         _currentSteps = 0;
-        _recentReset = true;
-        _preSteps = 0;
         _maxPreSteps = 2;
         _preStepAngleAmount = 0.0;
         _errorThreshold  = 0.005;
 
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             double setpoint = static_cast<double>(_config->dims[servo]) / 2.0;
+            _preSteps[servo] = 0;
+            _recentReset[servo] = true;
             _pids[servo] = new PID(	_config->defaultGains[0], 
                                     _config->defaultGains[1], 
                                     _config->defaultGains[2], 
@@ -132,9 +132,9 @@ namespace TATS {
 
     void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS])
     {
-        _recentReset = true;
-        _preSteps = 0;
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
+            _recentReset[servo] = true;
+            _preSteps[servo] = 0;
             if (_disableServo[servo]) {
                 continue;
             }
@@ -164,6 +164,7 @@ namespace TATS {
             if (_disableServo[servo]) {
                 continue;
             }
+            
             data.servos[servo].pidStateData = _pids[servo]->getState(true);
             data.servos[servo].obj = _currentData[servo].obj;
             data.servos[servo].frame = _currentData[servo].frame;
@@ -230,8 +231,9 @@ namespace TATS {
 
             if (!_config->usePIDs) {
 
-                if (!_recentReset) { 
-                    _preSteps = 0;
+                if (!_recentReset[servo]) { 
+                    _preSteps[servo] = 0;
+                    
                     // Derive output angle and object's next location from SAC output actions
                     stepResults.servos[servo].actions[0] = actions[servo][0];
 
@@ -282,11 +284,11 @@ namespace TATS {
                        
                     */
                     
-                    if (_preSteps >= _maxPreSteps) {
-                        _recentReset = false;
-                        _preSteps = 0;
+                    if (_preSteps[servo] >= _maxPreSteps) {
+                        _recentReset[servo] = false;
+                        _preSteps[servo] = 0;
                     } else {
-                        _preSteps++;
+                        _preSteps[servo]++;
                     }
                     
                     empty = true;
@@ -322,13 +324,13 @@ namespace TATS {
 
             double newAngle = 0.0;
             if (!_config->usePIDs) {
-                newAngle = Utility::roundToNearestTenth(rescaledActions[servo][0]);
-                // newAngle = rescaledActions[servo][0];
+                // newAngle = Utility::roundToNearestTenth(rescaledActions[servo][0]);
+                newAngle = rescaledActions[servo][0];
             }
             else {
                 _pids[servo]->setWeights(rescaledActions[servo][0], rescaledActions[servo][1], rescaledActions[servo][2]);
-                newAngle = Utility::roundToNearestTenth(_pids[servo]->update(_currentData[servo].obj, _invertData[servo]));
-                // newAngle = _pids[servo]->update(_currentData[servo].obj, _invertData[servo]);
+                // newAngle = Utility::roundToNearestTenth(_pids[servo]->update(_currentData[servo].obj, _invertData[servo]));
+                newAngle = _pids[servo]->update(_currentData[servo].obj, _invertData[servo]);
             }
 
             _lastAngles[servo] = _currentAngles[servo];

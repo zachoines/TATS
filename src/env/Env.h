@@ -39,11 +39,11 @@ namespace TATS {
         double _outputs[NUM_SERVOS][ERROR_LIST_SIZE] = { 0.0 };
         double _predObjLoc[NUM_SERVOS] = { 0.0 };
         int _currentSteps; 
-        bool _recentReset;
-        int _preSteps;
+        bool _recentReset[NUM_SERVOS];
+        int _preSteps[NUM_SERVOS];
         int _maxPreSteps;
         int _preStepAngleAmount;
-        double  _errorThreshold;
+        double _errorThreshold;
 
         PID* _pids[NUM_SERVOS];
 

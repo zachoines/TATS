@@ -58,8 +58,7 @@ double PID::update(double input, bool invert) {
     
     // Delta time
     _currTime = std::chrono::steady_clock::now();
-    _deltTime = _currTime - _prevTime;
-    _deltaTime = std::clamp<double>(double(_deltTime.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
+    _deltaTime = std::chrono::duration<double>(_currTime - _prevTime).count();
 
     // Error
     double error = (invert) ? _setpoint - input : input - _setpoint;

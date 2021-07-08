@@ -35,6 +35,7 @@ namespace control {
         double millis = Utility::mapOutput(angle, s.minAngle, s.maxAngle, s.minMs / 1000.0, s.maxMs / 1000.0);
         int ticks = secondsToTicks(millis);
         _pwm->setPWM(s.servoNum, 0, ticks);
+        // Utility::msleep(10);
     }
 
     void ServoKit::setMsRange(int servo, double low, double high) {

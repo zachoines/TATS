@@ -136,11 +136,11 @@ int main(int argc, char** argv)
         // std::string pipeline = Utility::gstreamer_pipeline(0, 1920, 1080, 1920, 1080, 60, 2);
         // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
         
-        // camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
-        camera = new cv::VideoCapture(0, cv::CAP_V4L2);
+        camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
+        // camera = new cv::VideoCapture(0, cv::CAP_V4L2);
         camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
         camera->set(cv::CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
-        camera->set(cv::CAP_PROP_AUTOFOCUS, 0 );
+        // camera->set(cv::CAP_PROP_AUTOFOCUS, 0 );
         
         // Setup threads and PIDS
         pidAutoTuner = new SACAgent(config->numInput, config->numHidden, config->numActions, config->actionHigh, config->actionLow);
@@ -514,22 +514,20 @@ void panTiltThread(Utility::param* parameters) {
                     trainData[servo] = stepResults.servos[servo];
                     trainData[servo].currentState = currentState[servo];
                     currentState[servo] = trainData[servo].nextState;
+
+                    // If servo is disabled, null record
+                    if (trainData[servo].empty) {
+                        continue;
+                    }
                     
                     if (config->trainMode) {
-                        
-                        // If servo is disabled, null record
-                        if (trainData[servo].empty) {
-                            continue;
-                        } else {
-                            if (initialRandomActions && !updated) {
-                                updated = true;
-                                numInitialRandomActions--;
-                            }
 
-                            if (stepsWithPretrainedModel && !updated) {
-                                updated = true;
-                                numTransferLearningSteps--;
-                            }
+                        if (initialRandomActions && !updated) {
+                            updated = true;
+                            numInitialRandomActions--;
+                        } else if (stepsWithPretrainedModel && !updated) {
+                            updated = true;
+                            numTransferLearningSteps--;
                         }
 
                         // If early episode termination
@@ -599,33 +597,34 @@ void panTiltThread(Utility::param* parameters) {
                     // Debug output
                     if (config->logOutput) {
                         double state[NUM_INPUT];
-                        std::cout << "Here is the next state: ";
+                        std::cout << (servo ? "Pan step info:" : "Tilt step info:") << std::endl;
+                        std::cout << "Next State: ";
                         trainData[servo].nextState.getStateArray(state);
                         for (int j = 0; j < NUM_INPUT; j++) {
                             std::cout << std::to_string(state[j]) << ", ";
                         }
                         std::cout << std::endl;
 
-                        std::cout << "Here is the current state: ";
+                        std::cout << "Current State: ";
                         trainData[servo].currentState.getStateArray(state);
                         for (int j = 0; j < NUM_INPUT; j++) {
                             std::cout << std::to_string(state[j]) << ", ";
                         }
                         std::cout << std::endl;
 
-                        std::cout << "Here is the fps delay: ";
+                        std::cout << "FPS Delay: ";
                         std::cout << std::to_string(additionalDelay);
                         std::cout << std::endl;
 
-                        std::cout << "Here is reward: ";
+                        std::cout << "Reward: ";
                         std::cout << std::to_string(trainData[servo].reward);
                         std::cout << std::endl;
 
-                        std::cout << "Here is the done: ";
+                        std::cout << "Done: ";
                         std::cout << std::to_string(trainData[servo].done);
                         std::cout << std::endl;
 
-                        std::cout << "Here are the actions: ";
+                        std::cout << "Actions: ";
 
                         if (config->usePIDs) {
                             for (int j = 0; j < NUM_ACTIONS; j++) {
@@ -639,7 +638,7 @@ void panTiltThread(Utility::param* parameters) {
                                 std::cout << std::to_string(Utility::rescaleAction(trainData[servo].actions[1], 0.0, config->dims[servo])) << std::endl;
                             }
 
-                            std::cout << "Here are the errors: ";
+                            std::cout << "Errors: ";
                             std::cout << std::to_string(trainData[servo].errors[0]) << " "; 
                             if (config->usePOT) {
                                 std::cout << std::to_string(trainData[servo].errors[1]);
@@ -710,7 +709,7 @@ void panTiltThread(Utility::param* parameters) {
             } else {
                 doneCount++;
 
-                if (doneCount >= config->resetAfterNInnactiveFrames) {
+                if (doneCount >= config->resetAfterNInnactiveFrames && config->resetAfterNInnactiveFrames > 0) {
                     if (config->trainMode) {
                         double newAngles[NUM_SERVOS] = { 0.0 };
                         for (int servo = 0; servo < NUM_SERVOS; servo++) {
@@ -864,7 +863,7 @@ void detectThread(Utility::param* parameters)
             pthread_mutex_unlock(&sleepLock);
             
             if (sleepTime > 0) {
-                // Anything less than 10 milliseconds doesn't register well with std::chrono::steady_clock
+                // Note: Anything less than 10 milliseconds doesn't register well with std::chrono::steady_clock
                 Utility::msleep(sleepTime);
             }
         }
@@ -937,7 +936,7 @@ void detectThread(Utility::param* parameters)
                 
                 std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
                 std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
-                double seconds_per_frame = std::clamp<double>(double(elapsed.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
+                double spf = std::chrono::duration<double>(now - detectLoopStart).count();
                 
                 ED eventDataArray[2] {
                     {
@@ -948,7 +947,7 @@ void detectThread(Utility::param* parameters)
                         static_cast<double>(roi.y),
                         static_cast<double>(objY),
                         timestamp,
-                        seconds_per_frame
+                        spf
                     },
                     {
                         false,
@@ -958,7 +957,7 @@ void detectThread(Utility::param* parameters)
                         static_cast<double>(roi.x),
                         static_cast<double>(objX),
                         timestamp,
-                        seconds_per_frame
+                        spf
                     }
                 };
 
@@ -1038,7 +1037,7 @@ void detectThread(Utility::param* parameters)
                             if (currentTarget == results[0].target) {
                                 result = results[0];
                                 roi = result.boundingBox;
-                            }
+                            } 
                         }
                     }
                 } 
@@ -1064,7 +1063,7 @@ void detectThread(Utility::param* parameters)
                     
                     std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
                     std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
-                    double seconds_per_frame = std::clamp<double>(double(elapsed.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
+                    double spf = std::chrono::duration<double>(now - detectLoopStart).count();
 
                     ED eventDataArray[2] {
                         {
@@ -1075,7 +1074,7 @@ void detectThread(Utility::param* parameters)
                             static_cast<double>(roi.y),
                             static_cast<double>(objY),
                             timestamp,
-                            seconds_per_frame
+                            spf
                         },
                         {
                             false,
@@ -1085,7 +1084,7 @@ void detectThread(Utility::param* parameters)
                             static_cast<double>(roi.x),
                             static_cast<double>(objX),
                             timestamp,
-                            seconds_per_frame
+                            spf
                         }
                     };
 
@@ -1130,7 +1129,7 @@ void detectThread(Utility::param* parameters)
                         
                         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
                         std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
-                        double seconds_per_frame = std::clamp<double>(double(elapsed.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
+                        double spf = std::chrono::duration<double>(now - detectLoopStart).count();
 
                         ED eventDataArray[2] {
                             {
@@ -1141,7 +1140,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 static_cast<double>(frameCenterY * 2), // Max error
                                 timestamp,
-                                seconds_per_frame
+                                spf
                             },
                             {
                                 true,
@@ -1151,7 +1150,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 static_cast<double>(frameCenterX * 2),
                                 timestamp,
-                                seconds_per_frame
+                                spf
                             }
                         };
                         
@@ -1177,7 +1176,7 @@ void detectThread(Utility::param* parameters)
                         
                         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
                         std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
-                        double seconds_per_frame = std::clamp<double>(double(elapsed.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
+                        double spf = std::chrono::duration<double>(now - detectLoopStart).count();
 
                         ED eventDataArray[2] {
                             {
@@ -1188,7 +1187,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 locations[0], // Predicted location
                                 timestamp,
-                                seconds_per_frame
+                                spf
                             },
                             {
                                 false,
@@ -1198,7 +1197,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 locations[1],
                                 timestamp,
-                                seconds_per_frame
+                                spf
                             }
                         };
                         
@@ -1230,7 +1229,7 @@ void detectThread(Utility::param* parameters)
                         
                         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
                         std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
-                        double seconds_per_frame = std::clamp<double>(double(elapsed.count()) * std::chrono::steady_clock::period::num / std::chrono::steady_clock::period::den, 0.0, 1.0);
+                        double spf = std::chrono::duration<double>(now - detectLoopStart).count();
 
                         ED eventDataArray[2] {
                             {
@@ -1241,7 +1240,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 static_cast<double>(frameCenterY * 2), 
                                 timestamp,
-                                seconds_per_frame
+                                spf
                             },
                             {
                                 true,
@@ -1251,7 +1250,7 @@ void detectThread(Utility::param* parameters)
                                 0.0,
                                 static_cast<double>(frameCenterX * 2),
                                 timestamp,
-                                seconds_per_frame
+                                spf
                             }
                         };
                         
