@@ -68,6 +68,9 @@ Target acquisition and tracking system. The aim of this repo is to use various d
 * lib Boost
 	* Sudo apt-get install libboost
 
+* Unzip Yolo models
+	* tar -xvzf yoloModel.tar.gz
+
 * Build TATS
 	* cmake . 
 		* May need to set CMAKE_PREFIX_PATH for libtorch in CMakeLists.txt
