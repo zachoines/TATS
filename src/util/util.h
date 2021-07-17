@@ -6,6 +6,7 @@
 #include <chrono>
 #include <errno.h>
 #include <time.h>
+#include <fcntl.h>
 
 #include <unistd.h>
 
@@ -14,7 +15,66 @@
 #include "opencv2/video/tracking.hpp"
 #include "opencv2/tracking.hpp"
 
+#define SYSFS_GPIO_DIR "/sys/class/gpio"
+#define POLL_TIMEOUT (3 * 1000) /* 3 seconds */
+#define MAX_BUF 64
+
 namespace Utility {
+
+	static int gpioExport ( unsigned int gpio )
+	{
+		int fileDescriptor, length;
+		char commandBuffer[MAX_BUF];
+
+		fileDescriptor = open(SYSFS_GPIO_DIR "/export", O_WRONLY);
+		if (fileDescriptor < 0) {
+			char errorBuffer[128] ;
+			snprintf(errorBuffer,sizeof(errorBuffer), "gpioExport unable to open gpio%d",gpio) ;
+			perror(errorBuffer);
+			return fileDescriptor;
+		}
+
+		length = snprintf(commandBuffer, sizeof(commandBuffer), "%d", gpio);
+		if (write(fileDescriptor, commandBuffer, length) != length) {
+			perror("gpioExport");
+			return fileDescriptor ;
+
+		}
+		close(fileDescriptor);
+
+		return 0;
+	}
+
+	static int gpioSetDirection ( unsigned int gpio, unsigned int out_flag )
+	{
+		int fileDescriptor;
+		char commandBuffer[MAX_BUF];
+
+		snprintf(commandBuffer, sizeof(commandBuffer), SYSFS_GPIO_DIR  "/gpio%d/direction", gpio);
+
+		fileDescriptor = open(commandBuffer, O_WRONLY);
+		if (fileDescriptor < 0) {
+			char errorBuffer[128] ;
+			snprintf(errorBuffer,sizeof(errorBuffer), "gpioSetDirection unable to open gpio%d",gpio) ;
+			perror(errorBuffer);
+			return fileDescriptor;
+		}
+
+		if (out_flag) {
+			if (write(fileDescriptor, "out", 4) != 4) {
+				perror("gpioSetDirection") ;
+				return fileDescriptor ;
+			}
+		}
+		else {
+			if (write(fileDescriptor, "in", 3) != 3) {
+				perror("gpioSetDirection") ;
+				return fileDescriptor ;
+			}
+		}
+		close(fileDescriptor);
+		return 0;
+	}
 
 	/***
 	 * @brief Rounds to the nearest tenth 
