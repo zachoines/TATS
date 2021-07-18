@@ -241,7 +241,7 @@ namespace Utility {
         double trainRate;
         bool logOutput;
         bool variableFPS;
-        double FPSVariance;
+        int FPSVariance;
         double varyFPSChance;
         double resetAngleVariance;
         double resetAngleChance;

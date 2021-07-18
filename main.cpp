@@ -95,13 +95,58 @@ int main(int argc, char** argv)
         if (config.trainMode) {
             radioThread.detach();
             trackingThread.detach();
-            targetTrackingSystem.syncThread(parameters); // Blocking call
+
+            // The below loops is the sync for multiprocess training of TATS
+            // Setup signal mask
+            sigset_t  mask;
+            siginfo_t info;
+            pid_t     child, p;
+            int       signum;
+
+            sigemptyset(&mask);
+            sigaddset(&mask, SIGINT);
+            sigaddset(&mask, SIGHUP);
+            sigaddset(&mask, SIGTERM);
+            sigaddset(&mask, SIGQUIT);
+            sigaddset(&mask, SIGUSR1);
+            sigaddset(&mask, SIGUSR2);
+
+            if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
+                throw std::runtime_error("Cannot block SIGUSR1 or SIGUSR2");
+            }
+
+            // Loop for syncing parent network params
+            while (true) {
+                
+                // Wait until sync signal is received
+                signum = sigwaitinfo(&mask, &info);
+                if (signum == -1) {
+                    if (errno == EINTR)
+                        continue;
+                    std::runtime_error("Parent process: sigwaitinfo() failed");
+                }
+
+                // Update weights on signal received from autotune thread
+                if (signum == SIGUSR1 && info.si_pid == pid) {
+                    try {
+                        targetTrackingSystem.syncTATS();
+                    } catch (...) {
+                        throw std::runtime_error("Cannot sync network parameters with auto-tune process");
+                    }
+                }
+
+                // Break when on SIGINT
+                if (signum == SIGINT && !info.si_pid == parameters->pid) {
+                    std::cout << "Ctrl+C detected!" << std::endl;
+                    break;
+                }
+            }
         } else {
             radioThread.join();
             trackingThread.join();
         }  
 
-        // Terminate and wait for child processes on exit
+        // Terminate and wait for child processesbefore exit
         kill(pid, SIGQUIT);
         if (wait(NULL) != -1) {
             return 0;
@@ -147,19 +192,20 @@ int main(int argc, char** argv)
         targetTrackingSystem.init(pid);
 
         // Wait on parent process' signal before training
-        while ((sig_value1 != SIGINT) && (sig_value1 != SIGTERM) && (sig_value1 != SIGSEGV) && (sig_value1 != SIGTSTP))
-        {
+        while (
+            (sig_value1 != SIGINT) && 
+            (sig_value1 != SIGTERM) && 
+            (sig_value1 != SIGSEGV) && 
+            (sig_value1 != SIGTSTP)) {
+            
             sig_value1 = 0;
 
-            // Sleep until signal is caught; train model on waking
-        start:
-            
+            // Sleep until signal is caught; train model on wakin            
             sigsuspend(&zeromask);
 
             if (sig_value1 == SIGUSR1) {
 
                 std::cout << "Train signal received..." << std::endl;
-                bool isTraining = true;
 
                 // Begin training process
                 while (!targetTrackingSystem.trainTATSChildProcess()) {
@@ -171,6 +217,8 @@ int main(int argc, char** argv)
                     long milis = static_cast<long>(1000.0 / rate);
                     msleep(milis);
                 }
+
+                return 0;
             }
         }
     }
