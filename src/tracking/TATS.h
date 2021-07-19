@@ -71,8 +71,7 @@ private:
     pthread_mutex_t __sleepLock = PTHREAD_MUTEX_INITIALIZER;
 
     Utility::Config  __config;
-    SACAgent* __pidAutoTunerParent = nullptr;
-    SACAgent* __pidAutoTunerChild = nullptr;
+    SACAgent* __pidAutoTuner = nullptr;
     Env* __servos = nullptr;
     pid_t __pid = -1;
     bool __parentMode;

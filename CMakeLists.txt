@@ -1,9 +1,5 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
-
-# SET(CMAKE_PREFIX_PATH "/home/zachoines/Documents/pytorch/build/lib.linux-aarch64-3.6")
 SET(CMAKE_PREFIX_PATH "/usr/local/lib/python3.6/dist-packages/torch")
-# SET(CMAKE_PREFIX_PATH "/usr/local/lib")
-# SET(CMAKE_MODULE_PATH "/home/zachoines/Documents/repos/rf24libs/")
 SET(GCC_COVERAGE_COMPILE_FLAGS "-g")
 add_definitions(${GCC_COVERAGE_COMPILE_FLAGS})
 
@@ -21,7 +17,7 @@ add_definitions(-DTORCH_VERSION_PATCH=${Torch_VERSION_PATCH})
 
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 
-file(GLOB_RECURSE SOURCES "main.cpp" "./src/*/*.cpp" "./src/*/*.h")
+file(GLOB_RECURSE SOURCES "./examples/rc_robot_with_target_detection_and_tracking.cpp" "./src/*/*.cpp" "./src/*/*.h")
 add_executable(TATS ${SOURCES})
 
 target_link_libraries(TATS "${TORCH_LIBRARIES}")

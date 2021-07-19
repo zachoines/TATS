@@ -101,6 +101,14 @@ TATS::TATS(Utility::Config config) {
     __actionHigh = __config.actionHigh; 
     __actionLow = __config.actionLow;
     __numInput =__config.numInput;
+
+    __pidAutoTuner = new SACAgent(
+        __numInput, 
+        __numHidden, 
+        __numActions, 
+        __actionHigh, 
+        __actionLow
+    );
 }
 
 void TATS::init(int pid) {
@@ -146,18 +154,9 @@ void TATS::init(int pid) {
             default : 
                 __detector = new Detect::CascadeDetector(__weights);
         }
-            
-        // Setup threads and PIDS
-        __pidAutoTunerParent = new SACAgent(
-            __numInput, 
-            __numHidden, 
-            __numActions, 
-            __actionHigh, 
-            __actionLow
-        );
 
         if (!__trainMode) {
-            __pidAutoTunerParent->eval();
+            __pidAutoTuner->eval();
         }
 
         __panTiltT = new std::thread(&TATS::__panTiltThread, this);
@@ -181,13 +180,6 @@ void TATS::init(int pid) {
             __replayBuffer = new ReplayBuffer(__config.maxBufferSize, __sharedTrainingBuffer);
             __s = segment.find_or_construct<sharedString>("SharedString")("", segment.get_segment_manager());
         }
-        __pidAutoTunerChild = new SACAgent(
-            __numInput, 
-            __numHidden, 
-            __numActions, 
-            __actionHigh, 
-            __actionLow
-        );
     }
 }
 
@@ -669,7 +661,7 @@ void TATS::__panTiltThread() {
                             }
                         } else if (__stepsWithPretrainedModel && __numTransferLearningSteps > 0) {
                             __currentState[i].getStateArray(__stateArray);
-                            at::Tensor actions = __pidAutoTunerParent->get_action(torch::from_blob(__stateArray, { 1, __numInput }, options), true);
+                            at::Tensor actions = __pidAutoTuner->get_action(torch::from_blob(__stateArray, { 1, __numInput }, options), true);
                             actions.to(torch::kCPU);
                             if (__numActions > 1) {
                                 auto actions_a = actions.accessor<double, 1>();
@@ -693,7 +685,7 @@ void TATS::__panTiltThread() {
                             
                             // Perform Inference, get action(s) 
                             __currentState[i].getStateArray(__stateArray);
-                            at::Tensor actions = __pidAutoTunerParent->get_action(torch::from_blob(__stateArray, { 1, __numInput }, options), true);
+                            at::Tensor actions = __pidAutoTuner->get_action(torch::from_blob(__stateArray, { 1, __numInput }, options), true);
                             actions.to(torch::kCPU);
                             if (__numActions > 1) {
                                 auto actions_a = actions.accessor<double, 1>();
@@ -708,7 +700,7 @@ void TATS::__panTiltThread() {
                     }
                     else {
                         __currentState[i].getStateArray(__stateArray);
-                        at::Tensor actions = __pidAutoTunerParent->get_action(torch::from_blob(__stateArray, { 1, __numInput }, options), false);
+                        at::Tensor actions = __pidAutoTuner->get_action(torch::from_blob(__stateArray, { 1, __numInput }, options), false);
                         actions.to(torch::kCPU);
                         if (__numActions > 1) {
                             auto actions_a = actions.accessor<double, 1>();
@@ -939,7 +931,7 @@ void TATS::__autoTuneThread()
             int startingRange = std::min<int>( N - N * std::pow(n_i, static_cast<double>(k) * (1000.0 / __numUpdates)), cmin);
 
             TrainBuffer batch = __replayBuffer->ere_sample(__batchSize, startingRange);
-            __pidAutoTunerParent->update(batch.size(), &batch);
+            __pidAutoTuner->update(batch.size(), &batch);
             
         }
 
@@ -958,7 +950,7 @@ void TATS::syncTATS() {
     }
 
     try {
-        __pidAutoTunerParent->load_policy(__s);
+        __pidAutoTuner->load_policy(__s);
     } catch (...) {
         throw std::runtime_error("Cannot refrech SAC network parameters");
     }
@@ -995,12 +987,12 @@ bool TATS::trainTATSChildProcess()  {
             int startingRange = std::min<int>( N - N * std::pow(n_i, static_cast<double>(k) * (1000.0 / __numUpdates)), cmin);
 
             Utility::TrainBuffer batch = __replayBuffer->ere_sample(__batchSize, startingRange);
-            __pidAutoTunerChild->update(batch.size(), &batch);
+            __pidAutoTuner->update(batch.size(), &batch);
         }
 
         // Write values to shared memory for parent to read
         try {
-            __pidAutoTunerChild->save_policy(__s);
+            __pidAutoTuner->save_policy(__s);
         } catch (...) {
             throw std::runtime_error("Cannot save policy params to shared memory array");
         }
