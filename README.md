@@ -8,15 +8,13 @@ Target acquisition and tracking system. The aim of this repo is to use various d
 * libboost 1.61.0
 * OpenCV 4.4.0
 
-## Technology Highlights
+## Highlights
 * Target detection 
 	* Choice of cascade models, RCNN models, or Yolo5 models.
 * Advance PID autotuning 
-	* Soft Actor Critic Reinforcement learning optimizes gains
+	* Soft Actor Critic Reinforcement learning optimizes PID gains for fast response rates.
 * Predictive object tracking
-	* AI model predicts potential next locations for temporarily occluded objects 
-
-## Benefits
+	* AI model predicts fiture locations for occluded objects 
 * Dynamically responds to first order and second order movement characteristics (constant speed vs. accelerating objects)
 * Avoids setpoint oscillation common in traditional PID systems
 * Performance optimized with fast C++ api's, asynchronous multithreading, and multiprocessing.
@@ -34,51 +32,25 @@ Target acquisition and tracking system. The aim of this repo is to use various d
 ## Installation
 * Navigate to choice of build directory
     * cd /home/{username}
+
 * Make Python3 Env
-	* sudo apt-get install python3-venv
+	* sudo -H apt-get install python3-venv
 	* sudo python3 -m venv env
 	* source env/bin/activate 
-* OpenCV 4 c++
-	* [Here](https://cv-tricks.com/installation/opencv-4-1-ubuntu18-04/) is an excellent walkthrough of the process.
 
-* Pytorch c++
-	* Install from source
-		* git clone http://github.com/pytorch/pytorch
-		* cd pytorch
-		* sudo pip3 install -U setuptools
-		* sudo pip3 install -r requirements.txt
-		* git submodule update --init --recursive
-		* Set args (For Jetson)
-			* export USE_NCCL=0
-			* export DEBUG=1
-			* export USE_DISTRIBUTED=0      
-			* export USE_QNNPACK=0
-			* export USE_CUDA=1
-			* export USE_PYTORCH_QNNPACK=0
-			* export TORCH_CUDA_ARCH_LIST="5.3;6.2;7.2"
-			* export PYTORCH_BUILD_VERSION=1.7.1
-			* export PYTORCH_BUILD_NUMBER=0
-			* export NO_QNNPACK=1
-			* export BUILD_TEST=0
-		* sudo python3 setup.py develop
-        * sudo python3 setup.py install
-	* Can also use Python3 libs to build TATS
-		* On jetson platform, install pytorch from (Nvidia Jetson Wheels)[https://forums.developer.nvidia.com/t/pytorch-for-jetson-version-1-7-0-now-available/72048]
+* Pytorch 1.7.0 & OpenCV 4.4
+	* ./install-opencv.sh
+	* ./install-pytorch.sh	
 
 * lib Boost
-	* Sudo apt-get install libboost
+	* sudo apt install libboost-dev=1.65.*
 
 * Unzip models
 	* tar -xvzf yoloModel.tar.gz
 	* tar -xvzf haarModel.tar.gz
 
-* Build TATS
+* Build and Run TATS
 	* cmake . 
-		* May need to set CMAKE_PREFIX_PATH for libtorch in CMakeLists.txt
+		* May need to set CMAKE_PREFIX_PATH for libtorch in CMakeLists.txt to its Python3 library locatiion
     * make TATS
     
-* Run install
-    * May need to set search path for libtorch if there are linker errors when running
-		* From source - export LD_LIBRARY_PATH={base path here}/pytorch/build/lib:$LD_LIBRARY_PATH 
-		* Python libs - export LD_LIBRARY_PATH={base path here}/python3.6/site-packages/torch/:$LD_LIBRARY_PATH 
-    * ./TATS
