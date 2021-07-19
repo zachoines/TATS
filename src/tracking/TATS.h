@@ -13,21 +13,14 @@
 #include <vector>
 #include <iostream>
 #include <chrono>
-// #include <csignal>
 #include <random>
-// #include <ctime>
 #include <thread>
 #include <algorithm>
 
 
 // OpenCV imports
-// #include "opencv2/opencv.hpp"
-// #include "opencv2/core/core.hpp"
-// #include "opencv2/core/ocl.hpp"
-// #include "opencv2/imgcodecs.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/videoio/videoio.hpp"
-// #include "opencv2/video/video.hpp"
 #include "opencv2/video/tracking.hpp"
 #include "opencv2/tracking.hpp"
 
@@ -77,7 +70,6 @@ private:
     pthread_mutex_t __trainLock = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_t __sleepLock = PTHREAD_MUTEX_INITIALIZER;
 
-    Utility::param* __parameters = nullptr;
     Utility::Config  __config;
     SACAgent* __pidAutoTunerParent = nullptr;
     SACAgent* __pidAutoTunerChild = nullptr;

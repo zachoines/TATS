@@ -106,7 +106,7 @@ TATS::TATS(Utility::Config config) {
 void TATS::init(int pid) {
 
     using namespace Utility;
-    __parameters->pid = pid;
+    __pid = pid;
 
     // Parent process
     if (pid > 0) {
@@ -623,7 +623,6 @@ void TATS::update(cv::Mat& frame) {
 // TODO: Seperate panTiltThread into a trainThread and evaluationThread functons....
 void TATS::__panTiltThread() {
 
-    Utility::param* parameters = this->__parameters;
     if (!__parentMode) {
         throw std::runtime_error("autoTuneThread can only run from a parent process");
     }
@@ -785,7 +784,7 @@ void TATS::__panTiltThread() {
                             if (!__isTraining && __replayBuffer->size() > (__minBufferSize)) {
                                 std::cout << "Sending train signal..." << std::endl;
                                 __isTraining = true;
-                                kill(parameters->pid, SIGUSR1);
+                                kill(this->__pid, SIGUSR1);
                             } 
                         } else if (!__isTraining && __replayBuffer->size() > (__minBufferSize)) {
                             // Inform autotune thread start training 
@@ -898,7 +897,6 @@ void TATS::__panTiltThread() {
 
 void TATS::__autoTuneThread()
 {
-    Utility::param* parameters = this->__parameters;
 
     if (!__parentMode) {
         throw std::runtime_error("autoTuneThreadcan only run from a parent process");
