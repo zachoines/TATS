@@ -1,25 +1,10 @@
-// C Libs
-#include <signal.h>
-#include <stdio.h>      /* printf, NULL */
-#include <stdlib.h>     /* srand, rand */
-#include <time.h>       /* time */
-
-// Sensor libs
-#include "RF24/RF24.h"
-
-// Opencv inpots
-#include "opencv2/opencv.hpp"
-#include "opencv2/videoio/videoio.hpp"
-#include "opencv2/video/video.hpp"
-
-// Local imports
-#include "./src/TATS/TATS.h"
+#include "./src/tracking/TATS.h"
+#include <RF24/RF24.h> 
+#include <sys/prctl.h>  /* prctl */
 
 // Local Function hoisting
 unsigned long getTimestamp(struct Signal& s);
 int mapSpeeds(int val);
-void radioThread(Utility::param* parameters);
-void trackingThread(Utility::param* parameters);
 
 // Signal handlers
 static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* context);
@@ -55,28 +40,17 @@ struct Signal {
   }
 };
 
-// Gobal variables for threads
-cv::VideoCapture* camera = nullptr;
-RF24* radio = nullptr;
-TATS::Config* config = nullptr
-Utility::param* parameters = nullptr;
 
-int main(int argc, char** argv)
-{
-    using namespace Utility;
-    using namespace TATS;
-    using namespace cv;
-    using namespace std;
+int main(int argc, char** argv) {
 
     srand( (unsigned)time( NULL ) );
 
-    // Other loops variables
+    // Pointers here
+    Utility::param* parameters = new Utility::Parameter();
+    Utility::Config* config = new Utility::Config();
+    TATS* targetTrackingSystem = new TATS(*config);
     pid_t pid = -1;
-    Signal oldData;
-    Signal newData; 
 
-    config = new Config();
-    TATS targetTrackingSystem(&config);
     
     // Parent process is image recognition PID/servo controller, second is SAC PID Autotuner
     if (config->multiProcess && config->trainMode) {
@@ -87,65 +61,128 @@ int main(int argc, char** argv)
 
     if (pid > 0) {
         // initialize as a parent TATS instance
-        targetTrackingSystem.init(pid);
+        targetTrackingSystem->init(pid);
         parameters->pid = pid;
-        std::thread radioThread(radioThread, parameters);
-        std::thread cameraThread(trackingThread, parameters);
+        std::thread radioThreadT([&] {
+            // RF24 inits
+            uint8_t address[] = { 0xE6, 0xE6, 0xE6, 0xE6, 0xE6 };
+            uint8_t pipe = 0;
+            uint16_t spiBus = 1;
+            uint16_t CE_GPIO = 481;
+            RF24 radio(CE_GPIO, spiBus); // SPI Bus 1 (0 or 1) and GPIO17_40HEADER (pin 22)
 
-        if (config.trainMode) {
-            radioThread.detach();
-            trackingThread.detach();
-
-            // The below loops is the sync for multiprocess training of TATS
-            // Setup signal mask
-            sigset_t  mask;
-            siginfo_t info;
-            pid_t     child, p;
-            int       signum;
-
-            sigemptyset(&mask);
-            sigaddset(&mask, SIGINT);
-            sigaddset(&mask, SIGHUP);
-            sigaddset(&mask, SIGTERM);
-            sigaddset(&mask, SIGQUIT);
-            sigaddset(&mask, SIGUSR1);
-            sigaddset(&mask, SIGUSR2);
-
-            if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
-                throw std::runtime_error("Cannot block SIGUSR1 or SIGUSR2");
+            Signal oldData;
+            Signal newData; 
+            
+            // Check radio
+            if (!radio.begin(CE_GPIO, spiBus)) {
+                std::cout << "radio hardware is not responding!!" << std::endl;
+                throw std::runtime_error("Radio failde to initialize!");
+            } else {
+                radio.openReadingPipe(pipe, address);
+                radio.startListening(); // Set to radio receiver mode
             }
 
-            // Loop for syncing parent network params
-            while (true) {
-                
-                // Wait until sync signal is received
-                signum = sigwaitinfo(&mask, &info);
-                if (signum == -1) {
-                    if (errno == EINTR)
-                        continue;
-                    std::runtime_error("Parent process: sigwaitinfo() failed");
+            // Main program loop
+            while(true) {
+                if ( radio.available(&pipe) ) {
+                    oldData = newData;
+                    radio.read(&newData.buffer, 8);
+
+                    if (getTimestamp(newData) != getTimestamp(oldData)) {
+                        std::cout << "We have a match!!" << std::endl;
+                    }
+
+                    std::cout << std::to_string(mapSpeeds(newData.buffer[data::wLeft])) << std::endl;
+                    std::cout << std::to_string(mapSpeeds(newData.buffer[data::wRight])) << std::endl;
+                } 
+            }       
+        });
+        
+        std::thread trackingThreadT([&] {
+            cv::VideoCapture* camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
+            camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
+            camera->set(cv::CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
+
+            // Check Camera
+            if (!camera->isOpened()) {
+                throw std::runtime_error("cannot initialize camera");
+            } else {
+                if (Utility::GetImageFromCamera(camera).empty())
+                {
+                    throw std::runtime_error("Issue reading frame!");
+                }
+            }
+
+            // Register TATS event callbacks and initialize
+            targetTrackingSystem->init(parameters->pid);
+
+            while(true) {
+                cv::Mat image = Utility::GetImageFromCamera(camera);
+                // targetTrackingSystem->update(&image);
+
+                if (config->showVideo) {
+                    cv::imshow("Viewport", image);
+                    cv::waitKey(1);
+                }
+            }
+        });
+
+        std::thread syncThread([&] {
+            if (config->trainMode) {
+
+                // The below loops is the sync for multiprocess training of TATS
+                // Setup signal mask
+                sigset_t  mask;
+                siginfo_t info;
+                pid_t     child, p;
+                int       signum;
+
+                sigemptyset(&mask);
+                sigaddset(&mask, SIGINT);
+                sigaddset(&mask, SIGHUP);
+                sigaddset(&mask, SIGTERM);
+                sigaddset(&mask, SIGQUIT);
+                sigaddset(&mask, SIGUSR1);
+                sigaddset(&mask, SIGUSR2);
+
+                if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
+                    throw std::runtime_error("Cannot block SIGUSR1 or SIGUSR2");
                 }
 
-                // Update weights on signal received from autotune thread
-                if (signum == SIGUSR1 && info.si_pid == pid) {
-                    try {
-                        targetTrackingSystem.syncTATS();
-                    } catch (...) {
-                        throw std::runtime_error("Cannot sync network parameters with auto-tune process");
+                // Loop for syncing parent network params
+                while (true) {
+                    
+                    // Wait until sync signal is received
+                    signum = sigwaitinfo(&mask, &info);
+                    if (signum == -1) {
+                        if (errno == EINTR)
+                            continue;
+                        std::runtime_error("Parent process: sigwaitinfo() failed");
+                    }
+
+                    // Update weights on signal received from autotune thread
+                    if (signum == SIGUSR1 && info.si_pid == pid) {
+                        try {
+                            targetTrackingSystem->syncTATS();
+                        } catch (...) {
+                            throw std::runtime_error("Cannot sync network parameters with auto-tune process");
+                        }
+                    }
+
+                    // Break when on SIGINT
+                    if (signum == SIGINT && !info.si_pid == parameters->pid) {
+                        std::cout << "Ctrl+C detected!" << std::endl;
+                        break;
                     }
                 }
+            }    
+        });
 
-                // Break when on SIGINT
-                if (signum == SIGINT && !info.si_pid == parameters->pid) {
-                    std::cout << "Ctrl+C detected!" << std::endl;
-                    break;
-                }
-            }
-        } else {
-            radioThread.join();
-            trackingThread.join();
-        }  
-
+        radioThreadT.join();
+        trackingThreadT.join();
+        syncThread.join();
+        
         // Terminate and wait for child processesbefore exit
         kill(pid, SIGQUIT);
         if (wait(NULL) != -1) {
@@ -189,7 +226,7 @@ int main(int argc, char** argv)
         sig_value1 = 0;
 
         // initialize as a child TATS instance
-        targetTrackingSystem.init(pid);
+        targetTrackingSystem->init(pid);
 
         // Wait on parent process' signal before training
         while (
@@ -208,14 +245,14 @@ int main(int argc, char** argv)
                 std::cout << "Train signal received..." << std::endl;
 
                 // Begin training process
-                while (!targetTrackingSystem.trainTATSChildProcess()) {
+                while (!targetTrackingSystem->trainTATSChildProcess()) {
         
                     // Inform parent new params are available
                     kill(getppid(), SIGUSR1);
 
                     // Sleep per train rate
-                    long milis = static_cast<long>(1000.0 / rate);
-                    msleep(milis);
+                    long milis = static_cast<long>(1000.0 / config->trainRate);
+                    Utility::msleep(milis);
                 }
 
                 return 0;
@@ -224,13 +261,11 @@ int main(int argc, char** argv)
     }
 }
 
-
 static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* context)
 {
     // Take care of all segfaults
     if (sig_number == SIGSEGV || sig_number == SIGTSTP || sig_number == SIGINT)
     {
-        camera->release();
         kill(getpid(), SIGKILL);
     }
 
@@ -261,67 +296,4 @@ unsigned long getTimestamp(struct Signal& s) {
   timestamp_converter.buffer[3] = s.buffer[data::t4];
 
   return timestamp_converter.timestamp;
-}
-
-void trackingThread(Utility::param* parameters) {
-    camera = new VideoCapture(0, CAP_GSTREAMER);
-    camera->set(CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
-    camera->set(CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
-
-    // Check Camera
-    if (!camera->isOpened()) {
-        throw std::runtime_error("cannot initialize camera");
-    } else {
-        if (GetImageFromCamera(camera).empty())
-        {
-            throw std::runtime_error("Issue reading frame!");
-        }
-    }
-
-    // Register TATS event callbacks and initialize
-    targetTrackingSystem.init(parameters->pid);
-
-    while(true) {
-        cv::Mat image = GetImageFromCamera(camera);
-        targetTrackingSystem.update(&image);
-
-        if (showVideo) {
-            cv::imshow("Viewport", frame);
-            cv::waitKey(1);
-        }
-    }
-}
-
-void radioThread(Utility::param* parameters) {
-    
-    // RF24 inits
-    uint8_t address[] = { 0xE6, 0xE6, 0xE6, 0xE6, 0xE6 };
-    uint8_t pipe = 0;
-    uint16_t spiBus = 1;
-    uint16_t CE_GPIO = 481;
-    RF24 radio = new RF24(CE_GPIO, spiBus); // SPI Bus 1 (0 or 1) and GPIO17_40HEADER (pin 22)
-    
-    // Check radio
-    if (!radio.begin(CE_GPIO, spiBus)) {
-        std::cout << "radio hardware is not responding!!" << std::endl;
-        throw std::runtime_error("Radio failde to initialize!");
-    } else {
-        radio.openReadingPipe(pipe, address);
-        radio.startListening(); // Set to radio receiver mode
-    }
-
-    // Main program loop
-    while(true) {
-        if ( radio.available(&pipe) ) {
-            oldData = newData;
-            radio.read(&newData.buffer, 8);
-
-            if (getTimestamp(newData) != getTimestamp(oldData)) {
-                std::cout << "We have a match!!" << std::endl;
-            }
-
-            std::cout << std::to_string(mapSpeeds(newData.buffer[data::wLeft])) << std::endl;
-            std::cout << std::to_string(mapSpeeds(newData.buffer[data::wRight])) << std::endl;
-        } 
-    }        
 }

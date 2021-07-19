@@ -7,11 +7,10 @@
 #include <errno.h>
 #include <time.h>
 #include <fcntl.h>
-
 #include <unistd.h>
 
-#include "opencv2/opencv.hpp"
-#include "opencv2/core/core.hpp"
+#include "opencv2/video/video.hpp"
+#include "opencv2/videoio/videoio.hpp"
 #include "opencv2/video/tracking.hpp"
 #include "opencv2/tracking.hpp"
 
