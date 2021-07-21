@@ -1,11 +1,10 @@
 #include "./../wire/Wire.h"
 
-
 namespace control {
   // Class based on https://github.com/adafruit/Adafruit-PWM-Servo-Driver-Library/
 
   #pragma once
-
+  
   // REGISTER ADDRESSES
   #define PCA9685_MODE1 0x00      /**< Mode Register 1 */
   #define PCA9685_MODE2 0x01      /**< Mode Register 2 */
@@ -73,7 +72,7 @@ namespace control {
   private:
     uint8_t _i2caddr;
     Wire *_i2c;
-
+    std::mutex _lock;
     uint32_t _oscillator_freq;
     uint8_t read8(uint8_t addr);
     void write8(uint8_t addr, uint8_t d);

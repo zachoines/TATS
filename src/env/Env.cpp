@@ -1,15 +1,11 @@
 #include "Env.h"
 
-Env::Env()
+Env::Env(control::ServoKit* servos)
 {
     _eventData;
     _lastData;
     _currentData;
-
-    // Setup I2C and PWM for servos
-    _wire = new control::Wire();
-    _pwm = new control::PCA9685(0x40, _wire);
-    _servos = new control::ServoKit(_pwm);
+    _servos = servos;
 
     // Setup default env state variables
     _config = new Utility::Config();
@@ -46,9 +42,6 @@ Env::Env()
 }
 
 Env::~Env() {
-    delete _wire;
-    delete _pwm;
-    delete _servos;
     delete _config;
 }
 

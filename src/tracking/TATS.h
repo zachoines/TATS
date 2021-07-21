@@ -39,9 +39,7 @@
 #include "../detection/RCNNDetector.h"
 #include "../detection/YoloDetector.h"
 #include "../detection/ArucoDetector.h"
-#include "../wire/Wire.h"
 #include "../servo/PCA9685.h"
-#include "../servo/ServoKit.h"
 #include "../util/util.h"
 #include "../util/config.h"
 #include "../network/SACAgent.h"
@@ -203,7 +201,7 @@ private:
     std::thread* __autoTuneT;
 
 public:
-    TATS(Utility::Config config);
+    TATS(Utility::Config config, control::ServoKit* servos);
     ~TATS();
     void init(int pid);
     void update(cv::Mat& frame);

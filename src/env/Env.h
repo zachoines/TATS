@@ -18,6 +18,7 @@ private:
     std::mutex _lock;
     std::condition_variable _cond;
     Utility::cfg* _config;
+    control::ServoKit* _servos;
 
     int _frameSkip;
     double _lastTimeStamp[NUM_SERVOS];
@@ -67,12 +68,8 @@ private:
      */
     void _resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS]); // Resets servos and re-inits PID's. Call only once manually.
 
-    control::Wire* _wire;
-    control::PCA9685* _pwm;
-    control::ServoKit* _servos;
-
 public:
-    Env();
+    Env(control::ServoKit* servos);
     ~Env();
 
     /***

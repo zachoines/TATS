@@ -20,6 +20,11 @@
 
 namespace Utility {
 
+	/***
+	 * @brief exports a GPIO pin to /sys/class/gpio
+	 * @param GPIO toexport
+	 * @return status code
+	 */
 	static int gpioExport ( unsigned int gpio )
 	{
 		int fileDescriptor, length;
@@ -44,6 +49,12 @@ namespace Utility {
 		return 0;
 	}
 
+	/***
+	 * @brief Set GPIO to output or input modes
+	 * @param gpio pin on 40h to set direction on 
+	 * @param out_flag direction of GPIO pin
+	 * @return status code
+	 */
 	static int gpioSetDirection ( unsigned int gpio, unsigned int out_flag )
 	{
 		int fileDescriptor;
@@ -72,6 +83,18 @@ namespace Utility {
 			}
 		}
 		close(fileDescriptor);
+		return 0;
+	}
+
+	/***
+	 * @brief Set GPIO value
+	 * @param gpio Pin on 40-pin header to set value of
+	 * @param value Writes 0 or 1 to GPIO
+	 * @return status code
+	 */
+	static int gpioSetValue ( unsigned int gpio, unsigned int value )
+	{
+		// TODO::Someday
 		return 0;
 	}
 

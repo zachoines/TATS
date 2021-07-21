@@ -42,13 +42,15 @@ struct Signal {
 
 
 int main(int argc, char** argv) {
-
     srand( (unsigned)time( NULL ) );
 
     // Pointers here
     Utility::param* parameters = new Utility::Parameter();
     Utility::Config* config = new Utility::Config();
-    TATS* targetTrackingSystem = new TATS(*config);
+    control::Wire* wire = new control::Wire();
+    control::PCA9685* pwm = new control::PCA9685(0x40, wire);
+    control::ServoKit* servos = new control::ServoKit(pwm);
+    TATS* targetTrackingSystem = new TATS(*config, servos);
     pid_t pid = -1;
 
     
@@ -62,7 +64,6 @@ int main(int argc, char** argv) {
     if (pid > 0) {
         // initialize as a parent TATS instance
         targetTrackingSystem->init(pid);
-        parameters->pid = pid;
         std::thread radioThreadT([&] {
             // RF24 inits
             uint8_t address[] = { 0xE6, 0xE6, 0xE6, 0xE6, 0xE6 };
@@ -77,7 +78,7 @@ int main(int argc, char** argv) {
             // Check radio
             if (!radio.begin(CE_GPIO, spiBus)) {
                 std::cout << "radio hardware is not responding!!" << std::endl;
-                throw std::runtime_error("Radio failde to initialize!");
+                throw std::runtime_error("Radio faild to initialize!");
             } else {
                 radio.openReadingPipe(pipe, address);
                 radio.startListening(); // Set to radio receiver mode
@@ -90,11 +91,11 @@ int main(int argc, char** argv) {
                     radio.read(&newData.buffer, 8);
 
                     if (getTimestamp(newData) != getTimestamp(oldData)) {
-                        std::cout << "We have a match!!" << std::endl;
+                        double wls = mapSpeeds(newData.buffer[data::wLeft]);
+                        double wrs = mapSpeeds(newData.buffer[data::wRight]);
+                        pwm->writeMicroseconds(0, wls);
+                        pwm->writeMicroseconds(1, wrs);
                     }
-
-                    std::cout << std::to_string(mapSpeeds(newData.buffer[data::wLeft])) << std::endl;
-                    std::cout << std::to_string(mapSpeeds(newData.buffer[data::wRight])) << std::endl;
                 } 
             }       
         });
@@ -114,12 +115,9 @@ int main(int argc, char** argv) {
                 }
             }
 
-            // Register TATS event callbacks and initialize
-            targetTrackingSystem->init(parameters->pid);
-
             while(true) {
                 cv::Mat image = Utility::GetImageFromCamera(camera);
-                // targetTrackingSystem->update(&image);
+                targetTrackingSystem->update(image);
 
                 if (config->showVideo) {
                     cv::imshow("Viewport", image);
@@ -180,7 +178,7 @@ int main(int argc, char** argv) {
         });
 
         radioThreadT.join();
-        trackingThreadT.join();
+        // trackingThreadT.join();
         syncThread.join();
         
         // Terminate and wait for child processesbefore exit
@@ -280,7 +278,7 @@ int mapSpeeds(int val) {
 
   // Not one-to-one mapping of microseconds on lower and upper speed ranges
   if (clipped < middle) {
-    adjusted = Utility::mapOutput(clipped, 0, middle, 455, 1550); 
+    adjusted = Utility::mapOutput(clipped, 0, middle, 490, 1550); 
   } else {
     adjusted = Utility::mapOutput(clipped, middle, max, 1550, 2250);
   }

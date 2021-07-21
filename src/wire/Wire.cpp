@@ -1,12 +1,3 @@
-#include <fcntl.h>
-#include <linux/i2c.h>
-#include <linux/i2c-dev.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
-#include <string>
-#include <iostream>
 #include "Wire.h"
 
 
@@ -36,14 +27,12 @@ namespace control {
         msgset[0].nmsgs = 1;
 
         if (ioctl(i2cDevice, I2C_RDWR, &msgset) < 0) {
-            // throw std::runtime_error("Could not open write to device");
-            std::cout << "Could not open write to device" << std::endl;
+            throw std::runtime_error("Could not open write to device");
         }
     }
 
     // Read the given I2C slave device's register and return the read value in `*result`:
     void Wire::read8(uint8_t addr, uint8_t reg, uint8_t *result) {
-
         int retval;
         uint8_t outbuf[1], inbuf[1];
         struct i2c_rdwr_ioctl_data msgset[1];
@@ -62,8 +51,7 @@ namespace control {
 
         *result = 0;
         if (ioctl(i2cDevice, I2C_RDWR, &msgset) < 0) {
-            // throw std::runtime_error("Could not read from device");
-            std::cout << "Could not read from device" << std::endl;
+            throw std::runtime_error("Could not read from device");
         }
 
         *result = inbuf[0];
@@ -114,8 +102,7 @@ namespace control {
         
         // Send message
         if (ioctl(i2cDevice, I2C_RDWR, &i2c_data) < 0) {
-            // throw std::runtime_error("Could not read from device");
-            std::cout << "Could not read/write from device" << std::endl;
+            throw std::runtime_error("Could not read/write from device");
         }
     }
 

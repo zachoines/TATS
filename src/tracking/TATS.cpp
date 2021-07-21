@@ -7,7 +7,7 @@ TATS::~TATS() {
     delete __autoTuneT;
 }
 
-TATS::TATS(Utility::Config config) {
+TATS::TATS(Utility::Config config, control::ServoKit* servos) {
     using namespace Utility;
     
     __config = config;
@@ -97,7 +97,7 @@ TATS::TATS(Utility::Config config) {
 
     // Network variables
     __numHidden = __config.numHidden;
-    __numActions = __numActions; 
+    __numActions = __config.numActions; 
     __actionHigh = __config.actionHigh; 
     __actionLow = __config.actionLow;
     __numInput =__config.numInput;
@@ -109,6 +109,8 @@ TATS::TATS(Utility::Config config) {
         __actionHigh, 
         __actionLow
     );
+
+    __servos = new Env(servos);
 }
 
 void TATS::init(int pid) {
@@ -117,9 +119,8 @@ void TATS::init(int pid) {
     __pid = pid;
 
     // Parent process
-    if (pid > 0) {
+    if (pid > 0 && !__initialized) {
 
-        __servos = new Env();
         __parentMode = true;
         __initialized = true;
 
