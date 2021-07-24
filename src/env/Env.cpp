@@ -13,6 +13,7 @@ Env::Env(control::ServoKit* servos)
     _maxPreSteps = 2;
     _preStepAngleAmount = 0.0;
     _errorThreshold  = 0.005;
+    _updated = false;
 
     for (int servo = 0; servo < NUM_SERVOS; servo++) {
         double setpoint = static_cast<double>(_config->dims[servo]) / 2.0;
@@ -55,7 +56,7 @@ void Env::_syncEnv(double rate)
 {
     _sleep(rate);
 
-    std::unique_lock<std::mutex> lck(_lock);
+    std::unique_lock<std::mutex> lck(_dataLock);
 
     // Sleep for specified time and Wait for env to respond to changes
     try {
@@ -66,7 +67,7 @@ void Env::_syncEnv(double rate)
             }				
 
             while (_eventData[servo].timestamp == _lastTimeStamp[servo]) {
-                _cond.wait(lck);
+                _dataCondition.wait(lck);
             }
 
             _lastData[servo] = _currentData[servo];
@@ -83,9 +84,17 @@ void Env::_syncEnv(double rate)
     }
 }
 
+void Env::waitForUpdate(){
+    std::unique_lock<std::mutex> lck(_updateLock);
+    while (!_updated) {
+        _updateCondition.wait(lck);
+    }
+    lck.unlock();
+}
+
 void Env::update(Utility::ED eventDataArray[NUM_SERVOS]) {
     
-    std::unique_lock<std::mutex> lck(_lock);
+    std::unique_lock<std::mutex> lck(_dataLock);
     try
     {
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
@@ -97,7 +106,7 @@ void Env::update(Utility::ED eventDataArray[NUM_SERVOS]) {
         }
         
         lck.unlock();
-        _cond.notify_all();
+        _dataCondition.notify_all();
     }
     catch(const std::exception& e)
     {
@@ -147,6 +156,8 @@ void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS])
 
 Utility::RD Env::reset(bool useCurrentAngles)
 {
+    std::unique_lock<std::mutex> lck(_updateLock);
+    _updated = false;
     _resetEnv(useCurrentAngles, _currentAngles);
     _syncEnv();
 
@@ -172,10 +183,16 @@ Utility::RD Env::reset(bool useCurrentAngles)
         _predObjLoc[servo] = 0.0;
     }
 
+    _updated = true;
+    lck.unlock();
+    _updateCondition.notify_all();
     return data;
 }
 
 Utility::RD Env::reset(double angles[NUM_SERVOS]) {
+    std::unique_lock<std::mutex> lck(_updateLock);
+    _updated = false;
+
     _resetEnv(true, angles);
     _syncEnv();
 
@@ -201,6 +218,10 @@ Utility::RD Env::reset(double angles[NUM_SERVOS]) {
         _predObjLoc[servo] = 0.0;
     }
 
+    _updated = true;
+    lck.unlock();
+    _updateCondition.notify_all();
+
     return data;
 }
 
@@ -211,6 +232,9 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
     _currentSteps = (_currentSteps + 1) % INT_MAX; 
     double rescaledActions[NUM_SERVOS][NUM_ACTIONS];
     bool empty = false;
+
+    std::unique_lock<std::mutex> lck(_updateLock);
+    _updated = false;
 
     Utility::SR stepResults;
     
@@ -388,6 +412,10 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
             stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
         }
     }
+    
+    _updated = true;
+    lck.unlock();
+    _updateCondition.notify_all();
 
     return stepResults;
 }
@@ -411,7 +439,7 @@ void Env::getCurrentState(Utility::SD state[NUM_SERVOS]) {
 }
 
 void Env::getCurrentAngle(double angles[NUM_SERVOS]) {
-    std::unique_lock<std::mutex> lck(_lock);
+    std::unique_lock<std::mutex> lck(_dataLock);
     try
     {
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
@@ -432,7 +460,7 @@ void Env::getCurrentAngle(double angles[NUM_SERVOS]) {
 }
 
 void Env::getPredictedObjectLocation(double locations[NUM_SERVOS]) {
-    std::unique_lock<std::mutex> lck(_lock);
+    std::unique_lock<std::mutex> lck(_dataLock);
     try
     {
         for (int servo = 0; servo < NUM_SERVOS; servo++) {

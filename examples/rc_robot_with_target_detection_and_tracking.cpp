@@ -40,17 +40,23 @@ struct Signal {
   }
 };
 
+Utility::param* parameters = nullptr;
+Utility::Config* config = nullptr;
+control::Wire* wire = nullptr;
+control::PCA9685* pwm = nullptr;
+control::ServoKit* servos = nullptr;
+control::TATS* targetTrackingSystem = nullptr;
 
-int main(int argc, char** argv) {
+int main() {
     srand( (unsigned)time( NULL ) );
 
     // Pointers here
-    Utility::param* parameters = new Utility::Parameter();
-    Utility::Config* config = new Utility::Config();
-    control::Wire* wire = new control::Wire();
-    control::PCA9685* pwm = new control::PCA9685(0x40, wire);
-    control::ServoKit* servos = new control::ServoKit(pwm);
-    TATS* targetTrackingSystem = new TATS(*config, servos);
+    parameters = new Utility::Parameter();
+    config = new Utility::Config();
+    wire = new control::Wire();
+    pwm = new control::PCA9685(0x40, wire);
+    servos = new control::ServoKit(pwm);
+    targetTrackingSystem = new control::TATS(*config, servos);
     pid_t pid = -1;
 
     
@@ -62,8 +68,29 @@ int main(int argc, char** argv) {
     }
 
     if (pid > 0) {
+        
+        // Register event callbacks
+        std::function<void(control::INFO const&)> searchCallback = [](control::INFO event) {
+            // TODO:: Logic that moves motors and servos in a search pattern
+        };
+
+        std::function<void(control::INFO const&)> updateCallback = [](control::INFO event) {
+            // TODO:: Logic that moves car towards the target given angle and distance (If seperate lidar sensor is attached to servos)
+        };
+
+        std::function<void(control::INFO const&)> lossCallback = [](control::INFO event) {
+            // TODO:: Logic that precedes a search routine
+            pwm->writeMicroseconds(2, 1500); // for example reset motors
+            pwm->writeMicroseconds(3, 1500);
+        };
+
+        targetTrackingSystem->registerCallback(control::EVENT::ON_SEARCH, searchCallback);
+        targetTrackingSystem->registerCallback(control::EVENT::ON_UPDATE, updateCallback);
+        targetTrackingSystem->registerCallback(control::EVENT::ON_LOST, lossCallback);
+        
         // initialize as a parent TATS instance
         targetTrackingSystem->init(pid);
+
         std::thread radioThreadT([&] {
             // RF24 inits
             uint8_t address[] = { 0xE6, 0xE6, 0xE6, 0xE6, 0xE6 };
@@ -178,10 +205,10 @@ int main(int argc, char** argv) {
         });
 
         radioThreadT.join();
-        // trackingThreadT.join();
+        trackingThreadT.join();
         syncThread.join();
         
-        // Terminate and wait for child processesbefore exit
+        // Terminate and wait for child processes before exit
         kill(pid, SIGQUIT);
         if (wait(NULL) != -1) {
             return 0;

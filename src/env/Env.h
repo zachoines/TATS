@@ -15,8 +15,10 @@ class Env
 {
 private:
 
-    std::mutex _lock;
-    std::condition_variable _cond;
+    std::mutex _dataLock;
+    std::condition_variable _dataCondition;
+    std::mutex _updateLock;
+    std::condition_variable _updateCondition;
     Utility::cfg* _config;
     control::ServoKit* _servos;
 
@@ -28,6 +30,7 @@ private:
     Utility::ED _currentData[NUM_SERVOS] = {{}};
     Utility::SD _stateData[NUM_SERVOS] = {{}};
 
+    bool _updated;
     bool _invertData[NUM_SERVOS];
     bool _invertAngles[NUM_SERVOS];
     bool _disableServo[NUM_SERVOS];
@@ -122,6 +125,12 @@ public:
      * @return void
      */
     void update(Utility::ED eventDataArray[NUM_SERVOS]);
+
+    /***
+     * @brief Called from another thread. Blocks until servos update.
+     * @return void
+     */
+    void waitForUpdate();
 
     /***
      * @brief Retrieves current state data of env
