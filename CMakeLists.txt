@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 SET(CMAKE_PREFIX_PATH "/usr/local/lib/python3.6/dist-packages/torch")
+// SET(CMAKE_PREFIX_PATH "/home/zachoines/.local/lib/python3.6/site-packages/torch")
 SET(GCC_COVERAGE_COMPILE_FLAGS "-g")
 add_definitions(${GCC_COVERAGE_COMPILE_FLAGS})
 
