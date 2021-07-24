@@ -27,7 +27,8 @@ namespace control {
         msgset[0].nmsgs = 1;
 
         if (ioctl(i2cDevice, I2C_RDWR, &msgset) < 0) {
-            throw std::runtime_error("Could not open write to device");
+            /// throw std::runtime_error("Could not open write to device");
+            std::cout << "Could not open write to device" << std::endl;
         }
     }
 
@@ -51,7 +52,8 @@ namespace control {
 
         *result = 0;
         if (ioctl(i2cDevice, I2C_RDWR, &msgset) < 0) {
-            throw std::runtime_error("Could not read from device");
+            // throw std::runtime_error("Could not read from device");
+            std::cout << "Could not read from device" << std::endl;
         }
 
         *result = inbuf[0];
