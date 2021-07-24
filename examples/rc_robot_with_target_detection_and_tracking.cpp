@@ -5,7 +5,9 @@
 
 // Local Function hoisting
 unsigned long getTimestamp(struct Signal& s);
-int mapSpeeds(int val);
+
+// Maps 8-bit unsigned value to pwm signal
+int mapSpeeds(unsigned char val, int pwm_min, int pwm_mid, int pwm_max);
 
 // Signal handlers
 static void sig_handler_child(const int sig_number, siginfo_t* sig_info, void* context);
@@ -123,8 +125,8 @@ int main() {
                     radio.read(&newData.buffer, 8);
 
                     if (getTimestamp(newData) != getTimestamp(oldData)) {
-                        double wls = mapSpeeds(newData.buffer[data::wLeft]);
-                        double wrs = mapSpeeds(newData.buffer[data::wRight]);
+                        double wls = mapSpeeds(newData.buffer[data::wLeft], 750, 1500, 2250);
+                        double wrs = mapSpeeds(newData.buffer[data::wRight], 750, 1500, 2250);
                         pwm->writeMicroseconds(0, wls);
                         pwm->writeMicroseconds(1, wrs);
                     }
@@ -313,20 +315,21 @@ static void sig_handler_parent(int signum) {
     stopFlag = true;
 }
 
-int mapSpeeds(int val) {
-  int adjusted;
-  int max = 255;
-  int middle = max / 2;
-  int clipped = std::clamp(val, 0, max);
+int mapSpeeds(unsigned char val, int pwm_min=750, int pwm_mid=1500, int pwm_max=2250) {
 
-  // Not one-to-one mapping of microseconds on lower and upper speed ranges
-  if (clipped < middle) {
-    adjusted = Utility::mapOutput(clipped, 0, middle, 490, 1550); 
-  } else {
-    adjusted = Utility::mapOutput(clipped, middle, max, 1550, 2250);
-  }
+    int adjusted;
+    int max = 255;
+    int middle = 127;
+    int clipped = std::clamp(static_cast<int>(val), 0, max);
 
-  return adjusted;
+    // Not one-to-one mapping of microseconds on lower and upper speed ranges
+    if (clipped <= middle) {
+    adjusted = Utility::mapOutput(clipped, 0, middle, pwm_min, pwm_mid); 
+    } else {
+    adjusted = Utility::mapOutput(clipped, middle + 1, max, pwm_mid, pwm_max);
+    }
+
+    return adjusted;
 }
 
 unsigned long getTimestamp(struct Signal& s) {
