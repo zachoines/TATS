@@ -2,10 +2,13 @@
 
 namespace control {
     TATS::~TATS() {
-        if (__panTiltT->joinable()) { __panTiltT->join(); }
-        if (__autoTuneT->joinable()) { __autoTuneT->join(); }
+        __stopFlag = true;
+        __panTiltT->join();
+        __autoTuneT->join();
+        __eventCallT->join();
         delete __panTiltT;
         delete __autoTuneT;
+        delete __eventCallT;
     }
 
     TATS::TATS(Utility::Config config, control::ServoKit* servos) {
@@ -13,6 +16,7 @@ namespace control {
         
         __config = config;
         __numberServos = 2;
+        __stopFlag = false;
 
         // Set up stats paths and files
         __path = get_current_dir_name();
@@ -59,6 +63,7 @@ namespace control {
         __lossCountMax = __config.lossCountMax;
         __targets = __config.targets;
         __currentTarget = ""; 
+        __targetId = -1;
 
         // Training variables
         __trainMode = __config.trainMode;
@@ -84,7 +89,7 @@ namespace control {
         __maxStepsPerEpisode = __config.maxStepsPerEpisode;
         __resetAfterNInnactiveFrames = __config.resetAfterNInnactiveFrames;
 
-        // ERE Sampling variabled
+        // ERE Sampling variables
         __N0 = 0.996;
         __NT = 1.0;
         __T = __config.maxTrainingSteps;
@@ -116,13 +121,6 @@ namespace control {
 
     void TATS::registerCallback(EVENT eventType, std::function<void(control::INFO const&)> callback) {
         eventCallbacks[static_cast<int>(eventType)] = callback;
-    }
-
-    void TATS::__triggerCallback(EVENT eventType, INFO event){
-        int e = static_cast<int>(eventType);
-        if(eventCallbacks[e]) {
-            eventCallbacks[e](event);
-        }
     }
 
     void TATS::init(int pid) {
@@ -174,7 +172,7 @@ namespace control {
             }
 
             __panTiltT = new std::thread(&TATS::__panTiltThread, this);
-            __pingEnvT = new std::thread(&TATS::__pingEnvThread, this);
+            __eventCallT = new std::thread(&TATS::__eventCallbackThread, this);
 
             if (__multiProcess && __trainMode) {
                 __autoTuneT = new std::thread(&TATS::__autoTuneThread, this);
@@ -195,6 +193,8 @@ namespace control {
     }
 
     void TATS::update(cv::Mat& frame) {
+
+        std::unique_lock<std::mutex> lck(__eventLock);
         
         if (!__parentMode) {
             throw std::runtime_error("Can only run update from an instance of TATS in a parent process");
@@ -252,6 +252,7 @@ namespace control {
                     __lossCount++;
                     __trackCount = 0;
                     __currentTarget = "";
+                    __targetId = -1;
                     goto detect;
                 }
 
@@ -351,14 +352,7 @@ namespace control {
                                 result = res;
                                 __roi = result.boundingBox;
                                 __currentTarget = result.target;
-
-
-                                // INFO event = INFO();
-                                // __servos->getCurrentAngle(angles);
-                                // event.x = angles[1];
-                                // event.y = angles[0];
-                                // event.id = res.label;
-                                // __triggerCallback(EVENT::ON_DETECT, event);
+                                __targetId = result.label;
                                 break;
                             }
                         }         
@@ -381,7 +375,8 @@ namespace control {
                             int bestDistance = __config.dims[0];
                             for (auto res : __results) {
                                 // TODO:: Assumption below potentially wrong, use POT in the future
-                                if (__currentTarget == res.target) {                                
+                                if (__currentTarget == res.target) {   
+
                                     // TODO:: Trigger target detect event
                                     cv::Point2i a = res.center;
                                     cv::Point2i b = (__roi.tl() + __roi.br()) / 2;
@@ -406,18 +401,6 @@ namespace control {
                 
                 // If we confidently found the object we are looking for
                 if (result.found) {
-                    
-                    // Tigger target update event
-                    double angles[__numberServos];
-                    __servos->getCurrentAngle(angles);
-                    INFO event = INFO(
-                        angles[1], 
-                        angles[0], 
-                        result.label,
-                        0.0,
-                        true
-                    );
-                    __triggerCallback(EVENT::ON_UPDATE, event);
                     
                     // Update loop variants
                     __programStart = false;
@@ -647,6 +630,8 @@ namespace control {
             std::cerr << e.what() << std::endl;
             throw std::runtime_error("Issue detecting target from image");
         }
+
+        lck.unlock();
     }
 
     void TATS::__panTiltThread() {
@@ -678,7 +663,7 @@ namespace control {
             __currentState[servo] = __resetResults.servos[servo];
         }
 
-        while (true) {
+        while (true && !__stopFlag) {
             
             if (__useAutoTuning) {
 
@@ -946,7 +931,7 @@ namespace control {
         }
         pthread_mutex_unlock(&__trainLock);
 
-        while (__isTraining) {
+        while (__isTraining && !__stopFlag) {
 
             double N = static_cast<double>(__replayBuffer->size());
             __t_i += 1;
@@ -976,7 +961,7 @@ namespace control {
         }
     }
 
-    void TATS::__pingEnvThread() {
+    void TATS::__eventCallbackThread() {
         if (!__parentMode) {
             throw std::runtime_error("pingEnvThread can only run from a parent process");
         }
@@ -985,25 +970,27 @@ namespace control {
             throw std::runtime_error("init(pid) must be called be for other functions are executed");
         }
 
-        while (true) {
+        while (!__stopFlag) {
+            
             // Block until new update from ENV, then trigger newest event.
             __servos->waitForUpdate();
-            std::unique_lock<std::mutex> lck(__eventLock);
-            // __eventId = static_cast<int>(EVENT::ON_SEARCH)
-        
-            // double angles[__numberServos];
-            // __servos->getCurrentAngle(angles);
-           
-            // INFO event = INFO(
-            //     angles[1], 
-            //     angles[0], 
-            //     -1,
-            //     0.0,
-            //     false
-            // );
+            std::unique_lock<std::mutex> lck(__eventLock); // this->update(cv::mat frame) holds lock otherwise
 
-            // __triggerCallback(EVENT(__eventId), event);
+            double angles[__numberServos];
+            __servos->getCurrentAngle(angles);
+           
+            INFO event = INFO(
+                angles[1], 
+                angles[0], 
+                __targetId,
+                0.0,
+                !__isSearching
+            );
+
+            int id = __eventId;
             lck.unlock();
+
+            __triggerCallback(EVENT(id), event);
         }
     }
 
@@ -1167,8 +1154,13 @@ namespace control {
     };
 
     void TATS::__queueEvent(EVENT eventType) {
-        std::unique_lock<std::mutex> lck(__eventLock);
         __eventId = static_cast<int>(eventType);
-        lck.unlock();
+    }
+
+    void TATS::__triggerCallback(EVENT eventType, INFO event){
+        int e = static_cast<int>(eventType);
+        if(eventCallbacks[e]) {
+            eventCallbacks[e](event);
+        }
     }
 };

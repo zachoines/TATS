@@ -17,6 +17,7 @@
 #include <random>
 #include <thread>
 #include <algorithm>
+#include <future>         // std::async, std::future
 
 
 // OpenCV imports
@@ -134,6 +135,7 @@ namespace control {
         int __lossCount, __trackCount, __searchCount, __searchCountMax, __lossCountMax;
         std::vector<std::string> __targets;
         std::string __currentTarget;
+        int __targetId;
         cv::Rect2i __roi;
         cv::Rect2d __boundingBox;
         cv::Ptr<cv::Tracker> __tracker;
@@ -226,12 +228,13 @@ namespace control {
         int __numberServos;
 
         // Threads
+        bool __stopFlag;
         void __panTiltThread();
         void __autoTuneThread();
-        void __pingEnvThread();
+        void __eventCallbackThread();
         std::thread* __panTiltT;
         std::thread* __autoTuneT;
-        std::thread* __pingEnvT;
+        std::thread* __eventCallT;
 
         // Event callbacks
         std::array<std::function<void(control::INFO const&)>, static_cast<int>(EVENT::size)> eventCallbacks;
@@ -242,12 +245,59 @@ namespace control {
 
 
     public:
+        /***
+         * @brief Constructor
+         * @param config Configuration object for option configuration
+         * @param servos Pointer to servos TATS will control
+         */
         TATS(Utility::Config config, control::ServoKit* servos);
         ~TATS();
+
+        /***
+         * @brief Initializes TATS to desired mode (Train vs Eval modes)
+         * @param pid Set pid > 0 for TATS evaluation mode. If in train mode, provide pid provided from call to fork. 
+         *        Should be 0 for a child process instance of TATS.
+         *        For example:
+         * 
+         *        int pid = fork();
+         *        if (pid > 0) {
+         *           // Parent
+         *           TATS.init(pid);
+         *        } else {
+         *           // Child
+         *           TATS.init(pid);
+         *        }
+         *         
+         * @return void
+         */
         void init(int pid);
+
+        /***
+         * @brief Detects target from frame and moves servos towards it
+         * @param frame Image to run  detection on
+         * @return void
+         */
         void update(cv::Mat& frame);
+
+        /***
+         * @brief After a refresh of the servos (will NOT be triggered on every this->update(cv::Mat& frame)), 
+         *        calls specified function on event. Called asynchronously after servos update.
+         * @param eventType Condition for callback
+         * @param callback Function to be asynchronously processed
+         * @return void
+         */
         void registerCallback(EVENT eventType, std::function<void(control::INFO const&)> callback);
+        
+        /***
+         * @brief For train mode only. From parent process, load new network params
+         * @return void
+         */
         void syncTATS();
+
+        /***
+         * @brief For train mode only. From child process, train on collected experiences
+         * @return void
+         */
         bool trainTATSChildProcess();
     };
 };

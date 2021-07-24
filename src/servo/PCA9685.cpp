@@ -41,33 +41,27 @@ namespace control {
   *  @brief  Sends a reset command to the PCA9685 chip over I2C
   */
   void PCA9685::reset() {
-    std::unique_lock<std::mutex> lck(_lock);
     write8(PCA9685_MODE1, MODE1_RESTART);
     _i2c->delay(10);
-    lck.unlock();
   }
 
   /*!
   *  @brief  Puts board into sleep mode
   */
   void PCA9685::sleep() {
-    std::unique_lock<std::mutex> lck(_lock);
     uint8_t awake = read8(PCA9685_MODE1);
     uint8_t sleep = awake | MODE1_SLEEP; // set sleep bit high
     write8(PCA9685_MODE1, sleep);
     _i2c->delay(5); // wait until cycle ends for sleep to be active
-    lck.unlock();
   }
 
   /*!
   *  @brief  Wakes board from sleep
   */
   void PCA9685::wakeup() {
-    std::unique_lock<std::mutex> lck(_lock);
     uint8_t sleep = read8(PCA9685_MODE1);
     uint8_t wakeup = sleep & ~MODE1_SLEEP; // set sleep bit low
     write8(PCA9685_MODE1, wakeup);
-    lck.unlock();
   }
 
   /*!
@@ -76,7 +70,6 @@ namespace control {
   *          Configures the prescale value to be used by the external clock
   */
   void PCA9685::setExtClk(uint8_t prescale) {
-    std::unique_lock<std::mutex> lck(_lock);
     uint8_t oldmode = read8(PCA9685_MODE1);
     uint8_t newmode = (oldmode & ~MODE1_RESTART) | MODE1_SLEEP; // sleep
     write8(PCA9685_MODE1, newmode); // go to sleep, turn off internal oscillator
@@ -90,7 +83,6 @@ namespace control {
     _i2c->delay(5);
     // clear the SLEEP bit to start
     write8(PCA9685_MODE1, (newmode & ~MODE1_SLEEP) | MODE1_RESTART | MODE1_AI);
-    lck.unlock();
   }
 
   /*!
@@ -98,7 +90,6 @@ namespace control {
   *  @param  freq Floating point frequency that we will attempt to match
   */
   void PCA9685::setPWMFreq(float freq) {
-    std::unique_lock<std::mutex> lck(_lock);
     // Range output modulation frequency is dependant on oscillator
     if (freq < 1)
       freq = 1;
@@ -121,7 +112,6 @@ namespace control {
     _i2c->delay(5);
     // This sets the MODE1 register to turn on auto increment.
     write8(PCA9685_MODE1, oldmode | MODE1_RESTART | MODE1_AI);
-    lck.unlock();
   }
 
   /*!
@@ -132,7 +122,6 @@ namespace control {
   *  @param  totempole Totempole if true, open drain if false.
   */
   void PCA9685::setOutputMode(bool totempole) {
-    std::unique_lock<std::mutex> lck(_lock);
     uint8_t oldmode = read8(PCA9685_MODE2);
     uint8_t newmode;
     if (totempole) {
@@ -141,7 +130,6 @@ namespace control {
       newmode = oldmode & ~MODE2_OUTDRV;
     }
     write8(PCA9685_MODE2, newmode);
-    lck.unlock();
   }
 
   /*!
@@ -179,7 +167,6 @@ namespace control {
   */
   void PCA9685::setPin(uint8_t num, uint16_t val, bool invert) {
     // Clamp value between 0 and 4095 inclusive.
-    std::unique_lock<std::mutex> lck(_lock);
     val = std::min<uint16_t>(val, (uint16_t)4095);
     if (invert) {
       if (val == 0) {
@@ -202,7 +189,6 @@ namespace control {
         setPWM(num, 0, val);
       }
     }
-    lck.unlock();
   }
 
   /*!
@@ -226,9 +212,7 @@ namespace control {
     pulselength /= _oscillator_freq;
     pulse /= pulselength;
 
-    std::unique_lock<std::mutex> lck(_lock);
     setPWM(num, 0, pulse);
-    lck.unlock();
   }
 
   /*!

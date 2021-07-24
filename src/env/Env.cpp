@@ -117,7 +117,6 @@ void Env::update(Utility::ED eventDataArray[NUM_SERVOS]) {
 
 bool Env::isDone()
 {
-
     bool done = true;
     for (int servo = 0; servo < NUM_SERVOS; servo++) {
         if (_disableServo[servo]) {

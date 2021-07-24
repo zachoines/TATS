@@ -1,5 +1,6 @@
 #include "./../src/tracking/TATS.h"
 #include <RF24/RF24.h> 
+#include <csignal>
 #include <sys/prctl.h>  /* prctl */
 
 // Local Function hoisting
@@ -7,8 +8,10 @@ unsigned long getTimestamp(struct Signal& s);
 int mapSpeeds(int val);
 
 // Signal handlers
-static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* context);
+static void sig_handler_child(const int sig_number, siginfo_t* sig_info, void* context);
+static void sig_handler_parent(int signum);
 volatile sig_atomic_t sig_value1;
+volatile bool stopFlag = false;
 
 // Data for RF24
 union bytesToTimestamp {
@@ -48,6 +51,7 @@ control::ServoKit* servos = nullptr;
 control::TATS* targetTrackingSystem = nullptr;
 
 int main() {
+    signal(SIGTSTP, sig_handler_parent);  // CTRL-Z on terminal (kill -SIGTSTP PID)
     srand( (unsigned)time( NULL ) );
 
     // Pointers here
@@ -59,7 +63,6 @@ int main() {
     targetTrackingSystem = new control::TATS(*config, servos);
     pid_t pid = -1;
 
-    
     // Parent process is image recognition PID/servo controller, second is SAC PID Autotuner
     if (config->multiProcess && config->trainMode) {
         pid = fork(); 
@@ -72,6 +75,8 @@ int main() {
         // Register event callbacks
         std::function<void(control::INFO const&)> searchCallback = [](control::INFO event) {
             // TODO:: Logic that moves motors and servos in a search pattern
+            pwm->writeMicroseconds(2, 1500); // for example reset motors
+            pwm->writeMicroseconds(3, 1500);
         };
 
         std::function<void(control::INFO const&)> updateCallback = [](control::INFO event) {
@@ -89,7 +94,7 @@ int main() {
         targetTrackingSystem->registerCallback(control::EVENT::ON_LOST, lossCallback);
         
         // initialize as a parent TATS instance
-        targetTrackingSystem->init(pid);
+        targetTrackingSystem->init(pid);     
 
         std::thread radioThreadT([&] {
             // RF24 inits
@@ -112,7 +117,7 @@ int main() {
             }
 
             // Main program loop
-            while(true) {
+            while(!stopFlag) {
                 if ( radio.available(&pipe) ) {
                     oldData = newData;
                     radio.read(&newData.buffer, 8);
@@ -142,7 +147,7 @@ int main() {
                 }
             }
 
-            while(true) {
+            while(!stopFlag) {
                 cv::Mat image = Utility::GetImageFromCamera(camera);
                 targetTrackingSystem->update(image);
 
@@ -176,7 +181,7 @@ int main() {
                 }
 
                 // Loop for syncing parent network params
-                while (true) {
+                while (!stopFlag) {
                     
                     // Wait until sync signal is received
                     signum = sigwaitinfo(&mask, &info);
@@ -203,11 +208,18 @@ int main() {
                 }
             }    
         });
-
+        
         radioThreadT.join();
         trackingThreadT.join();
         syncThread.join();
-        
+
+        delete targetTrackingSystem;
+        delete servos;
+        delete pwm;
+        delete wire;
+        delete parameters;
+        delete config;
+    
         // Terminate and wait for child processes before exit
         kill(pid, SIGQUIT);
         if (wait(NULL) != -1) {
@@ -231,7 +243,7 @@ int main() {
         memset(&sig_action, 0, sizeof(struct sigaction));
 
         sig_action.sa_flags = SA_SIGINFO;
-        sig_action.sa_sigaction = usr_sig_handler1;
+        sig_action.sa_sigaction = sig_handler_child;
 
         sigaction(SIGHUP, &sig_action, NULL);
         sigaction(SIGINT, &sig_action, NULL);
@@ -286,15 +298,19 @@ int main() {
     }
 }
 
-static void usr_sig_handler1(const int sig_number, siginfo_t* sig_info, void* context)
-{
+static void sig_handler_child(const int sig_number, siginfo_t* sig_info, void* context){
+    
     // Take care of all segfaults
-    if (sig_number == SIGSEGV || sig_number == SIGTSTP || sig_number == SIGINT)
+    if (sig_number == SIGSEGV || sig_number == SIGINT || sig_number == SIGSTOP)
     {
-        kill(getpid(), SIGKILL);
-    }
+        kill(getpid(), SIGKILL);  
+    } 
 
     sig_value1 = sig_number;
+}
+
+static void sig_handler_parent(int signum) {
+    stopFlag = true;
 }
 
 int mapSpeeds(int val) {
