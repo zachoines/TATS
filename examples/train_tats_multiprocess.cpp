@@ -36,6 +36,9 @@ int main() {
     config->detectorPath = "/models/haar/haarcascade_frontalface_default.xml"; 
     config->targets = { "face" };
     config->classes = { "face" };
+    config->logOutput = false;
+    config->minBufferSize = 5000;
+    config->batchSize = 256;
 
     wire = new control::Wire();
     pwm = new control::PCA9685(0x40, wire);
@@ -52,8 +55,7 @@ int main() {
 
     if (pid > 0) {
         
-        // initialize as a parent TATS instance
-        std::thread trackingThreadT([&] {
+        std::thread trackingThread([&] {
             targetTrackingSystem->init(pid); 
             cv::VideoCapture* camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
             camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
@@ -80,59 +82,53 @@ int main() {
             }
         });
 
-        // 
-        if (config->trainMode) {
+        // The below loops is the sync for multiprocess training of TATS
+        // Setup signal mask
+        sigset_t  mask;
+        siginfo_t info;
+        pid_t     child, p;
+        int       signum;
 
-            // The below loops is the sync for multiprocess training of TATS
-            // Setup signal mask
-            sigset_t  mask;
-            siginfo_t info;
-            pid_t     child, p;
-            int       signum;
+        sigemptyset(&mask);
+        sigaddset(&mask, SIGINT);
+        sigaddset(&mask, SIGHUP);
+        sigaddset(&mask, SIGTERM);
+        sigaddset(&mask, SIGQUIT);
+        sigaddset(&mask, SIGUSR1);
+        sigaddset(&mask, SIGUSR2);
 
-            sigemptyset(&mask);
-            sigaddset(&mask, SIGINT);
-            sigaddset(&mask, SIGHUP);
-            sigaddset(&mask, SIGTERM);
-            sigaddset(&mask, SIGQUIT);
-            sigaddset(&mask, SIGUSR1);
-            sigaddset(&mask, SIGUSR2);
+        if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
+            throw std::runtime_error("Cannot block SIGUSR1 or SIGUSR2");
+        }
 
-            if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
-                throw std::runtime_error("Cannot block SIGUSR1 or SIGUSR2");
+        // Loop for syncing parent network params
+        while (!stopFlag) {
+            
+            // Wait until sync signal is received
+            signum = sigwaitinfo(&mask, &info);
+            if (signum == -1) {
+                if (errno == EINTR)
+                    continue;
+                throw std::runtime_error("sigwaitinfo() failed");
             }
 
-            // Loop for syncing parent network params
-            while (!stopFlag) {
-                
-                // Wait until sync signal is received
-                signum = sigwaitinfo(&mask, &info);
-                if (signum == -1) {
-                    if (errno == EINTR)
-                        continue;
-                    throw std::runtime_error("sigwaitinfo() failed");
-                }
-
-                // Update weights on signal received from autotune thread/process
-                if (signum == SIGUSR1 && info.si_pid == pid) {
-                    try {
-                        targetTrackingSystem->syncTATS();
-                    } catch (...) {
-                        throw std::runtime_error("Cannot sync network parameters with auto-tune process");
-                    }
-                }
-
-                // Break when on SIGINT
-                if (signum == SIGINT && !info.si_pid == parameters->pid) {
-                    std::cout << "Ctrl+C detected!" << std::endl;
-                    break;
+            // Update weights on signal received from autotune thread/process
+            if (signum == SIGUSR1 && info.si_pid == pid) {
+                try {
+                    targetTrackingSystem->syncTATS();
+                } catch (...) {
+                    throw std::runtime_error("Cannot sync network parameters with auto-tune process");
                 }
             }
-        }    
-        // });
+
+            // Break when on SIGINT
+            if (signum == SIGINT && !info.si_pid == parameters->pid) {
+                std::cout << "Ctrl+C detected!" << std::endl;
+                break;
+            }
+        }
         
-        trackingThreadT.join();
-        // syncThread.join();
+        trackingThread.join();
 
         delete targetTrackingSystem;
         delete servos;
