@@ -79,8 +79,8 @@ namespace control {
             tracking(t) {}
 
         EVENT_INFO() : 
-            pan(0.0),
-            tilt(0.0), 
+            pan(-1.0),
+            tilt(-1.0), 
             id(0), 
             tracking(false)
         {}
@@ -285,21 +285,20 @@ namespace control {
 
         /***
          * @brief After a refresh of the servos (will NOT be triggered on every this->update(cv::Mat& frame)), 
-         *        calls specified function on event. Called asynchronously after servos update.
+         *        calls specified function immediately event. Called asynchronously after servos update.
          * @param eventType Condition for callback
          * @param callback Function to be asynchronously processed
          * @return void
          */
         void registerCallback(EVENT eventType, std::function<void(control::INFO const&)> callback);
 
-        
         /***
          * @brief Called once on every new update of TARGET. 
                   Always returns the newest target detections.
                   Simply override with desired behavior in main.cpp.
                   EXAMPLE: void onTargetUpdate(control::INFO const&, EVENT eventType) { ... custom code here ...; }
                   NOTE: Overrides prototype for all instances of TATS
-         * @param info For servos and current target
+         * @param info Returns only current target info. Angle info should be obtained from onServoUpdate.
          * @param eventType Condition triggered on this update
          * @return void
          */

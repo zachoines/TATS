@@ -51,12 +51,23 @@ control::TATS* targetTrackingSystem = nullptr;
 
 // Overridden with custom logic, alternative to the callbacks if only one TATS object
 void control::TATS::onTargetUpdate(control::INFO info, EVENT eventType) {
-    pwm->writeMicroseconds(2, 1500); 
-    pwm->writeMicroseconds(3, 1500);
+    switch (eventType) {
+        case EVENT::ON_UPDATE:
+            if (info.tracking) {
+                std::cout << "Currently tracked target: " << config->classes[info.id] << std::endl;
+            }
+            return;
+        default:
+            return;
+    }
 }
 
 void control::TATS::onServoUpdate(double pan, double tilt) {
-
+   std::cout << "Pan: " 
+   << std::to_string(Utility::rescaleAction(pan, -45.0, 45.0)) 
+   << ", Tilt: " 
+   << std::to_string(Utility::rescaleAction(tilt, -45.0, 45.0)) 
+   << std::endl;
 }
 
 int main() {
@@ -67,6 +78,7 @@ int main() {
 
     // Setup eval mode options
     config->trainMode = false; /* Disable train mode */
+    config->logOutput = false; /* Disable debug messages */
 
     wire = new control::Wire();
     pwm = new control::PCA9685(0x40, wire);
@@ -74,11 +86,20 @@ int main() {
     targetTrackingSystem = new control::TATS(*config, servos);
         
     
-    /*  // Register event callbacks
-    std::function<void(control::INFO const&)> updateCallback = [](control::INFO event) {
-        // TODO:: Logic that moves car towards the target given angle and distance (If seperate lidar sensor is attached to servos)
-    };
-    targetTrackingSystem->registerCallback(control::EVENT::ON_UPDATE, updateCallback); */
+    /*  
+        Callbacks follow a different set of rules than onTargetUpdate() and onServoUpdate().
+        1.) Its called asynchronously in another thread (will not slow detection or servo updates)
+        2.) Called after servos AND the target updates. 
+        3.) Allows for instance specific logic.
+        
+        As a result, callbacks have more computational overhead 
+    
+        Example: 
+        std::function<void(control::INFO const&)> updateCallback = [](control::INFO event) {
+            // TODO:: Logic that moves car towards the target given angle
+        };
+        targetTrackingSystem->registerCallback(control::EVENT::ON_UPDATE, updateCallback); 
+    */
 
     targetTrackingSystem->init(1);     
 
@@ -86,7 +107,7 @@ int main() {
         // RF24 inits
         uint8_t address[] = { 0xE6, 0xE6, 0xE6, 0xE6, 0xE6 };
         uint8_t pipe = 0;
-        uint16_t spiBus = 1;
+        uint16_t spiBus = 0;
         uint16_t CE_GPIO = 481;
         RF24 radio(CE_GPIO, spiBus); // SPI Bus 1 (0 or 1) and GPIO17_40HEADER (pin 22)
 
@@ -111,8 +132,8 @@ int main() {
                 if (getTimestamp(newData) != getTimestamp(oldData)) {
                     double wls = mapSpeeds(newData.buffer[data::wLeft], 750, 1500, 2250);
                     double wrs = mapSpeeds(newData.buffer[data::wRight], 750, 1500, 2250);
-                    pwm->writeMicroseconds(0, wls);
-                    pwm->writeMicroseconds(1, wrs);
+                    pwm->writeMicroseconds(10, wls);
+                    pwm->writeMicroseconds(11, wrs);
                 }
             } 
         }       

@@ -233,7 +233,12 @@ namespace control {
         if (__isSearching) {
             __searchCount += 1;
             __queueEvent(EVENT::ON_SEARCH);
-            onTargetUpdate(__getINFO(), EVENT::ON_SEARCH);
+            onTargetUpdate(INFO(
+                -1.0, 
+                -1.0, 
+                __targetId,
+                !__isSearching
+            ), EVENT::ON_SEARCH);
         }
 
         try {
@@ -320,7 +325,12 @@ namespace control {
                 try {
                     __queueEvent(EVENT::ON_UPDATE);
                     __servos->update(eventDataArray);
-                    onTargetUpdate(__getINFO(), EVENT::ON_UPDATE);
+                    onTargetUpdate(INFO(
+                        -1.0, 
+                        -1.0, 
+                        __targetId,
+                        !__isSearching
+                    ), EVENT::ON_UPDATE);
                 } catch (...) {
                     throw std::runtime_error("cannot update event data");
                 }
@@ -459,7 +469,12 @@ namespace control {
 
                     try {
                         __queueEvent(EVENT::ON_UPDATE);
-                        onTargetUpdate(__getINFO(), EVENT::ON_UPDATE);
+                        onTargetUpdate(INFO(
+                            -1.0, 
+                            -1.0, 
+                            __targetId,
+                            !__isSearching
+                        ), EVENT::ON_UPDATE);
                         __servos->update(eventDataArray);
                     } catch (...) {
                         throw std::runtime_error("cannot update event data");
@@ -527,7 +542,12 @@ namespace control {
                         
                         try {
                             __queueEvent(EVENT::ON_LOST);
-                            onTargetUpdate(__getINFO(), EVENT::ON_LOST);
+                            onTargetUpdate(INFO(
+                                -1.0, 
+                                -1.0, 
+                                __targetId,
+                                !__isSearching
+                            ), EVENT::ON_LOST);
                             __servos->update(eventDataArray);
                         } catch (...) {
                             throw std::runtime_error("cannot update event data");
@@ -577,7 +597,12 @@ namespace control {
                         
                         try {
                             __queueEvent(EVENT::ON_UPDATE);
-                            onTargetUpdate(__getINFO(), EVENT::ON_UPDATE);
+                            onTargetUpdate(INFO(
+                                -1.0, 
+                                -1.0, 
+                                __targetId,
+                                !__isSearching
+                            ), EVENT::ON_UPDATE);
                             __servos->update(eventDataArray);
                         } catch (...) {
                             throw std::runtime_error("cannot update event data");
@@ -632,7 +657,12 @@ namespace control {
                         
                         try {
                             __queueEvent(EVENT::ON_LOST);
-                            onTargetUpdate(__getINFO(), EVENT::ON_UPDATE);
+                            onTargetUpdate(INFO(
+                                -1.0, 
+                                -1.0, 
+                                __targetId,
+                                !__isSearching
+                            ), EVENT::ON_LOST);
                             __servos->update(eventDataArray);
                         } catch (...) {
                             throw std::runtime_error("cannot update event data");

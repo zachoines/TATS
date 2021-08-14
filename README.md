@@ -50,6 +50,7 @@ Target acquisition and tracking system. The aim of this repo is to use various d
 	* tar -xvzf haarModel.tar.gz
 
 * Build and Run TATS
+	* Update the CMakeLists.txt with desired example program from ./examples
 	* cmake . 
 		* May need to set CMAKE_PREFIX_PATH for libtorch in CMakeLists.txt to its Python3 library locatiion
     * make TATS
