@@ -117,12 +117,9 @@ namespace control {
         // Create a shared memory buffer for experiance replay
         int __numParams = 558298; // size of policy network! Will change if anything is edited in defaults
         // boost::interprocess::managed_shared_memory* __segment;
-        Utility::SharedBuffer* __sharedTrainingBufferChild;
-        Utility::SharedBuffer* __sharedTrainingBufferParent;
-        Utility::sharedString* __sChild;
-        Utility::sharedString* __sParent;
-        ReplayBuffer* __replayBufferChild;
-        ReplayBuffer* __replayBufferParent;
+        Utility::SharedBuffer* __sharedTrainingBuffer;
+        Utility::sharedString* __s;
+        ReplayBuffer* __replayBuffer;
         boost::interprocess::managed_shared_memory __segment;
 
         // Setup stats dirs and remove old logs

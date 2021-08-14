@@ -42,7 +42,6 @@ Utility::TrainBuffer ReplayBuffer::ere_sample(int batchSize, int startingIndex) 
         boost::interprocess::scoped_lock<boost::interprocess::named_mutex> lock(*_mutex);
         for (int i = 0; i < batchSize; i++) {
             int number = _draw(startingIndex, _trainingBuffer->size() - 1);
-
             batch.push_back(_trainingBuffer->at(number));
         }
     } else {
@@ -51,10 +50,8 @@ Utility::TrainBuffer ReplayBuffer::ere_sample(int batchSize, int startingIndex) 
         }
 
         std::unique_lock<std::mutex> lck(_lock);
-
         for (int i = 0; i < batchSize; i++) {
             int number = _draw(startingIndex, _trainingBuffer->size() - 1);
-
             batch.push_back(_trainingBuffer->at(number));
         }
 

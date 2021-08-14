@@ -26,7 +26,7 @@ int main() {
 
     // Setup train mode options
     config->trainMode = true; /* Enable Train mode */
-    config->initialRandomActions = true; /* Fill replay buffer with random experiances */
+    config->initialRandomActions = false; /* Fill replay buffer with random experiances */
     config->stepsWithPretrainedModel = true; /* for transfer learning */
     config->lossCountMax = 0; /* Slows training down */
     config->multiProcess = true; /* Offloads SAC training in another process */
@@ -36,11 +36,6 @@ int main() {
     config->detectorPath = "/models/haar/haarcascade_frontalface_default.xml"; 
     config->targets = { "face" };
     config->classes = { "face" };
-    config->batchSize = 32;
-    config->numInitialRandomActions = 32;
-    config->maxBufferSize = 100000;
-    config->minBufferSize = 32; 
-    config->logOutput = false;
 
     wire = new control::Wire();
     pwm = new control::PCA9685(0x40, wire);
@@ -156,6 +151,7 @@ int main() {
         }
 
     } else { // Only if in training mode for TATS
+  
         // Kill child if parent killed
         prctl(PR_SET_PDEATHSIG, SIGKILL); 
         parameters->pid = pid;        
@@ -210,8 +206,9 @@ int main() {
 
                 std::cout << "Autotune Process: Train signal received" << std::endl;
                 while (!targetTrackingSystem->trainTATSChildProcess()) {
-                    std::cout << "here we are 1" << std::endl;
+                    
                     // Inform parent new params are available
+                    std::cout << "Autotune Process: Sending Sync signal" << std::endl;
                     kill(getppid(), SIGUSR1);
 
                     // Sleep per train rate
@@ -220,7 +217,6 @@ int main() {
                     Utility::msleep(milis);
                 }
 
-                std::cout << "here we are 2" << std::endl;
                 return 0;
             }
         }

@@ -50,7 +50,6 @@ SACAgent::SACAgent(int num_inputs, int num_hidden, int num_actions, double actio
     // Logging
     _lossFileName = "/stat/trainingLoss.txt";
     _lossPath = get_current_dir_name() + _lossFileName;
-
     _target_entropy = -1 * num_actions;
     
     // Load last checkpoint if available
@@ -77,11 +76,9 @@ SACAgent::SACAgent(int num_inputs, int num_hidden, int num_actions, double actio
 
     // Copy over network params with averaging
     _transfer_params_v2(*_value_network, *_target_value_network);
-
 }
 
 SACAgent::~SACAgent() {
-
     delete _q_net1;
     delete _q_net2;
     delete _policy_net;
@@ -238,8 +235,7 @@ bool SACAgent::load_checkpoint()
     }
 }
 
-torch::Tensor SACAgent::get_action(torch::Tensor state, bool trainMode)
-{
+torch::Tensor SACAgent::get_action(torch::Tensor state, bool trainMode) {
     torch::Tensor next;
 
     if (trainMode) {
@@ -300,7 +296,7 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
             rewards[entry] = train_data.reward;
             dones[entry] = static_cast<double>(train_data.done);
         }
-
+        
         // Prepare Training tensors
         auto optionsDouble = torch::TensorOptions().dtype(torch::kDouble).device(device);
         torch::Tensor states_t = torch::from_blob(states, { batchSize, _num_inputs }, optionsDouble);
@@ -308,7 +304,7 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         torch::Tensor actions_t = torch::from_blob(actions, { batchSize, _num_actions }, optionsDouble);
         torch::Tensor rewards_t = torch::from_blob(rewards, { batchSize }, optionsDouble);
         torch::Tensor dones_t = torch::from_blob(dones, { batchSize }, optionsDouble);
-        
+
         // Sample from Policy
         torch::Tensor current = _policy_net->sample(states_t, batchSize);
         torch::Tensor reshapedResult = current.view({ 7, batchSize, _num_actions });
@@ -349,8 +345,6 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
         torch::Tensor q_value_predictions = torch::min(qf1_pi, qf2_pi);
         torch::Tensor target_value_func = q_value_predictions - _alpha * log_pi_t;
         torch::Tensor value_loss = 0.5 * torch::mean(torch::pow(value_predictions - target_value_func.detach(), 2.0));
-        
-        
         torch::Tensor policy_loss;
 
         // Training the policy
@@ -385,7 +379,6 @@ void SACAgent::update(int batchSize, Utility::TrainBuffer* replayBuffer)
                 throw std::runtime_error("could not obtain lock");
             }
         }
-       
 
         // Update Q-Value networks
         _q_net1->optimizer->zero_grad();

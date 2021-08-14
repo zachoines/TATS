@@ -37,7 +37,6 @@ namespace control {
         // Initialize buffers in shared memory space
         if (__config->trainMode) {
             boost::interprocess::shared_memory_object::remove("SharedMemorySegment");
-            // boost::interprocess::managed_shared_memory segment(boost::interprocess::create_only, "SharedMemorySegment", (sizeof(Utility::TD) * __config->maxBufferSize + 1) + (sizeof(char) * __numParams + 1));
             __segment = boost::interprocess::managed_shared_memory(boost::interprocess::create_only, "SharedMemorySegment", (sizeof(Utility::TD) * __config->maxBufferSize + 1) + (sizeof(char) * __numParams + 1));
             const ShmemAllocator alloc_inst(__segment.get_segment_manager());
             __segment.construct<SharedBuffer>("SharedBuffer")(alloc_inst);
@@ -111,15 +110,6 @@ namespace control {
         __actionHigh = __config->actionHigh; 
         __actionLow = __config->actionLow;
         __numInput =__config->numInput;
-
-        __pidAutoTuner = new SACAgent(
-            __numInput, 
-            __numHidden, 
-            __numActions, 
-            __actionHigh, 
-            __actionLow
-        );
-
         __servos = new Env(servos, config);
     }
 
@@ -145,20 +135,27 @@ namespace control {
         // Parent process
         if (pid > 0 && !__initialized) {
 
+            __pidAutoTuner = new SACAgent(
+                __numInput, 
+                __numHidden, 
+                __numActions, 
+                __actionHigh, 
+                __actionLow
+            );
+
             __parentMode = true;
             __initialized = true;
 
             if (__trainMode) {
                 // Retrieve model params array from shared memory 
-                // segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
-                __sharedTrainingBufferParent = __segment.find<SharedBuffer>("SharedBuffer").first;
+                __sharedTrainingBuffer = __segment.find<SharedBuffer>("SharedBuffer").first;
 
-                if (__sharedTrainingBufferParent == 0x0 || __maxBufferSize > __sharedTrainingBufferParent->max_size()) {
+                if (__sharedTrainingBuffer == 0x0 || __maxBufferSize > __sharedTrainingBuffer->max_size()) {
                     throw std::runtime_error("could not construct shared buffer in memory");
                 }
 
-                __replayBufferParent = new ReplayBuffer(__maxBufferSize, __sharedTrainingBufferParent, __multiProcess);
-                __sParent = __segment.find_or_construct<Utility::sharedString>("SharedString")("", __segment.get_segment_manager());
+                __replayBuffer = new ReplayBuffer(__maxBufferSize, __sharedTrainingBuffer, __multiProcess);
+                __s = __segment.find_or_construct<Utility::sharedString>("SharedString")("", __segment.get_segment_manager());
             }
 
             __execbegin = std::chrono::high_resolution_clock::now();
@@ -201,12 +198,21 @@ namespace control {
             __initialized = true;
 
             if (__trainMode) {
+                
                 // Retrieve the training buffer from shared memory
-                // boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
                 __segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
-                __sharedTrainingBufferChild = __segment.find<SharedBuffer>("SharedBuffer").first;
-                __replayBufferChild = new ReplayBuffer(__config->maxBufferSize, __sharedTrainingBufferChild, __multiProcess);
-                __sChild = __segment.find_or_construct<sharedString>("SharedString")("", __segment.get_segment_manager());
+                __sharedTrainingBuffer = __segment.find<SharedBuffer>("SharedBuffer").first;
+                __replayBuffer = new ReplayBuffer(__config->maxBufferSize, __sharedTrainingBuffer, __multiProcess);
+                __s = __segment.find_or_construct<sharedString>("SharedString")("", __segment.get_segment_manager());
+
+                // Init a seperate instance of SAC for child process               
+                __pidAutoTuner = new SACAgent(
+                    __numInput, 
+                    __numHidden, 
+                    __numActions, 
+                    __actionHigh, 
+                    __actionLow
+                );
             }
         }
     }
@@ -831,8 +837,8 @@ namespace control {
                             }
 
                             // Add to replay buffer for training
-                            if (__replayBufferParent->size() <= __maxBufferSize) {
-                                __replayBufferParent->add(__trainData[servo]);
+                            if (__replayBuffer->size() <= __maxBufferSize) {
+                                __replayBuffer->add(__trainData[servo]);
                             }
 
                             // logging
@@ -848,12 +854,12 @@ namespace control {
                         if (__trainMode) {
                             // Inform child process to start training
                             if (__multiProcess) {
-                                if (!__isTraining && __replayBufferParent->size() > (__minBufferSize)) {
+                                if (!__isTraining && __replayBuffer->size() > (__minBufferSize)) {
                                     std::cout << "Sending train signal..." << std::endl;
                                     __isTraining = true;
                                     kill(this->__pid, SIGUSR1);
                                 } 
-                            } else if (!__isTraining && __replayBufferParent->size() > (__minBufferSize)) {
+                            } else if (!__isTraining && __replayBuffer->size() > (__minBufferSize)) {
                                 // Inform autotune thread start training 
                                 pthread_mutex_lock(&__trainLock);
                                 pthread_cond_broadcast(&__trainCond);
@@ -975,26 +981,26 @@ namespace control {
 
         using namespace Utility;
 
-        __replayBufferParent->clear();
+        __replayBuffer->clear();
 
 
         // Wait for the buffer to fill
         pthread_mutex_lock(&__trainLock);
-        while (__replayBufferParent->size() <= __minBufferSize) {
+        while (__replayBuffer->size() <= __minBufferSize) {
             pthread_cond_wait(&__trainCond, &__trainLock);
         }
         pthread_mutex_unlock(&__trainLock);
 
         while (__isTraining && !__stopFlag) {
 
-            double N = static_cast<double>(__replayBufferParent->size());
+            double N = static_cast<double>(__replayBuffer->size());
             __t_i += 1;
             double n_i = __N0 + (__NT - __N0) * (__t_i / __T);
             int cmin = N - ( __minBufferSize );
             
             // Check if training is over
             if (__currentSteps >= __maxTrainingSteps) {
-                __replayBufferParent->clear();
+                __replayBuffer->clear();
                 __isTraining = false;
                 std::cout << "Training session over!!" << std::endl;
                 return;
@@ -1006,7 +1012,7 @@ namespace control {
             for (int k = 0; k < __numUpdates; k += 1) {
                 int startingRange = std::min<int>( N - N * std::pow(n_i, static_cast<double>(k) * (1000.0 / __numUpdates)), cmin);
 
-                TrainBuffer batch = __replayBufferParent->ere_sample(__batchSize, startingRange);
+                TrainBuffer batch = __replayBuffer->ere_sample(__batchSize, startingRange);
                 __pidAutoTuner->update(batch.size(), &batch);
                 
             }
@@ -1067,7 +1073,7 @@ namespace control {
         }
 
         try {
-            __pidAutoTuner->load_policy(__sParent);
+            __pidAutoTuner->load_policy(__s);
         } catch (...) {
             throw std::runtime_error("Cannot refrech SAC network parameters");
         }
@@ -1086,14 +1092,14 @@ namespace control {
         }
 
         // Increment/set ERE related loop variables
-        double N = static_cast<double>(__replayBufferChild->size());
+        double N = static_cast<double>(__replayBuffer->size());
         __t_i += 1;
         double n_i = __N0 + (__NT - __N0) * (__t_i / __T);
         int cmin = N - ( __minBufferSize );
             
         // Check if training is over
         if (__currentSteps >= __maxTrainingSteps) {
-            __replayBufferChild->clear();
+            __replayBuffer->clear();
             return true;
         }
         else {
@@ -1102,14 +1108,13 @@ namespace control {
             // Perform a training session
             for (int k = 0; k < __numUpdates; k += 1) {
                 int startingRange = std::min<int>( N - N * std::pow(n_i, static_cast<double>(k) * (1000.0 / __numUpdates)), cmin);
-                std::cout << "Here is the starting range: " << std::to_string(startingRange) << std::endl;
-                Utility::TrainBuffer batch = __replayBufferChild->ere_sample(__batchSize, startingRange);
+                Utility::TrainBuffer batch = __replayBuffer->ere_sample(__batchSize, startingRange);
                 __pidAutoTuner->update(batch.size(), &batch);
             }
 
             // Write values to shared memory for parent to read
             try {
-                __pidAutoTuner->save_policy(__sChild);
+                __pidAutoTuner->save_policy(__s);
             } catch (...) {
                 throw std::runtime_error("Cannot save policy params to shared memory array");
             }
