@@ -63,29 +63,25 @@ namespace control {
     };
 
     struct EVENT_INFO {
-        double x;
-        double y;
+        double pan;
+        double tilt;
         int id;
-        double distance;
         bool tracking;
 
         EVENT_INFO(
-            int x, 
-            int y, 
+            double pan, 
+            double tilt, 
             int id, 
-            double d, 
             bool t) : 
-            x(x), 
-            y(y), 
-            id(id), 
-            distance(d), 
+            pan(pan), 
+            tilt(tilt), 
+            id(id),  
             tracking(t) {}
 
         EVENT_INFO() : 
-            x(0),
-            y(0), 
+            pan(0.0),
+            tilt(0.0), 
             id(0), 
-            distance(0.0), 
             tracking(false)
         {}
     } typedef INFO;
@@ -97,17 +93,25 @@ namespace control {
         // Other functions
         void __logRecords(Utility::TD trainData, int servo, bool reset);
         void __printOutput(Utility::TD trainData, int servo);
+        
+        /***
+         * @brief Returns struct containing metadata on servo and target locations
+         * @return INFO
+         */
+        control::INFO __getINFO();
 
         pthread_cond_t __trainCond = PTHREAD_COND_INITIALIZER;
         pthread_mutex_t __trainLock = PTHREAD_MUTEX_INITIALIZER;
         pthread_mutex_t __sleepLock = PTHREAD_MUTEX_INITIALIZER;
 
+        // Misc class variables
         Utility::Config  __config;
         SACAgent* __pidAutoTuner = nullptr;
         Env* __servos = nullptr;
         pid_t __pid = -1;
         bool __parentMode;
         bool __initialized;
+        bool __callbacksRegistered;
 
         // TODO:: Make numParams a dynamic calculation
         // Create a shared memory buffer for experiance replay
@@ -287,6 +291,31 @@ namespace control {
          * @return void
          */
         void registerCallback(EVENT eventType, std::function<void(control::INFO const&)> callback);
+
+        
+        /***
+         * @brief Called once on every new update of TARGET. 
+                  Always returns the newest target detections.
+                  Simply override with desired behavior in main.cpp.
+                  EXAMPLE: void onTargetUpdate(control::INFO const&, EVENT eventType) { ... custom code here ...; }
+                  NOTE: Overrides prototype for all instances of TATS
+         * @param info For servos and current target
+         * @param eventType Condition triggered on this update
+         * @return void
+         */
+        void onTargetUpdate(control::INFO info, EVENT eventType);
+
+        /***
+         * @brief Called once on every new update of Servos. Async Call. 
+                  Always returns the newest PAN/TILT angles.
+                  Simply override with desired behavior in main.cpp.
+                  EXAMPLE: void onServoUpdate(double pan, double tilt) { ... custom code here ...; }
+                  NOTE: Overrides prototype for all instances of TATS
+         * @param pan In angles
+         * @param tilt In angles
+         * @return void
+         */
+        void onServoUpdate(double pan, double tilt);
         
         /***
          * @brief For train mode only. From parent process, load new network params

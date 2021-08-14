@@ -14,9 +14,11 @@ namespace control {
     TATS::TATS(Utility::Config config, control::ServoKit* servos) {
         using namespace Utility;
         
+        // Misc variables
         __config = config;
         __numberServos = 2;
         __stopFlag = false;
+        __callbacksRegistered = false;
 
         // Set up stats paths and files
         __path = get_current_dir_name();
@@ -120,6 +122,15 @@ namespace control {
     }
 
     void TATS::registerCallback(EVENT eventType, std::function<void(control::INFO const&)> callback) {
+        __callbacksRegistered = true;
+        if (!__parentMode) {
+            throw std::runtime_error("Can only register callbacks from an instance of TATS in a parent process");
+        }
+
+        if (__initialized) {
+            throw std::runtime_error("Can only register callbacks before call to init()");
+        }
+        __callbacksRegistered = true;
         eventCallbacks[static_cast<int>(eventType)] = callback;
     }
 
@@ -222,6 +233,7 @@ namespace control {
         if (__isSearching) {
             __searchCount += 1;
             __queueEvent(EVENT::ON_SEARCH);
+            onTargetUpdate(__getINFO(), EVENT::ON_SEARCH);
         }
 
         try {
@@ -308,7 +320,7 @@ namespace control {
                 try {
                     __queueEvent(EVENT::ON_UPDATE);
                     __servos->update(eventDataArray);
-                    
+                    onTargetUpdate(__getINFO(), EVENT::ON_UPDATE);
                 } catch (...) {
                     throw std::runtime_error("cannot update event data");
                 }
@@ -447,6 +459,7 @@ namespace control {
 
                     try {
                         __queueEvent(EVENT::ON_UPDATE);
+                        onTargetUpdate(__getINFO(), EVENT::ON_UPDATE);
                         __servos->update(eventDataArray);
                     } catch (...) {
                         throw std::runtime_error("cannot update event data");
@@ -514,6 +527,7 @@ namespace control {
                         
                         try {
                             __queueEvent(EVENT::ON_LOST);
+                            onTargetUpdate(__getINFO(), EVENT::ON_LOST);
                             __servos->update(eventDataArray);
                         } catch (...) {
                             throw std::runtime_error("cannot update event data");
@@ -563,6 +577,7 @@ namespace control {
                         
                         try {
                             __queueEvent(EVENT::ON_UPDATE);
+                            onTargetUpdate(__getINFO(), EVENT::ON_UPDATE);
                             __servos->update(eventDataArray);
                         } catch (...) {
                             throw std::runtime_error("cannot update event data");
@@ -617,6 +632,7 @@ namespace control {
                         
                         try {
                             __queueEvent(EVENT::ON_LOST);
+                            onTargetUpdate(__getINFO(), EVENT::ON_UPDATE);
                             __servos->update(eventDataArray);
                         } catch (...) {
                             throw std::runtime_error("cannot update event data");
@@ -738,6 +754,8 @@ namespace control {
                     try {
                         __stepResults = __servos->step(__predictedActions, true, rate);		
                         __totalSteps = (__totalSteps + 1) % INT_MAX; 
+
+                        onServoUpdate(__stepResults.servos[1].nextState.currentAngle, __stepResults.servos[0].nextState.currentAngle);
                     } catch(const std::exception& e) {
                         std::cerr << e.what() << std::endl;
                         throw std::runtime_error("cannot step with servos");
@@ -884,6 +902,7 @@ namespace control {
                     try {
                         __stepResults = __servos->step(__predictedActions, false);
 
+                        onServoUpdate(__stepResults.servos[1].nextState.currentAngle, __stepResults.servos[0].nextState.currentAngle);
                         double state[NUM_INPUT];
                         for (int i = 0; i < __numberServos ; i++) {
                             
@@ -908,8 +927,7 @@ namespace control {
         }
     }
 
-    void TATS::__autoTuneThread()
-    {
+    void TATS::__autoTuneThread() {
 
         if (!__parentMode) {
             throw std::runtime_error("autoTuneThread can only run from a parent process");
@@ -962,6 +980,11 @@ namespace control {
     }
 
     void TATS::__eventCallbackThread() {
+
+        if (__callbacksRegistered) {
+            return;
+        }
+
         if (!__parentMode) {
             throw std::runtime_error("pingEnvThread can only run from a parent process");
         }
@@ -976,22 +999,25 @@ namespace control {
             __servos->waitForUpdate();
             std::unique_lock<std::mutex> lck(__eventLock); // this->update(cv::mat frame) holds lock otherwise
 
-            double angles[__numberServos];
-            __servos->getCurrentAngle(angles);
-           
-            INFO event = INFO(
-                angles[1], 
-                angles[0], 
-                __targetId,
-                0.0,
-                !__isSearching
-            );
+            INFO event = __getINFO();
 
             int id = __eventId;
             lck.unlock();
 
             __triggerCallback(EVENT(id), event);
         }
+    }
+
+    control::INFO TATS::__getINFO() {
+        double angles[__numberServos];
+        __servos->getCurrentAngle(angles);
+        
+        return INFO(
+            angles[1], 
+            angles[0], 
+            __targetId,
+            !__isSearching
+        );
     }
 
     void TATS::syncTATS() {

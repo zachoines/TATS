@@ -1,7 +1,6 @@
 #include "Env.h"
 
-Env::Env(control::ServoKit* servos)
-{
+Env::Env(control::ServoKit* servos) {
     _eventData;
     _lastData;
     _currentData;
@@ -46,14 +45,12 @@ Env::~Env() {
     delete _config;
 }
 
-void Env::_sleep(double rate)
-{
+void Env::_sleep(double rate) {
     int milli = static_cast<int>(1000.0 / rate);
     std::this_thread::sleep_for(std::chrono::milliseconds(milli));
 }
 
-void Env::_syncEnv(double rate)
-{
+void Env::_syncEnv(double rate) {
     _sleep(rate);
 
     std::unique_lock<std::mutex> lck(_dataLock);
@@ -76,15 +73,13 @@ void Env::_syncEnv(double rate)
         }
 
         lck.unlock();
-    }
-    catch(const std::exception& e)
-    {
+    } catch(const std::exception& e) {
         std::cerr << e.what() << std::endl;
         throw std::runtime_error("cannot sync with servos");
     }
 }
 
-void Env::waitForUpdate(){
+void Env::waitForUpdate() {
     std::unique_lock<std::mutex> lck(_updateLock);
     while (!_updated) {
         _updateCondition.wait(lck);
@@ -95,8 +90,7 @@ void Env::waitForUpdate(){
 void Env::update(Utility::ED eventDataArray[NUM_SERVOS]) {
     
     std::unique_lock<std::mutex> lck(_dataLock);
-    try
-    {
+    try {
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             if (_disableServo[servo]) {
                 continue;
@@ -107,22 +101,18 @@ void Env::update(Utility::ED eventDataArray[NUM_SERVOS]) {
         
         lck.unlock();
         _dataCondition.notify_all();
-    }
-    catch(const std::exception& e)
-    {
+    } catch(const std::exception& e) {
         std::cerr << e.what() << std::endl;
         throw std::runtime_error("cannot update event data");
     }
 }
 
-bool Env::isDone()
-{
+bool Env::isDone() {
     bool done = true;
     for (int servo = 0; servo < NUM_SERVOS; servo++) {
         if (_disableServo[servo]) {
             continue;
-        }
-        else {
+        } else {
             done = _currentData[servo].done;
         }
     } 
@@ -130,8 +120,7 @@ bool Env::isDone()
     return done;
 }
 
-void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS])
-{
+void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS]) {
     for (int servo = 0; servo < NUM_SERVOS; servo++) {
         _recentReset[servo] = true;
         _preSteps[servo] = 0;
@@ -153,8 +142,7 @@ void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS])
     }
 }
 
-Utility::RD Env::reset(bool useCurrentAngles)
-{
+Utility::RD Env::reset(bool useCurrentAngles) {
     std::unique_lock<std::mutex> lck(_updateLock);
     _updated = false;
     _resetEnv(useCurrentAngles, _currentAngles);
@@ -220,14 +208,12 @@ Utility::RD Env::reset(double angles[NUM_SERVOS]) {
     _updated = true;
     lck.unlock();
     _updateCondition.notify_all();
-
     return data;
 }
 
 // Using action, take step and return observation, reward, done, and actions for every servo. 
 // Note: SR[servo].currentState is always null. Retrieve currentState from previous 'step' or 'reset' call.
-Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, double rate)
-{
+Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, double rate) {
     _currentSteps = (_currentSteps + 1) % INT_MAX; 
     double rescaledActions[NUM_SERVOS][NUM_ACTIONS];
     bool empty = false;
@@ -406,8 +392,7 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
             _pids[servo]->update(currentError);
             stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
             stepResults.servos[servo].nextState.setData(_errors[servo], _outputs[servo]);
-        }
-        else {
+        } else {
             stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
         }
     }
@@ -415,7 +400,6 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
     _updated = true;
     lck.unlock();
     _updateCondition.notify_all();
-
     return stepResults;
 }
 
@@ -460,8 +444,7 @@ void Env::getCurrentAngle(double angles[NUM_SERVOS]) {
 
 void Env::getPredictedObjectLocation(double locations[NUM_SERVOS]) {
     std::unique_lock<std::mutex> lck(_dataLock);
-    try
-    {
+    try {
         for (int servo = 0; servo < NUM_SERVOS; servo++) {
             if (_disableServo[servo]) {
                 continue;
@@ -471,9 +454,7 @@ void Env::getPredictedObjectLocation(double locations[NUM_SERVOS]) {
         }
         
         lck.unlock();
-    }
-    catch(const std::exception& e)
-    {
+    } catch(const std::exception& e) {
         std::cerr << e.what() << std::endl;
         throw std::runtime_error("cannot get current object locations");
     }
