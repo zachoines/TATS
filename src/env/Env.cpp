@@ -1,13 +1,13 @@
 #include "Env.h"
 
-Env::Env(control::ServoKit* servos) {
+Env::Env(control::ServoKit* servos, Utility::Config* config) {
     _eventData;
     _lastData;
     _currentData;
     _servos = servos;
 
     // Setup default env state variables
-    _config = new Utility::Config();
+    _config = config;
     _currentSteps = 0;
     _maxPreSteps = 2;
     _preStepAngleAmount = 0.0;
@@ -42,7 +42,7 @@ Env::Env(control::ServoKit* servos) {
 }
 
 Env::~Env() {
-    delete _config;
+
 }
 
 void Env::_sleep(double rate) {
@@ -143,7 +143,7 @@ void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS]) {
 }
 
 Utility::RD Env::reset(bool useCurrentAngles) {
-    std::unique_lock<std::mutex> lck(_updateLock);
+    // std::unique_lock<std::mutex> lck(_updateLock);
     _updated = false;
     _resetEnv(useCurrentAngles, _currentAngles);
     _syncEnv();
@@ -171,13 +171,13 @@ Utility::RD Env::reset(bool useCurrentAngles) {
     }
 
     _updated = true;
-    lck.unlock();
-    _updateCondition.notify_all();
+    // lck.unlock();
+    // _updateCondition.notify_all();
     return data;
 }
 
 Utility::RD Env::reset(double angles[NUM_SERVOS]) {
-    std::unique_lock<std::mutex> lck(_updateLock);
+    // std::unique_lock<std::mutex> lck(_updateLock);
     _updated = false;
 
     _resetEnv(true, angles);
@@ -206,8 +206,8 @@ Utility::RD Env::reset(double angles[NUM_SERVOS]) {
     }
 
     _updated = true;
-    lck.unlock();
-    _updateCondition.notify_all();
+    // lck.unlock();
+    // _updateCondition.notify_all();
     return data;
 }
 
@@ -218,7 +218,7 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
     double rescaledActions[NUM_SERVOS][NUM_ACTIONS];
     bool empty = false;
 
-    std::unique_lock<std::mutex> lck(_updateLock);
+    // std::unique_lock<std::mutex> lck(_updateLock);
     _updated = false;
 
     Utility::SR stepResults;
@@ -398,8 +398,8 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
     }
     
     _updated = true;
-    lck.unlock();
-    _updateCondition.notify_all();
+    // lck.unlock();
+    // _updateCondition.notify_all();
     return stepResults;
 }
 

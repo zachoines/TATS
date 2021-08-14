@@ -83,7 +83,7 @@ int main() {
     wire = new control::Wire();
     pwm = new control::PCA9685(0x40, wire);
     servos = new control::ServoKit(pwm);
-    targetTrackingSystem = new control::TATS(*config, servos);
+    targetTrackingSystem = new control::TATS(config, servos);
         
     
     /*  

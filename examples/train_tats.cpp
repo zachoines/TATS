@@ -26,20 +26,26 @@ int main() {
 
     // Setup train mode options
     config->trainMode = true; /* Enable Train mode */
-    config->initialRandomActions = true; /* Fill replay buffer with experiances */
-    config->stepsWithPretrainedModel = false; /* for transfer learning */
+    config->initialRandomActions = true; /* Fill replay buffer with random experiances */
+    config->stepsWithPretrainedModel = true; /* for transfer learning */
     config->lossCountMax = 0; /* Slows training down */
     config->multiProcess = true; /* Offloads SAC training in another process */
-    config->disableServo = { true, false }; /* Turn off tilt during training */
+    config->disableServo[0] = true; /* Turn off tilt during training */
+    config->disableServo[1] = false; /* Turn on pan during training */
     config->detector = Utility::DetectorType::CASCADE; /* Faster and more precise for training */
     config->detectorPath = "/models/haar/haarcascade_frontalface_default.xml"; 
-    config->targets = {"face"};
-    config->classes = {"face"};
+    config->targets = { "face" };
+    config->classes = { "face" };
+    config->batchSize = 32;
+    config->numInitialRandomActions = 32;
+    config->maxBufferSize = 100000;
+    config->minBufferSize = 32; 
+    config->logOutput = false;
 
     wire = new control::Wire();
     pwm = new control::PCA9685(0x40, wire);
     servos = new control::ServoKit(pwm);
-    targetTrackingSystem = new control::TATS(*config, servos);
+    targetTrackingSystem = new control::TATS(config, servos);
     pid_t pid = -1;
 
     // Parent process is image recognition PID/servo controller, second is SAC PID Autotuner
@@ -52,9 +58,8 @@ int main() {
     if (pid > 0) {
         
         // initialize as a parent TATS instance
-        targetTrackingSystem->init(pid);     
-
         std::thread trackingThreadT([&] {
+            targetTrackingSystem->init(pid); 
             cv::VideoCapture* camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
             camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
             camera->set(cv::CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
@@ -80,59 +85,59 @@ int main() {
             }
         });
 
-        std::thread syncThread([&] {
-            if (config->trainMode) {
+        // 
+        if (config->trainMode) {
 
-                // The below loops is the sync for multiprocess training of TATS
-                // Setup signal mask
-                sigset_t  mask;
-                siginfo_t info;
-                pid_t     child, p;
-                int       signum;
+            // The below loops is the sync for multiprocess training of TATS
+            // Setup signal mask
+            sigset_t  mask;
+            siginfo_t info;
+            pid_t     child, p;
+            int       signum;
 
-                sigemptyset(&mask);
-                sigaddset(&mask, SIGINT);
-                sigaddset(&mask, SIGHUP);
-                sigaddset(&mask, SIGTERM);
-                sigaddset(&mask, SIGQUIT);
-                sigaddset(&mask, SIGUSR1);
-                sigaddset(&mask, SIGUSR2);
+            sigemptyset(&mask);
+            sigaddset(&mask, SIGINT);
+            sigaddset(&mask, SIGHUP);
+            sigaddset(&mask, SIGTERM);
+            sigaddset(&mask, SIGQUIT);
+            sigaddset(&mask, SIGUSR1);
+            sigaddset(&mask, SIGUSR2);
 
-                if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
-                    throw std::runtime_error("Cannot block SIGUSR1 or SIGUSR2");
+            if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
+                throw std::runtime_error("Cannot block SIGUSR1 or SIGUSR2");
+            }
+
+            // Loop for syncing parent network params
+            while (!stopFlag) {
+                
+                // Wait until sync signal is received
+                signum = sigwaitinfo(&mask, &info);
+                if (signum == -1) {
+                    if (errno == EINTR)
+                        continue;
+                    throw std::runtime_error("sigwaitinfo() failed");
                 }
 
-                // Loop for syncing parent network params
-                while (!stopFlag) {
-                    
-                    // Wait until sync signal is received
-                    signum = sigwaitinfo(&mask, &info);
-                    if (signum == -1) {
-                        if (errno == EINTR)
-                            continue;
-                        std::runtime_error("Parent process: sigwaitinfo() failed");
-                    }
-
-                    // Update weights on signal received from autotune thread
-                    if (signum == SIGUSR1 && info.si_pid == pid) {
-                        try {
-                            targetTrackingSystem->syncTATS();
-                        } catch (...) {
-                            throw std::runtime_error("Cannot sync network parameters with auto-tune process");
-                        }
-                    }
-
-                    // Break when on SIGINT
-                    if (signum == SIGINT && !info.si_pid == parameters->pid) {
-                        std::cout << "Ctrl+C detected!" << std::endl;
-                        break;
+                // Update weights on signal received from autotune thread/process
+                if (signum == SIGUSR1 && info.si_pid == pid) {
+                    try {
+                        targetTrackingSystem->syncTATS();
+                    } catch (...) {
+                        throw std::runtime_error("Cannot sync network parameters with auto-tune process");
                     }
                 }
-            }    
-        });
+
+                // Break when on SIGINT
+                if (signum == SIGINT && !info.si_pid == parameters->pid) {
+                    std::cout << "Ctrl+C detected!" << std::endl;
+                    break;
+                }
+            }
+        }    
+        // });
         
         trackingThreadT.join();
-        syncThread.join();
+        // syncThread.join();
 
         delete targetTrackingSystem;
         delete servos;
@@ -186,6 +191,8 @@ int main() {
         // initialize as a child TATS instance
         targetTrackingSystem->init(pid);
 
+        std::cout << "Autotune Process: TATS initialized" << std::endl;
+
         // Wait on parent process' signal before training
         while (
             (sig_value1 != SIGINT) && 
@@ -195,24 +202,25 @@ int main() {
             
             sig_value1 = 0;
 
-            // Sleep until signal is caught; train model on wakin            
+            // Sleep until signal is caught; train model on waking
+            std::cout << "Autotune Process: Waiting for train signal" << std::endl;            
             sigsuspend(&zeromask);
 
             if (sig_value1 == SIGUSR1) {
 
-                std::cout << "Train signal received..." << std::endl;
-
-                // Begin training process
+                std::cout << "Autotune Process: Train signal received" << std::endl;
                 while (!targetTrackingSystem->trainTATSChildProcess()) {
-        
+                    std::cout << "here we are 1" << std::endl;
                     // Inform parent new params are available
                     kill(getppid(), SIGUSR1);
 
                     // Sleep per train rate
                     long milis = static_cast<long>(1000.0 / config->trainRate);
+                    std::cout << "Autotune Process: Train session sucessful. Sleeping..." << std::endl;
                     Utility::msleep(milis);
                 }
 
+                std::cout << "here we are 2" << std::endl;
                 return 0;
             }
         }

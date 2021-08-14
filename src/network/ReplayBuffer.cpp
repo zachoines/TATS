@@ -12,10 +12,10 @@
 #include "../util/config.h"
 
 
-ReplayBuffer::ReplayBuffer(int maxBufferSize, Utility::SharedBuffer* buffer, bool multiprocess)
-{
+ReplayBuffer::ReplayBuffer(int maxBufferSize, Utility::SharedBuffer* buffer, bool multiprocess) {
     _trainingBuffer = buffer;
     _mutex = new boost::interprocess::named_mutex(boost::interprocess::open_or_create, "ReplayBufferMutex");
+    _mutex->unlock();
     _maxBufferSize = maxBufferSize;
     _multiprocess = multiprocess;
 }
@@ -27,13 +27,11 @@ ReplayBuffer::~ReplayBuffer() {
     }
 }
 
-int ReplayBuffer::_draw(int min, int max)
-{
+int ReplayBuffer::_draw(int min, int max) {
     return std::uniform_int_distribution<int>{min, max}(eng);
 }
 
-Utility::TrainBuffer ReplayBuffer::ere_sample(int batchSize, int startingIndex)
-{
+Utility::TrainBuffer ReplayBuffer::ere_sample(int batchSize, int startingIndex) {
     Utility::TrainBuffer batch;
 
     if (_multiprocess) {
@@ -67,8 +65,7 @@ Utility::TrainBuffer ReplayBuffer::ere_sample(int batchSize, int startingIndex)
 }
 
 
-void ReplayBuffer::add(Utility::TD data)
-{
+void ReplayBuffer::add(Utility::TD data) {
     if (_multiprocess) {
         boost::interprocess::scoped_lock<boost::interprocess::named_mutex> lock(*_mutex);
         if (_trainingBuffer->size() == _maxBufferSize) {
@@ -80,7 +77,6 @@ void ReplayBuffer::add(Utility::TD data)
         }
     } else {
         std::unique_lock<std::mutex> lck(_lock);
-        
         if (_trainingBuffer->size() == _maxBufferSize) {
             _trainingBuffer->erase(_trainingBuffer->begin());	
             _trainingBuffer->push_back(data);
@@ -88,7 +84,6 @@ void ReplayBuffer::add(Utility::TD data)
         else {
             _trainingBuffer->push_back(data);
         }
-
         lck.unlock();
     }
     
@@ -98,8 +93,7 @@ int ReplayBuffer::size() {
     if (_multiprocess) { 
         boost::interprocess::scoped_lock<boost::interprocess::named_mutex> lock(*_mutex);
         return _trainingBuffer->size();
-    } else {
-        
+    } else {   
         std::unique_lock<std::mutex> lck(_lock);
         int size = _trainingBuffer->size();
         lck.unlock();

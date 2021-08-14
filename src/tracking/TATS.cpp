@@ -11,7 +11,7 @@ namespace control {
         delete __eventCallT;
     }
 
-    TATS::TATS(Utility::Config config, control::ServoKit* servos) {
+    TATS::TATS(Utility::Config* config, control::ServoKit* servos) {
         using namespace Utility;
         
         // Misc variables
@@ -35,24 +35,25 @@ namespace control {
         }
 
         // Initialize buffers in shared memory space
-        if (__config.trainMode) {
+        if (__config->trainMode) {
             boost::interprocess::shared_memory_object::remove("SharedMemorySegment");
-            boost::interprocess::managed_shared_memory segment(boost::interprocess::create_only, "SharedMemorySegment", (sizeof(Utility::TD) * __config.maxBufferSize + 1) + (sizeof(char) * __numParams + 1));
-            const ShmemAllocator alloc_inst(segment.get_segment_manager());
-            segment.construct<SharedBuffer>("SharedBuffer")(alloc_inst);
-            segment.construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
+            // boost::interprocess::managed_shared_memory segment(boost::interprocess::create_only, "SharedMemorySegment", (sizeof(Utility::TD) * __config->maxBufferSize + 1) + (sizeof(char) * __numParams + 1));
+            __segment = boost::interprocess::managed_shared_memory(boost::interprocess::create_only, "SharedMemorySegment", (sizeof(Utility::TD) * __config->maxBufferSize + 1) + (sizeof(char) * __numParams + 1));
+            const ShmemAllocator alloc_inst(__segment.get_segment_manager());
+            __segment.construct<SharedBuffer>("SharedBuffer")(alloc_inst);
+            __segment.construct<Utility::sharedString>("SharedString")("", alloc_inst);
         } 
 
         // Initialize other variables
         __parentMode = false;
         __initialized = false;
         __programStart = true;
-        __logOutput = __config.logOutput;
+        __logOutput = __config->logOutput;
         __frameCount = 0;
-        __recheckFrequency = __config.recheckFrequency;
-        __trackerType = __config.trackerType;
-        __useTracking = __config.useTracking;
-        __draw = __config.draw;
+        __recheckFrequency = __config->recheckFrequency;
+        __trackerType = __config->trackerType;
+        __useTracking = __config->useTracking;
+        __draw = __config->draw;
         
         // Target location variables
         __rechecked = false;
@@ -62,39 +63,40 @@ namespace control {
         __trackCount = 0;
         __searchCount = 0;
         __searchCountMax = 5;
-        __lossCountMax = __config.lossCountMax;
-        __targets = __config.targets;
+        __lossCountMax = __config->lossCountMax;
+        __targets = __config->targets;
         __currentTarget = ""; 
         __targetId = -1;
 
         // Training variables
-        __trainMode = __config.trainMode;
+        __trainMode = __config->trainMode;
         __isTraining = false;
-        __initialRandomActions = __config.initialRandomActions;
-        __numInitialRandomActions = __config.numInitialRandomActions;
-        __stepsWithPretrainedModel = __config.stepsWithPretrainedModel;
-        __numTransferLearningSteps = __config.numTransferLearningSteps;  
-        __batchSize = __config.batchSize;
-        __maxTrainingSteps = __config.maxTrainingSteps;
-        __minBufferSize = __config.minBufferSize;
-        __maxBufferSize = __config.maxBufferSize;
-        __numUpdates = __config.numUpdates;
-        __rate = __config.trainRate;
-        __multiProcess  = __config.multiProcess;
-        __variableFPS = __config.variableFPS;
-        __FPSVariance = __config.FPSVariance;
-        __varyResetAngles = __config.varyResetAngles;
-        __resetAngleVariance = __config.resetAngleVariance;
-        __useCurrentAngleForReset = __config.useCurrentAngleForReset;
-        __updateRate = __config.updateRate;
-        __useAutoTuning = __config.useAutoTuning;
-        __maxStepsPerEpisode = __config.maxStepsPerEpisode;
-        __resetAfterNInnactiveFrames = __config.resetAfterNInnactiveFrames;
+        __initialRandomActions = __config->initialRandomActions;
+        __numInitialRandomActions = __config->numInitialRandomActions;
+        __stepsWithPretrainedModel = __config->stepsWithPretrainedModel;
+        __numTransferLearningSteps = __config->numTransferLearningSteps;  
+        __batchSize = __config->batchSize;
+        __maxTrainingSteps = __config->maxTrainingSteps;
+        __minBufferSize = __config->minBufferSize;
+        __maxBufferSize = __config->maxBufferSize;
+        __numUpdates = __config->numUpdates;
+        __rate = __config->trainRate;
+        __multiProcess  = __config->multiProcess;
+        __variableFPS = __config->variableFPS;
+        __FPSVariance = __config->FPSVariance;
+        __varyResetAngles = __config->varyResetAngles;
+        __additionalDelay = 0;
+        __resetAngleVariance = __config->resetAngleVariance;
+        __useCurrentAngleForReset = __config->useCurrentAngleForReset;
+        __updateRate = __config->updateRate;
+        __useAutoTuning = __config->useAutoTuning;
+        __maxStepsPerEpisode = __config->maxStepsPerEpisode;
+        __resetAfterNInnactiveFrames = __config->resetAfterNInnactiveFrames;
 
         // ERE Sampling variables
         __N0 = 0.996;
         __NT = 1.0;
-        __T = __config.maxTrainingSteps;
+        __T = __config->maxTrainingSteps;
         __t_i = 0;
         __currentSteps = 0;
 
@@ -104,11 +106,11 @@ namespace control {
         __emaWeight = (2.0 / (__timePeriods + 1.0));
 
         // Network variables
-        __numHidden = __config.numHidden;
-        __numActions = __config.numActions; 
-        __actionHigh = __config.actionHigh; 
-        __actionLow = __config.actionLow;
-        __numInput =__config.numInput;
+        __numHidden = __config->numHidden;
+        __numActions = __config->numActions; 
+        __actionHigh = __config->actionHigh; 
+        __actionLow = __config->actionLow;
+        __numInput =__config->numInput;
 
         __pidAutoTuner = new SACAgent(
             __numInput, 
@@ -118,7 +120,7 @@ namespace control {
             __actionLow
         );
 
-        __servos = new Env(servos);
+        __servos = new Env(servos, config);
     }
 
     void TATS::registerCallback(EVENT eventType, std::function<void(control::INFO const&)> callback) {
@@ -148,10 +150,15 @@ namespace control {
 
             if (__trainMode) {
                 // Retrieve model params array from shared memory 
-                boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
-                __sharedTrainingBuffer = segment.find<SharedBuffer>("SharedBuffer").first;
-                __replayBuffer = new ReplayBuffer(__config.maxBufferSize, __sharedTrainingBuffer);
-                __s = segment.find_or_construct<Utility::sharedString>("SharedString")("", segment.get_segment_manager());
+                // segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
+                __sharedTrainingBufferParent = __segment.find<SharedBuffer>("SharedBuffer").first;
+
+                if (__sharedTrainingBufferParent == 0x0 || __maxBufferSize > __sharedTrainingBufferParent->max_size()) {
+                    throw std::runtime_error("could not construct shared buffer in memory");
+                }
+
+                __replayBufferParent = new ReplayBuffer(__maxBufferSize, __sharedTrainingBufferParent, __multiProcess);
+                __sParent = __segment.find_or_construct<Utility::sharedString>("SharedString")("", __segment.get_segment_manager());
             }
 
             __execbegin = std::chrono::high_resolution_clock::now();
@@ -161,10 +168,10 @@ namespace control {
             }   
 
             // Load detector
-            __weights = __path + __config.detectorPath;
-            __class_names = __config.classes;
+            __weights = __path + __config->detectorPath;
+            __class_names = __config->classes;
 
-            switch(__config.detector) {
+            switch(__config->detector) {
                 case Utility::DetectorType::CASCADE:
                     __detector = new Detect::CascadeDetector(__weights);
                     break; 
@@ -183,9 +190,9 @@ namespace control {
             }
 
             __panTiltT = new std::thread(&TATS::__panTiltThread, this);
-            __eventCallT = new std::thread(&TATS::__eventCallbackThread, this);
+            // __eventCallT = new std::thread(&TATS::__eventCallbackThread, this);
 
-            if (__multiProcess && __trainMode) {
+            if (!__multiProcess && __trainMode) {
                 __autoTuneT = new std::thread(&TATS::__autoTuneThread, this);
             }
             
@@ -195,18 +202,19 @@ namespace control {
 
             if (__trainMode) {
                 // Retrieve the training buffer from shared memory
-                boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
-                __sharedTrainingBuffer = segment.find<SharedBuffer>("SharedBuffer").first;
-                __replayBuffer = new ReplayBuffer(__config.maxBufferSize, __sharedTrainingBuffer);
-                __s = segment.find_or_construct<sharedString>("SharedString")("", segment.get_segment_manager());
+                // boost::interprocess::managed_shared_memory segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
+                __segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
+                __sharedTrainingBufferChild = __segment.find<SharedBuffer>("SharedBuffer").first;
+                __replayBufferChild = new ReplayBuffer(__config->maxBufferSize, __sharedTrainingBufferChild, __multiProcess);
+                __sChild = __segment.find_or_construct<sharedString>("SharedString")("", __segment.get_segment_manager());
             }
         }
     }
 
     void TATS::update(cv::Mat& frame) {
 
-        std::unique_lock<std::mutex> lck(__eventLock);
-        
+        // std::unique_lock<std::mutex> lck(__eventLock);
+
         if (!__parentMode) {
             throw std::runtime_error("Can only run update from an instance of TATS in a parent process");
         }
@@ -243,7 +251,7 @@ namespace control {
 
         try {
             try {
-                int cropSize = __config.dims[0];
+                int cropSize = __config->dims[0];
                 int offsetW = (frame.cols - cropSize) / 2;
                 int offsetH = (frame.rows - cropSize) / 2;
                 cv::Rect region(offsetW, offsetH, cropSize, cropSize);
@@ -394,12 +402,10 @@ namespace control {
                     } else {                
                         if (__results.size() > 1) {
                             
-                            int bestDistance = __config.dims[0];
+                            int bestDistance = __config->dims[0];
                             for (auto res : __results) {
                                 // TODO:: Assumption below potentially wrong, use POT in the future
                                 if (__currentTarget == res.target) {   
-
-                                    // TODO:: Trigger target detect event
                                     cv::Point2i a = res.center;
                                     cv::Point2i b = (__roi.tl() + __roi.br()) / 2;
                                     int distance = std::sqrt<int>( (a.x-b.x) * (a.x-b.x) + (a.y-b.y) * (a.y-b.y) );
@@ -493,7 +499,7 @@ namespace control {
                         }
                     }
                 }
-                else if (!__config.trainMode && __config.usePOT) {
+                else if (!__config->trainMode && __config->usePOT) {
                     __lossCount++;
                     __frameCount = 0.0;
                     __rechecked = false;
@@ -555,15 +561,15 @@ namespace control {
                     } else if (!__isSearching && !__programStart && __trackCount > 3) {
                         
                         // Get the prediction location of object relative to frame center
-                        if (__config.logOutput) {
+                        if (__config->logOutput) {
                             std::cout << "Using Predictive Object Tracking: frame # " << std::to_string(__lossCount) << std::endl;
                         }
                         
                         // Enter state data
                         double locations[__numberServos] = { 0.0 };
                         __servos->getPredictedObjectLocation(locations);
-                        __frameCenterX = __config.dims[1] / 2;
-                        __frameCenterY = __config.dims[0] / 2;
+                        __frameCenterX = __config->dims[1] / 2;
+                        __frameCenterY = __config->dims[0] / 2;
                         
                         auto wall_now = std::chrono::high_resolution_clock::now();
                         double timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_now - __execbegin).count() * 1e-9;
@@ -677,7 +683,7 @@ namespace control {
             throw std::runtime_error("Issue detecting target from image");
         }
 
-        lck.unlock();
+        // lck.unlock();
     }
 
     void TATS::__panTiltThread() {
@@ -818,15 +824,15 @@ namespace control {
                             }
 
                             // If early episode termination
-                            if (__config.episodeEndCap) {
+                            if (__config->episodeEndCap) {
                                 if (__totalEpisodeSteps[servo] > __maxStepsPerEpisode) {
                                     reset = true;
                                 }
                             }
 
                             // Add to replay buffer for training
-                            if (__replayBuffer->size() <= __maxBufferSize) {
-                                __replayBuffer->add(__trainData[servo]);
+                            if (__replayBufferParent->size() <= __maxBufferSize) {
+                                __replayBufferParent->add(__trainData[servo]);
                             }
 
                             // logging
@@ -842,12 +848,12 @@ namespace control {
                         if (__trainMode) {
                             // Inform child process to start training
                             if (__multiProcess) {
-                                if (!__isTraining && __replayBuffer->size() > (__minBufferSize)) {
+                                if (!__isTraining && __replayBufferParent->size() > (__minBufferSize)) {
                                     std::cout << "Sending train signal..." << std::endl;
                                     __isTraining = true;
                                     kill(this->__pid, SIGUSR1);
                                 } 
-                            } else if (!__isTraining && __replayBuffer->size() > (__minBufferSize)) {
+                            } else if (!__isTraining && __replayBufferParent->size() > (__minBufferSize)) {
                                 // Inform autotune thread start training 
                                 pthread_mutex_lock(&__trainLock);
                                 pthread_cond_broadcast(&__trainCond);
@@ -924,9 +930,9 @@ namespace control {
             else {
                 if (!__servos->isDone()) {
                     for (int i = 0; i < __numberServos ; i++) {
-                        __predictedActions[i][0] = __config.defaultGains[0];
-                        __predictedActions[i][1] = __config.defaultGains[1];
-                        __predictedActions[i][2] = __config.defaultGains[2];
+                        __predictedActions[i][0] = __config->defaultGains[0];
+                        __predictedActions[i][1] = __config->defaultGains[1];
+                        __predictedActions[i][2] = __config->defaultGains[2];
                     }
 
                     try {
@@ -969,28 +975,29 @@ namespace control {
 
         using namespace Utility;
 
-        __replayBuffer->clear();
+        __replayBufferParent->clear();
 
 
         // Wait for the buffer to fill
         pthread_mutex_lock(&__trainLock);
-        while (__replayBuffer->size() <= __minBufferSize) {
+        while (__replayBufferParent->size() <= __minBufferSize) {
             pthread_cond_wait(&__trainCond, &__trainLock);
         }
         pthread_mutex_unlock(&__trainLock);
 
         while (__isTraining && !__stopFlag) {
 
-            double N = static_cast<double>(__replayBuffer->size());
+            double N = static_cast<double>(__replayBufferParent->size());
             __t_i += 1;
             double n_i = __N0 + (__NT - __N0) * (__t_i / __T);
             int cmin = N - ( __minBufferSize );
             
             // Check if training is over
             if (__currentSteps >= __maxTrainingSteps) {
-                __replayBuffer->clear();
+                __replayBufferParent->clear();
                 __isTraining = false;
                 std::cout << "Training session over!!" << std::endl;
+                return;
             }
             else {
                 __currentSteps += 1;
@@ -999,7 +1006,7 @@ namespace control {
             for (int k = 0; k < __numUpdates; k += 1) {
                 int startingRange = std::min<int>( N - N * std::pow(n_i, static_cast<double>(k) * (1000.0 / __numUpdates)), cmin);
 
-                TrainBuffer batch = __replayBuffer->ere_sample(__batchSize, startingRange);
+                TrainBuffer batch = __replayBufferParent->ere_sample(__batchSize, startingRange);
                 __pidAutoTuner->update(batch.size(), &batch);
                 
             }
@@ -1026,15 +1033,15 @@ namespace control {
         while (!__stopFlag) {
             
             // Block until new update from ENV, then trigger newest event.
-            __servos->waitForUpdate();
-            std::unique_lock<std::mutex> lck(__eventLock); // this->update(cv::mat frame) holds lock otherwise
+            // __servos->waitForUpdate();
+            // std::unique_lock<std::mutex> lck(__eventLock); // this->update(cv::mat frame) holds lock otherwise
 
-            INFO event = __getINFO();
+            // INFO event = __getINFO();
 
-            int id = __eventId;
-            lck.unlock();
+            // int id = __eventId;
+            // lck.unlock();
 
-            __triggerCallback(EVENT(id), event);
+            // __triggerCallback(EVENT(id), event);
         }
     }
 
@@ -1060,7 +1067,7 @@ namespace control {
         }
 
         try {
-            __pidAutoTuner->load_policy(__s);
+            __pidAutoTuner->load_policy(__sParent);
         } catch (...) {
             throw std::runtime_error("Cannot refrech SAC network parameters");
         }
@@ -1079,14 +1086,14 @@ namespace control {
         }
 
         // Increment/set ERE related loop variables
-        double N = static_cast<double>(__replayBuffer->size());
+        double N = static_cast<double>(__replayBufferChild->size());
         __t_i += 1;
         double n_i = __N0 + (__NT - __N0) * (__t_i / __T);
         int cmin = N - ( __minBufferSize );
             
         // Check if training is over
         if (__currentSteps >= __maxTrainingSteps) {
-            __replayBuffer->clear();
+            __replayBufferChild->clear();
             return true;
         }
         else {
@@ -1095,14 +1102,14 @@ namespace control {
             // Perform a training session
             for (int k = 0; k < __numUpdates; k += 1) {
                 int startingRange = std::min<int>( N - N * std::pow(n_i, static_cast<double>(k) * (1000.0 / __numUpdates)), cmin);
-
-                Utility::TrainBuffer batch = __replayBuffer->ere_sample(__batchSize, startingRange);
+                std::cout << "Here is the starting range: " << std::to_string(startingRange) << std::endl;
+                Utility::TrainBuffer batch = __replayBufferChild->ere_sample(__batchSize, startingRange);
                 __pidAutoTuner->update(batch.size(), &batch);
             }
 
             // Write values to shared memory for parent to read
             try {
-                __pidAutoTuner->save_policy(__s);
+                __pidAutoTuner->save_policy(__sChild);
             } catch (...) {
                 throw std::runtime_error("Cannot save policy params to shared memory array");
             }
@@ -1187,21 +1194,21 @@ namespace control {
 
         std::cout << "Actions: ";
 
-        if (__config.usePIDs) {
+        if (__config->usePIDs) {
             for (int j = 0; j < NUM_ACTIONS; j++) {
-                std::cout << std::to_string(Utility::rescaleAction(trainData.actions[j], __config.actionLow, __config.actionHigh)) << ", ";
+                std::cout << std::to_string(Utility::rescaleAction(trainData.actions[j], __config->actionLow, __config->actionHigh)) << ", ";
             }
             
         } else {
-            std::cout << std::to_string(Utility::rescaleAction(trainData.actions[0], __config.actionLow, __config.actionHigh)) << ", ";
+            std::cout << std::to_string(Utility::rescaleAction(trainData.actions[0], __config->actionLow, __config->actionHigh)) << ", ";
 
-            if (__config.usePOT) {
-                std::cout << std::to_string(Utility::rescaleAction(trainData.actions[1], 0.0, __config.dims[servo])) << std::endl;
+            if (__config->usePOT) {
+                std::cout << std::to_string(Utility::rescaleAction(trainData.actions[1], 0.0, __config->dims[servo])) << std::endl;
             }
 
             std::cout << "Errors: ";
             std::cout << std::to_string(trainData.errors[0]) << " "; 
-            if (__config.usePOT) {
+            if (__config->usePOT) {
                 std::cout << std::to_string(trainData.errors[1]);
             }
             std::cout << std::endl;
@@ -1218,5 +1225,13 @@ namespace control {
         if(eventCallbacks[e]) {
             eventCallbacks[e](event);
         }
+    }
+
+    void TATS::onServoUpdate(double pan, double tilt) {
+
+    }
+
+    void TATS::onTargetUpdate(control::INFO info, EVENT eventType) {
+
     }
 };

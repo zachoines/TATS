@@ -72,7 +72,7 @@ private:
     void _resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS]); // Resets servos and re-inits PID's. Call only once manually.
 
 public:
-    Env(control::ServoKit* servos);
+    Env(control::ServoKit* servos, Utility::Config* config);
     ~Env();
 
     /***

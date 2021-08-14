@@ -105,7 +105,7 @@ namespace control {
         pthread_mutex_t __sleepLock = PTHREAD_MUTEX_INITIALIZER;
 
         // Misc class variables
-        Utility::Config  __config;
+        Utility::Config*  __config = nullptr;
         SACAgent* __pidAutoTuner = nullptr;
         Env* __servos = nullptr;
         pid_t __pid = -1;
@@ -116,10 +116,14 @@ namespace control {
         // TODO:: Make numParams a dynamic calculation
         // Create a shared memory buffer for experiance replay
         int __numParams = 558298; // size of policy network! Will change if anything is edited in defaults
-        boost::interprocess::managed_shared_memory* __segment;
-        Utility::SharedBuffer* __sharedTrainingBuffer;
-        Utility::sharedString* __s;
-        ReplayBuffer* __replayBuffer;
+        // boost::interprocess::managed_shared_memory* __segment;
+        Utility::SharedBuffer* __sharedTrainingBufferChild;
+        Utility::SharedBuffer* __sharedTrainingBufferParent;
+        Utility::sharedString* __sChild;
+        Utility::sharedString* __sParent;
+        ReplayBuffer* __replayBufferChild;
+        ReplayBuffer* __replayBufferParent;
+        boost::interprocess::managed_shared_memory __segment;
 
         // Setup stats dirs and remove old logs
         std::string __losspath = "/trainingLoss.txt";
@@ -254,7 +258,7 @@ namespace control {
          * @param config Configuration object for option configuration
          * @param servos Pointer to servos TATS will control
          */
-        TATS(Utility::Config config, control::ServoKit* servos);
+        TATS(Utility::Config* config, control::ServoKit* servos);
         ~TATS();
 
         /***
@@ -302,7 +306,7 @@ namespace control {
          * @param eventType Condition triggered on this update
          * @return void
          */
-        void onTargetUpdate(control::INFO info, EVENT eventType);
+        void onTargetUpdate(control::INFO info, EVENT eventType) __attribute__((weak));
 
         /***
          * @brief Called once on every new update of Servos. Async Call. 
@@ -314,7 +318,7 @@ namespace control {
          * @param tilt In angles
          * @return void
          */
-        void onServoUpdate(double pan, double tilt);
+        void onServoUpdate(double pan, double tilt) __attribute__((weak));
         
         /***
          * @brief For train mode only. From parent process, load new network params
