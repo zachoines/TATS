@@ -1,7 +1,10 @@
 #include "./../src/tracking/TATS.h"
 #include <RF24/RF24.h> 
+#include <atomic>
 #include <csignal>
 #include <sys/prctl.h>  /* prctl */
+
+std::atomic<bool> startTATSFlag = false;
 
 // Local Function hoisting
 unsigned long getTimestamp(struct Signal& s);
@@ -54,7 +57,7 @@ void control::TATS::onTargetUpdate(control::INFO info, EVENT eventType) {
     switch (eventType) {
         case EVENT::ON_UPDATE:
             if (info.tracking) {
-                std::cout << "Currently tracked target: " << config->classes[info.id] << std::endl;
+                // std::cout << "Currently tracked target: " << config->classes[info.id] << std::endl;
             }
             return;
         default:
@@ -63,11 +66,11 @@ void control::TATS::onTargetUpdate(control::INFO info, EVENT eventType) {
 }
 
 void control::TATS::onServoUpdate(double pan, double tilt) {
-   std::cout << "Pan: " 
-   << std::to_string(Utility::rescaleAction(pan, -45.0, 45.0)) 
-   << ", Tilt: " 
-   << std::to_string(Utility::rescaleAction(tilt, -45.0, 45.0)) 
-   << std::endl;
+//    std::cout << "Pan: " 
+//    << std::to_string(Utility::rescaleAction(pan, -45.0, 45.0)) 
+//    << ", Tilt: " 
+//    << std::to_string(Utility::rescaleAction(tilt, -45.0, 45.0)) 
+//    << std::endl;
 }
 
 int main() {
@@ -100,9 +103,7 @@ int main() {
         };
         targetTrackingSystem->registerCallback(control::EVENT::ON_UPDATE, updateCallback); 
     */
-
-    targetTrackingSystem->init(1);     
-
+   
     std::thread radioThreadT([&] {
         // RF24 inits
         uint8_t address[] = { 0xE6, 0xE6, 0xE6, 0xE6, 0xE6 };
@@ -125,13 +126,13 @@ int main() {
 
         // Main program loop
         while(!stopFlag) {
-            if ( radio.available(&pipe) ) {
+            if ( startTATSFlag = radio.available(&pipe) ) {
                 oldData = newData;
                 radio.read(&newData.buffer, 8);
 
                 if (getTimestamp(newData) != getTimestamp(oldData)) {
-                    double wls = mapSpeeds(newData.buffer[data::wLeft], 750, 1500, 2250);
-                    double wrs = mapSpeeds(newData.buffer[data::wRight], 750, 1500, 2250);
+                    double wls = mapSpeeds(newData.buffer[data::wLeft], 750, 1450, 2250);
+                    double wrs = mapSpeeds(newData.buffer[data::wRight], 750, 1450, 2250);
                     pwm->writeMicroseconds(10, wls);
                     pwm->writeMicroseconds(11, wrs);
                 }
@@ -139,7 +140,12 @@ int main() {
         }       
     });
     
+    // Wait until radio signals are being received; 
+    // Could use thread signals instead for performance
+    while (startTATSFlag == false); { Utility::msleep(500); }
+
     std::thread trackingThreadT([&] {
+        targetTrackingSystem->init(1);
         cv::VideoCapture* camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
         camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
         camera->set(cv::CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
@@ -180,7 +186,7 @@ static void sig_handler(int signum) {
     stopFlag = true;
 }
 
-int mapSpeeds(unsigned char val, int pwm_min=750, int pwm_mid=1500, int pwm_max=2250) {
+int mapSpeeds(unsigned char val, int pwm_min=750, int pwm_mid=1450, int pwm_max=2250) {
 
     int adjusted;
     int max = 255;
@@ -189,9 +195,9 @@ int mapSpeeds(unsigned char val, int pwm_min=750, int pwm_mid=1500, int pwm_max=
 
     // Not one-to-one mapping of microseconds on lower and upper speed ranges
     if (clipped <= middle) {
-    adjusted = Utility::mapOutput(clipped, 0, middle, pwm_min, pwm_mid); 
+        adjusted = Utility::mapOutput(clipped, 0, middle, pwm_min, pwm_mid); 
     } else {
-    adjusted = Utility::mapOutput(clipped, middle + 1, max, pwm_mid, pwm_max);
+        adjusted = Utility::mapOutput(clipped, middle + 1, max, pwm_mid, pwm_max);
     }
 
     return adjusted;

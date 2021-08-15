@@ -46,7 +46,7 @@ Target acquisition and tracking system. The aim of this repo is to use various d
 	* sudo apt install libboost-dev=1.65.*
 
 * Unzip models
-	* tar -xvzf yoloModel.tar.gz
+	* tar -xvzf yolov5SCoco640.tar.gz (tar -zcvf "filename" to compress)
 	* tar -xvzf haarModel.tar.gz
 
 * Build and Run TATS

@@ -7,5 +7,8 @@ Makefile
 images/*
 TATS
 .vscode
-models/yolo/yolo5s6_uno_v2.torchscript.pt
+models/yolo/yolov5s6.coco.640.torchscript.pt
+models/yolo/yolov5s6.coco.1280.torchscript.pt
+models/yolo/yolov5m6.coco.640.torchscript.pt
+models/yolo/yolov5s6.uno.640.torchscript.pt
 models/haar/haarcascade_frontalface_default.xml
