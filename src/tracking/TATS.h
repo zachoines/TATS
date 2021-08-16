@@ -215,6 +215,7 @@ namespace control {
         bool __useAutoTuning;
         int __maxStepsPerEpisode;
         int __resetAfterNInnactiveFrames;
+        int __currentReplayBuffSize;
 
         // Annealed ERE (Emphasizing Recent Experience)variables
         // https://arxiv.org/pdf/1906.04009.pdf
@@ -316,6 +317,17 @@ namespace control {
          * @return void
          */
         void onServoUpdate(double pan, double tilt) __attribute__((weak));
+
+        /***
+         * @brief Called once before Servos.step(). Allows
+                  the user to override AI actions. AI learns from these action instead.
+                  Simply override with desired behavior in main.cpp.
+                  EXAMPLE: double actionOverride(double actions[2])  { ... custom code here ...; }
+                  NOTE: Overrides prototype for all instances of TATS
+         * @param actions Actions to provide to the AI [-1.0, 1.0]
+         * @return void
+         */
+        bool actionOverride(double actions[NUM_SERVOS][NUM_ACTIONS]) __attribute__((weak));
         
         /***
          * @brief For train mode only. From parent process, load new network params
@@ -328,5 +340,11 @@ namespace control {
          * @return void
          */
         bool trainTATSChildProcess();
+
+        /***
+         * @brief Returns true if model is currently training
+         * @return bool train status
+         */
+        bool isTraining();
     };
 };

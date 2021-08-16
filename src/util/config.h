@@ -313,7 +313,7 @@ namespace Utility {
             trainRate(.25),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             
-            disableServo({ false, false }),      // Disable the { Y, X } servos
+            disableServo({ true, false }),       // Disable the { Y, X } servos
             invertData({ true, false }),         // Flip input data { Y, X } servos
             invertAngles({ false, false }),      // Flip output angles { Y, X } servos
             resetAngles({                        // Angle when reset
@@ -326,10 +326,16 @@ namespace Utility {
                 -45.0, -45.0
             }),         
             servoConfigurations(                 // Hardware settings for individual servos         
+
                 {                             
-                    { 0, -56.5, 56.5, 0.750, 2.250, 0.0 }, 
-                    { 1, -56.5, 56.5, 0.750, 2.250, 0.0 } // HS7985MG
+                    { 0, -72.0, 72.0, 0.750, 2.250, 0.0 }, 
+                    { 1, -72.0, 72.0, 0.750, 2.250, 0.0 } // D951TW
                 }
+
+                // {                             
+                //     { 0, -56.5, 56.5, 0.750, 2.250, 0.0 }, 
+                //     { 1, -56.5, 56.5, 0.750, 2.250, 0.0 } // HS7985MG
+                // }
 
                 // {                             
                 //     { 0, -65.0, 65.0, 0.900, 2.1, 0.0 }, 

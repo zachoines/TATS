@@ -91,6 +91,7 @@ namespace control {
         __useAutoTuning = __config->useAutoTuning;
         __maxStepsPerEpisode = __config->maxStepsPerEpisode;
         __resetAfterNInnactiveFrames = __config->resetAfterNInnactiveFrames;
+        __currentReplayBuffSize = 0;
 
         // ERE Sampling variables
         __N0 = 0.996;
@@ -198,6 +199,7 @@ namespace control {
             __initialized = true;
 
             if (__trainMode) {
+                __isTraining = true;
                 
                 // Retrieve the training buffer from shared memory
                 __segment = boost::interprocess::managed_shared_memory(boost::interprocess::open_only, "SharedMemorySegment");
@@ -721,19 +723,18 @@ namespace control {
             __currentState[servo] = __resetResults.servos[servo];
         }
 
-        while (true && !__stopFlag) {
-            
+        while (!__stopFlag) {
+            bool overriden = false;
             if (__useAutoTuning) {
 
                 if (!__servos->isDone()) {
                     __recentlyReset = false;
                     __doneCount = 0;
-        
+
                     for (int i = 0; i < __numberServos; i++) {
 
                         // Query network and get PID gains
                         if (__trainMode) {
-                            
                             if (__initialRandomActions && __numInitialRandomActions > 0) {
                                 for (int a = 0; a < __numActions; a++) {
                                     __predictedActions[i][a] = std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
@@ -794,6 +795,7 @@ namespace control {
                     }
 
                     try {
+                        overriden = actionOverride(__predictedActions);
                         __stepResults = __servos->step(__predictedActions, true, rate);		
                         __totalSteps = (__totalSteps + 1) % INT_MAX; 
 
@@ -876,10 +878,13 @@ namespace control {
 
                     reset:
 
+                    double overrides[NUM_SERVOS][NUM_ACTIONS] = { 0 };
+                    overriden = actionOverride(overrides);
+
                     // Vary env sync rate and FPS to simulate different latency configurations
-                    if (__trainMode) {
+                    if (!overriden && __trainMode) {
                         rate = static_cast<double>(__updateRate);
-                        double adjustment =  (( rate ) / 2.0) * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
+                        double adjustment = (( rate ) / 2.0) * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
                         rate += adjustment;
 
                         // Locked to avoid race condition on additionalDelay with detectThread
@@ -892,15 +897,30 @@ namespace control {
                     
                     // Vary angle of reset after set amount of time to enable AI to work at any reset angle
                     if (__trainMode && __varyResetAngles) {
-                
-                        double newAngles[__numberServos] = { 0.0 };
+                        
+                        double newAngles[NUM_SERVOS] = { 0.0 };
                         for (int servo = 0; servo < __numberServos; servo++) {
-                            newAngles[servo] = __resetAngleVariance * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
+
+                            if (overriden) {
+                                newAngles[servo] = Utility::rescaleAction(overrides[servo][0], __actionLow, __actionHigh);
+                            } else {
+                                // newAngles[servo] =  Utility::rescaleAction(std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng), __actionLow, __actionHigh);
+                                newAngles[servo] =  __resetAngleVariance * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
+                            }
                         }
                         __resetResults = __servos->reset(newAngles);
 
                     } else { 
-                        __resetResults = __servos->reset(__useCurrentAngleForReset);
+                        if (overriden) {
+                            double newAngles[NUM_SERVOS] = { 0.0 };
+                            for (int servo = 0; servo < __numberServos; servo++) {
+                                newAngles[servo] = Utility::rescaleAction(overrides[servo][0], __actionLow, __actionHigh);
+                            }
+                            __resetResults = __servos->reset(newAngles);
+                        
+                        } else {
+                            __resetResults = __servos->reset(__useCurrentAngleForReset);            
+                        } 
                     }
                     
                     // Hold onto reset results
@@ -909,12 +929,20 @@ namespace control {
                     }   		
                 } else {
                     __doneCount++;
+                    double overrides[NUM_SERVOS][NUM_SERVOS] = { 0 };
+                    overriden = actionOverride(overrides);
 
                     if (__doneCount >= __resetAfterNInnactiveFrames && __resetAfterNInnactiveFrames > 0) {
                         if (__trainMode) {
-                            double newAngles[__numberServos] = { 0.0 };
+                            double newAngles[NUM_SERVOS] = { 0.0 };
                             for (int servo = 0; servo < __numberServos; servo++) {
-                                newAngles[servo] = __resetAngleVariance * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
+
+                                if (overriden) {
+                                    newAngles[servo] = Utility::rescaleAction(overrides[servo][0], __actionLow, __actionHigh);
+                                } else {
+                                    // newAngles[servo] =  Utility::rescaleAction(std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng), __actionLow, __actionHigh);
+                                    newAngles[servo] =  __resetAngleVariance * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
+                                }
                             }
                             __resetResults = __servos->reset(newAngles);
                         } else {
@@ -924,7 +952,16 @@ namespace control {
                         __doneCount = 0;
                         
                     } else {
-                        __resetResults = __servos->reset(__useCurrentAngleForReset);            
+                        if (overriden) {
+                            double newAngles[NUM_SERVOS] = { 0.0 };
+                            for (int servo = 0; servo < __numberServos; servo++) {
+                                newAngles[servo] = Utility::rescaleAction(overrides[servo][0], __actionLow, __actionHigh);
+                            }
+                            __resetResults = __servos->reset(newAngles);
+                        
+                        } else {
+                            __resetResults = __servos->reset(__useCurrentAngleForReset);            
+                        } 
                     }
                     
                     // Hold onto reset results
@@ -942,6 +979,7 @@ namespace control {
                     }
 
                     try {
+                        overriden = actionOverride(__predictedActions);
                         __stepResults = __servos->step(__predictedActions, false);
 
                         onServoUpdate(__stepResults.servos[1].nextState.currentAngle, __stepResults.servos[0].nextState.currentAngle);
@@ -1091,8 +1129,15 @@ namespace control {
             throw std::runtime_error("init(pid) must be called be for other functions are executed");
         }
 
-        // Increment/set ERE related loop variables
+        // Small fix to prevent overtraining on stale data
         double N = static_cast<double>(__replayBuffer->size());
+        if (__currentReplayBuffSize == N) {
+            return false;
+        }  else {
+            __currentReplayBuffSize = N;
+        }
+
+        // Increment ERE training variables
         __t_i += 1;
         double n_i = __N0 + (__NT - __N0) * (__t_i / __T);
         int cmin = N - ( __minBufferSize );
@@ -1100,7 +1145,8 @@ namespace control {
         // Check if training is over
         if (__currentSteps >= __maxTrainingSteps) {
             __replayBuffer->clear();
-            return true;
+            __isTraining = false;
+            return false;
         }
         else {
             __currentSteps += 1;
@@ -1119,7 +1165,7 @@ namespace control {
                 throw std::runtime_error("Cannot save policy params to shared memory array");
             }
 
-            return false;
+            return true;
         }  
     }
 
@@ -1238,5 +1284,13 @@ namespace control {
 
     void TATS::onTargetUpdate(control::INFO info, EVENT eventType) {
 
+    }
+
+    bool TATS::actionOverride(double actions[NUM_SERVOS][NUM_ACTIONS]) {
+        return true;
+    }
+
+    bool TATS::isTraining() {
+        return __isTraining;
     }
 };
