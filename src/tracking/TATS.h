@@ -182,6 +182,7 @@ namespace control {
         double __emaEpisodeObjPredErrorSum[NUM_SERVOS] = { 0.0 };
         
         // Training data
+        double __previousAngles[NUM_SERVOS] = { 0.0 };
         double __predictedActions[NUM_SERVOS][NUM_ACTIONS] = { 0.0 };
         double __stateArray[NUM_INPUT] = { 0.0 };
         Utility::SD __currentState[NUM_SERVOS] = {{}};
@@ -346,5 +347,11 @@ namespace control {
          * @return bool train status
          */
         bool isTraining();
+
+        /***
+         * @brief Returns update rate of the servos
+         * @return double current servo update
+         */
+        double updateRate();
     };
 };

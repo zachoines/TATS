@@ -307,6 +307,12 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
                         rescaledActions[servo][0] = std::clamp<double>(_currentAngles[servo] + _preStepAngleAmount, _config->anglesLow[servo], _config->anglesHigh[servo]);
                     }
                 } 
+
+                // Provide anyways
+                stepResults.servos[servo].actions[0] = Utility::mapOutput(rescaledActions[servo][0], _config->anglesLow[servo], _config->anglesHigh[servo], -1.0, 1.0);
+                if (_config->usePOT) {
+                    stepResults.servos[servo].actions[1] = 0.0;
+                }
             }
         } else {
 

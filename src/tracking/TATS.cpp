@@ -797,9 +797,11 @@ namespace control {
                     try {
                         overriden = actionOverride(__predictedActions);
                         __stepResults = __servos->step(__predictedActions, true, rate);		
-                        __totalSteps = (__totalSteps + 1) % INT_MAX; 
-
-                        onServoUpdate(__stepResults.servos[1].nextState.currentAngle, __stepResults.servos[0].nextState.currentAngle);
+                        __totalSteps = (__totalSteps + 1) % INT_MAX;
+                        onServoUpdate(
+                            __stepResults.servos[1].actions[0], 
+                            __stepResults.servos[0].actions[0]
+                        );
                     } catch(const std::exception& e) {
                         std::cerr << e.what() << std::endl;
                         throw std::runtime_error("cannot step with servos");
@@ -919,9 +921,14 @@ namespace control {
                             __resetResults = __servos->reset(newAngles);
                         
                         } else {
-                            __resetResults = __servos->reset(__useCurrentAngleForReset);            
+                            __resetResults = __servos->reset(__useCurrentAngleForReset);         
                         } 
                     }
+
+                    onServoUpdate(
+                        Utility::mapOutput(__resetResults.servos[1].currentAngle, 0.0, 1.0, -1.0, 1.0),
+                        Utility::mapOutput(__resetResults.servos[0].currentAngle, 0.0, 1.0, -1.0, 1.0)
+                    );
                     
                     // Hold onto reset results
                     for (int servo = 0; servo < __numberServos; servo++) {
@@ -949,6 +956,10 @@ namespace control {
                             __resetResults = __servos->reset();            
                         }
                         
+                        onServoUpdate(
+                            Utility::mapOutput(__resetResults.servos[1].currentAngle, 0.0, 1.0, -1.0, 1.0),
+                            Utility::mapOutput(__resetResults.servos[0].currentAngle, 0.0, 1.0, -1.0, 1.0)
+                        );
                         __doneCount = 0;
                         
                     } else {
@@ -962,6 +973,11 @@ namespace control {
                         } else {
                             __resetResults = __servos->reset(__useCurrentAngleForReset);            
                         } 
+
+                        onServoUpdate(
+                            Utility::mapOutput(__resetResults.servos[1].currentAngle, 0.0, 1.0, -1.0, 1.0),
+                            Utility::mapOutput(__resetResults.servos[0].currentAngle, 0.0, 1.0, -1.0, 1.0)
+                        );
                     }
                     
                     // Hold onto reset results
@@ -981,8 +997,10 @@ namespace control {
                     try {
                         overriden = actionOverride(__predictedActions);
                         __stepResults = __servos->step(__predictedActions, false);
-
-                        onServoUpdate(__stepResults.servos[1].nextState.currentAngle, __stepResults.servos[0].nextState.currentAngle);
+                        onServoUpdate(
+                            __stepResults.servos[1].actions[0], 
+                            __stepResults.servos[0].actions[0]
+                        );
                         double state[NUM_INPUT];
                         for (int i = 0; i < __numberServos ; i++) {
                             
@@ -1292,5 +1310,9 @@ namespace control {
 
     bool TATS::isTraining() {
         return __isTraining;
+    }
+
+    double TATS::updateRate() {
+        
     }
 };

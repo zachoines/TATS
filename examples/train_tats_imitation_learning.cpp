@@ -2,6 +2,7 @@
 #include <RF24/RF24.h> 
 #include <csignal>
 #include <atomic>
+#include <chrono>
 #include <sys/prctl.h>  /* prctl */
 
 /*
@@ -14,8 +15,7 @@
 
 // Local Function hoisting
 unsigned long getTimestamp(struct Signal& s);
-double mapRF(unsigned char val, double map_low, double map_mid, double map_high);
-
+double mapSpeed(unsigned char val, double map_low, double map_mid, double map_high);
 
 // Signal handlers
 static void sig_handler_child(const int sig_number, siginfo_t* sig_info, void* context);
@@ -65,21 +65,49 @@ control::TATS* targetTrackingSystem = nullptr;
 RF24* radio = nullptr;
 
 std::atomic<bool> override = false;
-std::atomic<double> pan = 0.0;
-std::atomic<double> tilt = 0.0;
+std::atomic<double> panSpeed = 0.0;
+std::atomic<double> tiltSpeed = 0.0;
+double speed = .14; // For Hitech D951TW (.14sec per 60 deg)
+double maxtravel = 90.0; // TATS only moves 90 degrees in this setup
+double anglesPerSecondScaled = (60.0 / speed) / maxtravel;
+double previousActions[2] = { 0.0 };
+std::chrono::steady_clock::time_point start;
 
+/* 
+    When the target is first aquired, the servos will take two pre-steps automatically. 
+    Therefore, we grab previous angles from the onServoUpdate() callback.
+    As those are the ones actually used by the servos.
+
+    Here is the order of precedence for angles taken:
+
+    1.) Angles supplied by the ENV
+    2.) Angles supplied by actionOverride
+    3.) Angles predicted by TATS
+*/
 bool control::TATS::actionOverride(double actions[2][2]) {
 
-    if (override) {
-        actions[1][0] = pan;
-        actions[0][0] = tilt;
-        return true;
-    }
+    std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+    double dt = std::clamp<double>(std::chrono::duration<double>(now - start).count(), 0.0, 1.0); // In seconds
+    start = now;
 
-    return false;
+    if (override) {
+        double newPan = std::clamp<double>(previousActions[1] + (anglesPerSecondScaled * panSpeed * dt), -1.0, 1.0);
+        double newTilt = std::clamp<double>(previousActions[0] + (anglesPerSecondScaled * tiltSpeed * dt), -1.0, 1.0);
+        actions[1][0] = newPan;
+        actions[0][0] = newTilt;
+        return true;
+    } else {
+        return false;
+    } 
+}
+
+void control::TATS::onServoUpdate(double pan, double tilt) {
+    previousActions[1] = pan;
+    previousActions[0] = tilt;
 }
 
 int main() {
+    start = std::chrono::steady_clock::now();
     signal(SIGTSTP, sig_handler_parent);  // CTRL-Z on terminal (kill -SIGTSTP PID)
     srand( (unsigned)time( NULL ) );
 
@@ -88,7 +116,7 @@ int main() {
 
     // Setup train mode options
     config->trainMode = true; /* Enable Train mode */
-    config->initialRandomActions = false; /* Fill replay buffer with random experiances */
+    config->initialRandomActions = true; /* Fill replay buffer with random experiances */
     config->stepsWithPretrainedModel = false; /* for transfer learning */
     config->lossCountMax = 0; /* Slows training down */
     config->multiProcess = true; /* Offloads SAC training in another process */
@@ -100,9 +128,9 @@ int main() {
     config->classes = { "face" };
     config->logOutput = true;
     config->minBufferSize = 2000;
-    config->batchSize = 256;
-    config->showVideo = false;
-    config->draw = false;
+    config->batchSize = 128;
+    config->showVideo = true;
+    config->draw = true;
 
     wire = new control::Wire();
     pwm = new control::PCA9685(0x40, wire);
@@ -139,26 +167,27 @@ int main() {
 
             // Main program loop
             while(!stopFlag) {
-
                 if ( radio->available(&pipe) ) {
                     radio->read(&newData.buffer, 10);
                     oldData = newData;
-                    
+                    char LY = newData.buffer[data::LeftY];
+                    char RX = newData.buffer[data::RightX];
                     override = newData.buffer[data::L1] || newData.buffer[data::R1];
-                    tilt = mapRF(newData.buffer[data::LeftY], -1.0, 0.0, 1.0);
-                    pan = mapRF(newData.buffer[data::RightX], -1.0, 0.0, 1.0);
-                    
-                    // std::cout << "a Pan: " << std::to_string(newData.buffer[data::RightX]) << "  " << "a tilt: " << std::to_string(newData.buffer[data::LeftY]) << std::endl;
-                    // std::cout << "Pan: " << std::to_string(pan) << "  " << "tilt: " << std::to_string(tilt) << std::endl;
+                    tiltSpeed = mapSpeed(LY, -1.0, 0.0, 1.0);
+                    panSpeed = mapSpeed(RX, -1.0, 0.0, 1.0);
                 } 
             }       
         });
         
         std::thread trackingThread([&] {
             targetTrackingSystem->init(pid); 
-            cv::VideoCapture* camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
+            // std::string pipeline = Utility::gstreamer_pipeline(0, 1920, 1080, 1920, 1080, 60, 2);
+            // camera = new cv::VideoCapture(pipeline, cv::CAP_GSTREAMER);
+            // cv::VideoCapture* camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
+            cv::VideoCapture* camera = new cv::VideoCapture(0, cv::CAP_V4L2);
             camera->set(cv::CAP_PROP_FRAME_WIDTH, config->captureSize[1]);
             camera->set(cv::CAP_PROP_FRAME_HEIGHT, config->captureSize[0]);
+            camera->set(cv::CAP_PROP_AUTOFOCUS, 0 );
 
             // Check Camera
             if (!camera->isOpened()) {
@@ -301,7 +330,7 @@ int main() {
             if (sig_value1 == SIGUSR1) {
 
                 std::cout << "Autotune Process: Train signal received" << std::endl;
-                while (!targetTrackingSystem->isTraining()) {
+                while (targetTrackingSystem->isTraining()) {
                     if (targetTrackingSystem->trainTATSChildProcess()) {
                         // Inform parent new params are available
                         std::cout << "Autotune Process: Sending Sync signal" << std::endl;
@@ -335,7 +364,7 @@ static void sig_handler_parent(int signum) {
     stopFlag = true;
 }
 
-double mapRF(unsigned char val, double map_low, double map_mid, double map_high) {
+double mapSpeed(unsigned char val, double map_low, double map_mid, double map_high) {
 
     double adjusted;
     double max = 255.0;
