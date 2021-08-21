@@ -315,8 +315,8 @@ namespace Utility {
 		// Rewards
 		double r1 = 0.0; // baseline error
 		double r2 = 0.0; // transition error
-		double w1 = 0.5; // baseline error weight
-		double w2 = 0.5; // transition error weight
+		double w1 = 1.0; // baseline error weight
+		double w2 = 2.0; // transition error weight
 		
 		// Indicate target direction
 		const bool RIGHT = true;
@@ -403,14 +403,12 @@ namespace Utility {
 			} else {
 				r1 = - errorNewScaled;
 			}
-
-			//  r1 = - errorNewScaled;
 			
 			if (errorNewScaled <= errorOldScaled) {
 				r2 = 0.0;
 			}
 			else {
-				r2 = errorNewScaled - errorOldScaled;
+				r2 = (errorNewScaled - errorOldScaled);
 			}
 			
 			return done ? -2.0 : ((r1 * w1) + (r2 * w2));	
@@ -467,5 +465,17 @@ namespace Utility {
 	 */
 	static double rescaleAction(double action, double min, double max) {
 		return std::clamp<double>((min + (0.5 * (action + 1.0) * (max - min))), min, max);
+	}
+
+	/***
+	 * @brief Determins if value is in range
+	 * @param x Input
+	 * @param low Min of input
+	 * @param high Max of input
+	 * @return bool
+	 */
+	static bool inRange(double x, double low, double high)
+	{
+		return (low <= x && x <= high);
 	}
 }

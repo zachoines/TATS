@@ -3,6 +3,7 @@
 #include <random>
 #include <condition_variable>
 #include <mutex>
+#include <chrono>
 #include <bits/stdc++.h>
 
 #include "../util/config.h"
@@ -24,6 +25,7 @@ private:
 
     int _frameSkip;
     double _lastTimeStamp[NUM_SERVOS];
+    std::chrono::steady_clock::time_point _start;
 
     Utility::ED _eventData[NUM_SERVOS] = {{}};
     Utility::ED _lastData[NUM_SERVOS] = {{}};
@@ -37,8 +39,10 @@ private:
     double _resetAngles[NUM_SERVOS];
     double _currentAngles[NUM_SERVOS] = { 0.0 };
     double _lastAngles[NUM_SERVOS] = { 0.0 };
+    double _currentDeltaAngles[NUM_SERVOS] = { 0.0 };
     double _errors[NUM_SERVOS][ERROR_LIST_SIZE] = { 0.0 };
     double _outputs[NUM_SERVOS][ERROR_LIST_SIZE] = { 0.0 };
+    double _deltaAngles[NUM_SERVOS][ERROR_LIST_SIZE] = { 0.0 };
     double _predObjLoc[NUM_SERVOS] = { 0.0 };
     int _currentSteps; 
     bool _recentReset[NUM_SERVOS];
@@ -46,6 +50,7 @@ private:
     int _maxPreSteps;
     int _preStepAngleAmount;
     double _errorThreshold;
+    Utility::ActionType _actionType;
 
     PID* _pids[NUM_SERVOS];
 

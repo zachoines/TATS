@@ -163,6 +163,7 @@ namespace control {
         int __numActions;
         int __actionHigh; 
         int __actionLow;
+        Utility::ActionType __actionType;
         
         // Program loop variants
         unsigned int __totalSteps = 0;
@@ -328,7 +329,7 @@ namespace control {
          * @param actions Actions to provide to the AI [-1.0, 1.0]
          * @return void
          */
-        bool actionOverride(double actions[NUM_SERVOS][NUM_ACTIONS]) __attribute__((weak));
+        bool actionOverride(double actions[NUM_SERVOS][NUM_ACTIONS], Utility::ActionType actionType) __attribute__((weak));
         
         /***
          * @brief For train mode only. From parent process, load new network params

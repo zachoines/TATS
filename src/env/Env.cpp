@@ -10,9 +10,11 @@ Env::Env(control::ServoKit* servos, Utility::Config* config) {
     _config = config;
     _currentSteps = 0;
     _maxPreSteps = 2;
-    _preStepAngleAmount = 0.0;
+    _preStepAngleAmount = 0.1;
     _errorThreshold  = 0.005;
     _updated = false;
+    _start = std::chrono::steady_clock::now();
+    _actionType = _config->actionType;
 
     for (int servo = 0; servo < NUM_SERVOS; servo++) {
         double setpoint = static_cast<double>(_config->dims[servo]) / 2.0;
@@ -31,6 +33,7 @@ Env::Env(control::ServoKit* servos, Utility::Config* config) {
         _invertAngles[servo] = _config->invertAngles[servo];
         _currentAngles[servo] = _config->resetAngles[servo];
         _lastAngles[servo] = _config->resetAngles[servo];
+        _currentDeltaAngles[servo] = 0.0;
 
         _servos->initServo(_config->servoConfigurations[servo]);
 
@@ -121,6 +124,7 @@ bool Env::isDone() {
 }
 
 void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS]) {
+    
     for (int servo = 0; servo < NUM_SERVOS; servo++) {
         _recentReset[servo] = true;
         _preSteps[servo] = 0;
@@ -131,6 +135,7 @@ void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS]) {
         double newAngle = overrideResetAngles ? angles[servo] : _resetAngles[servo];
         _servos->setAngle(servo, (_invertAngles[servo]) ? -newAngle : newAngle);
 
+        _currentDeltaAngles[servo] = 0.0;
         _lastAngles[servo] =  _resetAngles[servo];
         _currentAngles[servo] = overrideResetAngles ? angles[servo] : _resetAngles[servo];
         _pids[servo]->init();
@@ -138,6 +143,7 @@ void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS]) {
         for (int i = 0; i < ERROR_LIST_SIZE; i++) {
             _errors[servo][i] = 0.0;
             _outputs[servo][i] = 0.0;
+            _deltaAngles[servo][i] = 0.0;
         }
     }
 }
@@ -145,28 +151,44 @@ void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS]) {
 Utility::RD Env::reset(bool useCurrentAngles) {
     // std::unique_lock<std::mutex> lck(_updateLock);
     _updated = false;
+    _start = std::chrono::steady_clock::now();
+    // switch (_config->actionType)
+    // {
+    // case Utility::ActionType::PID:
+        
+    //     break;
+    // case Utility::ActionType::ANGLE:
+
+    //     break;
+    // case Utility::ActionType::SPEED:
+
+    //     break;
+    // default:
+    //     throw std::runtime_error("Invalid action type configured");
+    // }
     _resetEnv(useCurrentAngles, _currentAngles);
     _syncEnv();
 
     Utility::RD data = {};
+    data.setActionType(_actionType);
 
     for (int servo = 0; servo < NUM_SERVOS; servo++) {
         if (_disableServo[servo]) {
             continue;
         }
         
+        // TODO::Cleanup old and unused state variables
         data.servos[servo].pidStateData = _pids[servo]->getState(true);
-        data.servos[servo].obj = _currentData[servo].obj;
-        data.servos[servo].frame = _currentData[servo].frame;
-        data.servos[servo].lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
-        data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
+        data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
         data.servos[servo].spf = _currentData[servo].spf;
 
         int frameCenter = _config->dims[servo] / 2;
         _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo], _config->anglesHigh[servo], 0.0, 1.0);
         _errors[servo][0] = Utility::mapOutput(_invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) :  static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter), - static_cast<double>(frameCenter),  static_cast<double>(frameCenter), 0.0, 1.0);
-        data.servos[servo].setData(_errors[servo], _outputs[servo]);
+        _deltaAngles[servo][0] = 0.0;
+        data.servos[servo].setData(_errors[servo], _outputs[servo], _deltaAngles[servo]);
         _stateData[servo] = data.servos[servo];
+        _currentDeltaAngles[servo] = 0.0;
         _predObjLoc[servo] = 0.0;
     }
 
@@ -179,11 +201,12 @@ Utility::RD Env::reset(bool useCurrentAngles) {
 Utility::RD Env::reset(double angles[NUM_SERVOS]) {
     // std::unique_lock<std::mutex> lck(_updateLock);
     _updated = false;
-
+    _start = std::chrono::steady_clock::now();
     _resetEnv(true, angles);
     _syncEnv();
 
     Utility::RD data = {};
+    data.setActionType(_actionType);
 
     for (int servo = 0; servo < NUM_SERVOS; servo++) {
         if (_disableServo[servo]) {
@@ -191,18 +214,17 @@ Utility::RD Env::reset(double angles[NUM_SERVOS]) {
         }
 
         data.servos[servo].pidStateData = _pids[servo]->getState(true);
-        data.servos[servo].obj = _currentData[servo].obj;
-        data.servos[servo].frame = _currentData[servo].frame;
-        data.servos[servo].lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
-        data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
+        data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
         data.servos[servo].spf = _currentData[servo].spf;
 
         int frameCenter = _config->dims[servo] / 2;
         _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo], _config->anglesHigh[servo], 0.0, 1.0);
         _errors[servo][0] = Utility::mapOutput(_invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) :  static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter), - static_cast<double>(frameCenter),  static_cast<double>(frameCenter), 0.0, 1.0);
-        data.servos[servo].setData(_errors[servo], _outputs[servo]);
+        _deltaAngles[servo][0] = 0.0;
+        data.servos[servo].setData(_errors[servo], _outputs[servo], _deltaAngles[servo]);
         _stateData[servo] = data.servos[servo];
-        _predObjLoc[servo] = 0.0;
+        _currentDeltaAngles[servo] = 0.0;
+        _predObjLoc[servo] = 0.0; 
     }
 
     _updated = true;
@@ -214,14 +236,18 @@ Utility::RD Env::reset(double angles[NUM_SERVOS]) {
 // Using action, take step and return observation, reward, done, and actions for every servo. 
 // Note: SR[servo].currentState is always null. Retrieve currentState from previous 'step' or 'reset' call.
 Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, double rate) {
+    
+    // std::unique_lock<std::mutex> lck(_updateLock);
     _currentSteps = (_currentSteps + 1) % INT_MAX; 
     double rescaledActions[NUM_SERVOS][NUM_ACTIONS];
     bool empty = false;
-
-    // std::unique_lock<std::mutex> lck(_updateLock);
     _updated = false;
-
-    Utility::SR stepResults;
+    Utility::SR stepResults = {};
+    stepResults.setActionType(_actionType);
+    std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+    double dt = std::clamp<double>(std::chrono::duration<double>(now - _start).count(), 0.0, 1.0);
+    _start = std::chrono::steady_clock::now();
+    double maxDeltaAngle = _config->maxDeltaAngle;
     
     // Foreach servo, calculate predicted object locations and new servo angles
     for (int servo = 0; servo < NUM_SERVOS; servo++) {
@@ -230,8 +256,21 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
             continue;
         }
 
-        if (!_config->usePIDs) {
+        switch (_config->actionType)
+        {
+        case Utility::ActionType::PID:
+            // Derive PID gains from SAC output actions
+            for (int a = 0; a < NUM_ACTIONS; a++) {
+                stepResults.servos[servo].actions[a] = actions[servo][a];
 
+                if (rescale) {
+                    rescaledActions[servo][a] = Utility::rescaleAction(actions[servo][a], _config->actionLow, _config->actionHigh);
+                } else {
+                    rescaledActions[servo][a] = actions[servo][a];
+                }
+            }
+            break;  
+        case Utility::ActionType::ANGLE:
             if (!_recentReset[servo]) { 
                 _preSteps[servo] = 0;
                 
@@ -242,17 +281,7 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
                     stepResults.servos[servo].actions[1] = actions[servo][1];
                 }
 
-                if (rescale) {
-
-                    // int frameCenter = _config->dims[servo] / 2;
-                    // double error = _invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) : static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter)  / static_cast<double>(frameCenter);
-
-                    // If error is negligible, then dont move at all
-                    // if (std::abs<double>(error) <= _errorThreshold) {
-                    //     rescaledActions[servo][0] = _currentAngles[servo];
-                    // } else {
-                    //     rescaledActions[servo][0] = Utility::rescaleAction(actions[servo][0], _config->actionLow, _config->actionHigh); // Angle
-                    // }                 
+                if (rescale) {               
                     rescaledActions[servo][0] = Utility::rescaleAction(actions[servo][0], _config->actionLow, _config->actionHigh); // Angle
 
                     if (_config->usePOT) {
@@ -264,8 +293,7 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
                         }
                         
                         _predObjLoc[servo] = std::round(rescaledActions[servo][1]); // Pixel location cannot have arbitrary precision
-                    }
-                    
+                    }     
                 } else {
                     for (int a = 0; a < NUM_ACTIONS; a++) {
                         rescaledActions[servo][a] = actions[servo][a];
@@ -314,31 +342,103 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
                     stepResults.servos[servo].actions[1] = 0.0;
                 }
             }
-        } else {
+            break;
+        case Utility::ActionType::SPEED:
 
-            // Derive PID gains from SAC output actions
-            for (int a = 0; a < NUM_ACTIONS; a++) {
-                stepResults.servos[servo].actions[a] = actions[servo][a];
+            if (!_recentReset[servo]) { 
+                _preSteps[servo] = 0;
+                
+                // Derive output angles as a function of speed and time
+                double throttle = actions[servo][0];
+                double minSpeed = _config->minServoSpeed;
+                double maxAnglesPerSecond = 60.0 / minSpeed;
+                
+                // Clip deltaAngle and the outputAngle
+                double newAngle = std::clamp<double>(maxAnglesPerSecond * throttle * dt, -maxDeltaAngle, maxDeltaAngle) + _currentAngles[servo];
+                newAngle = std::clamp<double>(newAngle, _config->anglesLow[servo], _config->anglesHigh[servo]);
+                rescaledActions[servo][0] = newAngle;
+                
+                // Hold onto actions for step results
+                stepResults.servos[servo].actions[0] = actions[servo][0];
+                // stepResults.servos[servo].actions[0] = Utility::mapOutput(newAngle, _config->anglesLow[servo], _config->anglesHigh[servo], -1.0, 1.0);
+                if (_config->usePOT) {
+                    stepResults.servos[servo].actions[1] = actions[servo][1];
+                }
 
-                if (rescale) {
-                    rescaledActions[servo][a] = Utility::rescaleAction(actions[servo][a], _config->actionLow, _config->actionHigh);
+                _currentDeltaAngles[servo] = Utility::mapOutput((rescaledActions[servo][0] - _currentAngles[servo]) / maxDeltaAngle, -1.0, 1.0, 0.0, 1.0);
+             
+                if (_config->usePOT) {
+                    if (_invertData[servo]) {
+                        rescaledActions[servo][1] = Utility::rescaleAction(-actions[servo][1], 0, _config->dims[servo]); 
+                        
+                    } else {
+                        rescaledActions[servo][1] = Utility::rescaleAction(actions[servo][1], 0, _config->dims[servo]);
+                    }
+                    
+                    _predObjLoc[servo] = std::round(rescaledActions[servo][1]); // Pixel location cannot have arbitrary precision
+                }
+            } else {
+                
+                if (_preSteps[servo] >= _maxPreSteps) {
+                    _recentReset[servo] = false;
+                    _preSteps[servo] = 0;
                 } else {
-                    rescaledActions[servo][a] = actions[servo][a];
+                    _preSteps[servo]++;
+                }
+                
+                // rescaledActions[servo][0] = _currentAngles[servo];
+                // _currentDeltaAngles[servo] = 0.0;
+                // Step in direction of object's motion
+                empty = true;
+                int frameCenter = _config->dims[servo] / 2;
+                double error = _invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) : static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter)  / static_cast<double>(frameCenter);
+
+                // If error is negligible, then dont move at all
+                if (std::abs<double>(error) <= _errorThreshold || _preStepAngleAmount == 0.0) {
+                    rescaledActions[servo][0] = _currentAngles[servo];
+                } else {
+                    // inverting if needed, while enforcing angle bounds. 
+                    if (Utility::calculateDirectionOfObject(error, _invertData[servo])) {
+                        rescaledActions[servo][0] = std::clamp<double>(_currentAngles[servo] - _preStepAngleAmount, _config->anglesLow[servo], _config->anglesHigh[servo]);
+                    } else {
+                        rescaledActions[servo][0] = std::clamp<double>(_currentAngles[servo] + _preStepAngleAmount, _config->anglesLow[servo], _config->anglesHigh[servo]);
+                    }
+                } 
+
+                _currentDeltaAngles[servo] = Utility::mapOutput((rescaledActions[servo][0] - _currentAngles[servo]) / maxDeltaAngle, -1.0, 1.0, 0.0, 1.0);
+
+                // Provide anyways
+                stepResults.servos[servo].actions[0] = Utility::mapOutput(rescaledActions[servo][0], _config->anglesLow[servo], _config->anglesHigh[servo], -1.0, 1.0);;
+                if (_config->usePOT) {
+                    stepResults.servos[servo].actions[1] = 0.0;
                 }
             }
+            break;
+
+        default:
+            throw std::runtime_error("Invalid action type configured in config");
         }
         
-
         double newAngle = 0.0;
-        if (!_config->usePIDs) {
-            // newAngle = Utility::roundToNearestTenth(rescaledActions[servo][0]);
-            newAngle = rescaledActions[servo][0];
-        }
-        else {
+        switch (_config->actionType)
+        {
+        case Utility::ActionType::PID:
             _pids[servo]->setWeights(rescaledActions[servo][0], rescaledActions[servo][1], rescaledActions[servo][2]);
-            // newAngle = Utility::roundToNearestTenth(_pids[servo]->update(_currentData[servo].obj, _invertData[servo]));
             newAngle = _pids[servo]->update(_currentData[servo].obj, _invertData[servo]);
+            break;
+        
+        case Utility::ActionType::ANGLE:
+            newAngle = rescaledActions[servo][0];
+            break;
+
+        case Utility::ActionType::SPEED:
+            newAngle = rescaledActions[servo][0];
+            break;
+
+        default:
+            throw std::runtime_error("Invalid action type configured in config");
         }
+
 
         _lastAngles[servo] = _currentAngles[servo];
         _currentAngles[servo] = newAngle;
@@ -370,42 +470,50 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
         }
 
         // Update state information
-        stepResults.servos[servo].nextState.obj = _currentData[servo].obj;
-        stepResults.servos[servo].nextState.frame = _currentData[servo].frame;
-        stepResults.servos[servo].nextState.lastAngle = Utility::mapOutput(_lastAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
-        stepResults.servos[servo].nextState.currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
+        stepResults.servos[servo].nextState.currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
         stepResults.servos[servo].nextState.spf = _currentData[servo].spf;
         stepResults.servos[servo].done = _currentData[servo].done;
         stepResults.servos[servo].empty = empty;
-
         _stateData[servo] = stepResults.servos[servo].nextState;
 
-        // Store error and output history
+        // Store error, output, and deltaAngle history
         for (int i = ERROR_LIST_SIZE - 2; i >= 0; i--) {
             _outputs[servo][i + 1] = _outputs[servo][i];
             _errors[servo][i + 1] = _errors[servo][i];
+            _deltaAngles[servo][i + 1] = _deltaAngles[servo][i];
         }
 
         // Scale to 0.0 to 1;
         int frameCenter = _config->dims[servo] / 2;
         _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
         _errors[servo][0] = Utility::mapOutput(_invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) : static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter), -static_cast<double>(frameCenter), static_cast<double>(frameCenter), 0.0, 1.0);
+        _deltaAngles[servo][0] = _currentDeltaAngles[servo];
         
-        // Fill out the step results
-        if (!_config->usePIDs) {
-            
-            // We still use PIDS for keeping track of error in ENV. Otherwise the caller supplies actions rather than PIDS
+        // We still use PIDS for keeping track of error in ENV. Otherwise the caller supplies actions rather than PIDS
+        switch (_config->actionType)
+        {
+        case Utility::ActionType::PID:
+            stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
+            break;
+        case Utility::ActionType::ANGLE:
             _pids[servo]->update(currentError);
             stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
-            stepResults.servos[servo].nextState.setData(_errors[servo], _outputs[servo]);
-        } else {
+            stepResults.servos[servo].nextState.setData(_errors[servo], _outputs[servo], _deltaAngles[servo]);
+            break;
+        case Utility::ActionType::SPEED:
+            _pids[servo]->update(currentError);
             stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
+            stepResults.servos[servo].nextState.setData(_errors[servo], _outputs[servo], _deltaAngles[servo]);
+            break;
+        default:
+            throw std::runtime_error("Invalid action type configured in config");
         }
     }
     
     _updated = true;
     // lck.unlock();
     // _updateCondition.notify_all();
+    
     return stepResults;
 }
 

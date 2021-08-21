@@ -112,6 +112,15 @@ namespace control {
         __actionLow = __config->actionLow;
         __numInput =__config->numInput;
         __servos = new Env(servos, config);
+        __actionType = __config->actionType;
+    
+        for (int servo = 0; servo < __numberServos; servo++) {
+            __currentState[servo].actionType = __actionType;
+            __trainData[servo].setActionType(__actionType);
+        }
+        
+        __resetResults.setActionType(__actionType);
+        __stepResults.setActionType(__actionType);
     }
 
     void TATS::registerCallback(EVENT eventType, std::function<void(control::INFO const&)> callback) {
@@ -795,12 +804,12 @@ namespace control {
                     }
 
                     try {
-                        overriden = actionOverride(__predictedActions);
+                        overriden = actionOverride(__predictedActions, __actionType);
                         __stepResults = __servos->step(__predictedActions, true, rate);		
                         __totalSteps = (__totalSteps + 1) % INT_MAX;
                         onServoUpdate(
-                            __stepResults.servos[1].actions[0], 
-                            __stepResults.servos[0].actions[0]
+                            __stepResults.servos[1].nextState.currentAngle, 
+                            __stepResults.servos[0].nextState.currentAngle
                         );
                     } catch(const std::exception& e) {
                         std::cerr << e.what() << std::endl;
@@ -881,7 +890,7 @@ namespace control {
                     reset:
 
                     double overrides[NUM_SERVOS][NUM_ACTIONS] = { 0 };
-                    overriden = actionOverride(overrides);
+                    overriden = actionOverride(overrides, Utility::ActionType::ANGLE); // We want to reset to an angle
 
                     // Vary env sync rate and FPS to simulate different latency configurations
                     if (!overriden && __trainMode) {
@@ -926,9 +935,14 @@ namespace control {
                     }
 
                     onServoUpdate(
-                        Utility::mapOutput(__resetResults.servos[1].currentAngle, 0.0, 1.0, -1.0, 1.0),
-                        Utility::mapOutput(__resetResults.servos[0].currentAngle, 0.0, 1.0, -1.0, 1.0)
+                        overriden ? overrides[1][0] : __resetResults.servos[1].currentAngle,
+                        overriden ? overrides[0][0] : __resetResults.servos[0].currentAngle
                     );
+
+                    // onServoUpdate(
+                    //     __resetResults.servos[1].currentAngle,
+                    //     __resetResults.servos[0].currentAngle
+                    // );
                     
                     // Hold onto reset results
                     for (int servo = 0; servo < __numberServos; servo++) {
@@ -936,8 +950,8 @@ namespace control {
                     }   		
                 } else {
                     __doneCount++;
-                    double overrides[NUM_SERVOS][NUM_SERVOS] = { 0 };
-                    overriden = actionOverride(overrides);
+                    double overrides[NUM_SERVOS][NUM_ACTIONS] = { 0 };
+                    overriden = actionOverride(overrides, Utility::ActionType::ANGLE); // We want to reset to an angle and not a speed
 
                     if (__doneCount >= __resetAfterNInnactiveFrames && __resetAfterNInnactiveFrames > 0) {
                         if (__trainMode) {
@@ -956,9 +970,14 @@ namespace control {
                             __resetResults = __servos->reset();            
                         }
                         
+                        // onServoUpdate(
+                        //     __resetResults.servos[1].currentAngle,
+                        //     __resetResults.servos[0].currentAngle
+                        // );
+
                         onServoUpdate(
-                            Utility::mapOutput(__resetResults.servos[1].currentAngle, 0.0, 1.0, -1.0, 1.0),
-                            Utility::mapOutput(__resetResults.servos[0].currentAngle, 0.0, 1.0, -1.0, 1.0)
+                            overriden ? overrides[1][0] : __resetResults.servos[1].currentAngle,
+                            overriden ? overrides[0][0] : __resetResults.servos[0].currentAngle
                         );
                         __doneCount = 0;
                         
@@ -975,8 +994,8 @@ namespace control {
                         } 
 
                         onServoUpdate(
-                            Utility::mapOutput(__resetResults.servos[1].currentAngle, 0.0, 1.0, -1.0, 1.0),
-                            Utility::mapOutput(__resetResults.servos[0].currentAngle, 0.0, 1.0, -1.0, 1.0)
+                            overriden ? overrides[1][0] : __resetResults.servos[1].currentAngle,
+                            overriden ? overrides[0][0] : __resetResults.servos[0].currentAngle
                         );
                     }
                     
@@ -995,11 +1014,11 @@ namespace control {
                     }
 
                     try {
-                        overriden = actionOverride(__predictedActions);
+                        overriden = actionOverride(__predictedActions, __actionType);
                         __stepResults = __servos->step(__predictedActions, false);
                         onServoUpdate(
-                            __stepResults.servos[1].actions[0], 
-                            __stepResults.servos[0].actions[0]
+                            __stepResults.servos[1].nextState.currentAngle, 
+                            __stepResults.servos[0].nextState.currentAngle
                         );
                         double state[NUM_INPUT];
                         for (int i = 0; i < __numberServos ; i++) {
@@ -1304,8 +1323,8 @@ namespace control {
 
     }
 
-    bool TATS::actionOverride(double actions[NUM_SERVOS][NUM_ACTIONS]) {
-        return true;
+    bool TATS::actionOverride(double actions[NUM_SERVOS][NUM_ACTIONS], Utility::ActionType actionType) {
+        return false;
     }
 
     bool TATS::isTraining() {

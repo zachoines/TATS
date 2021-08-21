@@ -7,6 +7,7 @@ Makefile
 images/*
 TATS
 .vscode
+models/backup/*
 models/yolo/yolov5s6.coco.640.torchscript.pt
 models/yolo/yolov5s6.coco.1280.torchscript.pt
 models/yolo/yolov5m6.coco.640.torchscript.pt

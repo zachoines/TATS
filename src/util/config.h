@@ -14,11 +14,11 @@
 
 namespace Utility {
     #define NUM_SERVOS 2                         // Number of servos used 
-    #define NUM_INPUT 10                         // Size of the state schema
-    #define ERROR_LIST_SIZE 5                    // Number of errors/outputs to hold onto accross application
+    #define NUM_INPUT 12                         // Size of the state schema
+    #define ERROR_LIST_SIZE 6                    // Number of errors/outputs to hold onto accross application
     #define NUM_HIDDEN 256                       // Number of nodes in each networks hidden layer
     #define USE_PIDS false                       // When enabled, AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
-    #define USE_POT true                         // Use predictive object location
+    #define USE_POT false                        // Use predictive object location
     #define NUM_ACTIONS ((USE_PIDS) ? 3 : ((USE_POT) ? 2 : 1) ) 
 
     enum DetectorType {
@@ -28,15 +28,20 @@ namespace Utility {
         RCNN
     };
 
-    struct EventData { 
+    enum ActionType {
+        PID,
+        ANGLE,
+        SPEED
+    };
 
+    struct EventData { 
         bool done;                               // For when the targer is lost
         double obj;                              // The X or Y center of object on in frame
         double size;                             // The bounding size of object along its X or Y axis
         double point;                            // The X or Y Origin coordinate of object
         double frame;                            // The X or Y center of frame
         double error;                            // Number of pixels between object and target centers
-        double timestamp;                      
+        double timestamp;                        // Unique identifier of this event
         double spf;                              // seconds per frame of the detect thread
 
         void reset() {
@@ -60,7 +65,7 @@ namespace Utility {
             spf(0.0)
         {}
 
-        EventData( bool done, double error, double frame, double size, double point, double obj, double timestamp, double spf )
+        EventData( bool done, double error, double frame, double size, double point, double obj, double timestamp, double spf)
         {
             this->done = done;
             this->error = error;
@@ -74,70 +79,72 @@ namespace Utility {
     } typedef ED;
 
     // Current state of servo/pid
-    struct PIDAndServoStateData {
+    struct StateData {
         struct PIDState pidStateData;
-        double currentAngle;
-        double lastAngle;
-        double angleMax;
         double errors[ERROR_LIST_SIZE] = { 0.0 };
         double outputs[ERROR_LIST_SIZE] = { 0.0 };
-        double obj;
-        double frame;
-        double e; 
-        double spf;
+        double deltaAngles[ERROR_LIST_SIZE] = { 0.0 };
+        ActionType actionType = ActionType::ANGLE;
+        double currentAngle;
+        double spf;  
 
-        void setData(double errs[ERROR_LIST_SIZE], double outs[ERROR_LIST_SIZE]) {
+        void setData(double errs[ERROR_LIST_SIZE], double outs[ERROR_LIST_SIZE], double dltAng[ERROR_LIST_SIZE]) {
             for (int i = 0; i < ERROR_LIST_SIZE; i++) {
                 errors[i] = errs[i];
                 outputs[i] = outs[i];
+                deltaAngles[i] = dltAng[i];
             }
         }
 
         void getStateArray(double state[NUM_INPUT]) {
-
             double errorBound = pidStateData.setPoint * 2.0;
-            double currentError = (obj - pidStateData.setPoint);
             double deltaTime = pidStateData.dt * 1000.0; // Back to mili
+            
+            switch (actionType)
+            {
+            case ActionType::PID:
+                // double currentError = (errors[0] - pidStateData.setPoint);
+                // state[0] = currentAngle;
+                // state[1] = currentError / errorBound;
+                // state[2] = ( pidStateData.i + ( currentError * pidStateData.dt )) / ( 2.0 * errorBound );
+                // state[3] = deltaTime > 0.0 ? (currentError - pidStateData.errors[0]) / deltaTime : 0.0;
+                // state[4] = deltaTime > 0.0 ? (currentError - ( 2.0 * pidStateData.errors[0] ) + pidStateData.errors[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+                // state[5] = deltaTime > 0.0 ? (pidStateData.outputs[0] - pidStateData.outputs[1]) / deltaTime : 0.0;
+                // state[6] = deltaTime > 0.0 ? (pidStateData.outputs[0] - ( 2.0 * pidStateData.outputs[1] ) + pidStateData.outputs[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+                // state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                // state[8] = spf;
 
-            /* 
-                The State (then multiplied by constants to move closer to -1 ~ 1)
+                /* 
+                    The State (then multiplied by constants to move closer to -1 ~ 1)
 
-                1.) Current Error
+                    1.) Current Error
 
-                2.) Integral error: 
-                    Formula: Sum (t_i * T)
-                    Note: For last 5 errors
+                    2.) Integral error: 
+                        Formula: Sum (t_i * T)
+                        Note: For last 5 errors
 
-                3.) First order delta error: 
-                    Formula: (E(t_i) - E(t_i + 1)) / T
+                    3.) First order delta error: 
+                        Formula: (E(t_i) - E(t_i + 1)) / T
 
-                4.) Second order delta error: 
-                    Formula: (E(t_i) - ( 2.0 * E(t_i + 1) ) + E(t_i + 2)) / T^2 
+                    4.) Second order delta error: 
+                        Formula: (E(t_i) - ( 2.0 * E(t_i + 1) ) + E(t_i + 2)) / T^2 
 
-                5.) First order delta angle: 
-                    Formula: (A(t_i) - A(t_i + 1)) / T
+                    5.) First order delta angle: 
+                        Formula: (A(t_i) - A(t_i + 1)) / T
 
-                6.) Second order delta angle: 
-                    Formula: (A(t_i) - ( 2.0 * A(t_i + 1) ) + A(t_i + 2)) / T^2 
+                    6.) Second order delta angle: 
+                        Formula: (A(t_i) - ( 2.0 * A(t_i + 1) ) + A(t_i + 2)) / T^2 
 
-                7.) Delta time: T 
-                    Note: In seconds
+                    7.) Delta time: T 
+                        Note: In seconds
 
-                8.) Seconds per frame: T 
-    
-            */
-
-            if (USE_PIDS) {
-                state[0] = currentAngle;
-                state[1] = currentError / errorBound;
-                state[2] = ( pidStateData.i + ( currentError * pidStateData.dt )) / ( 2.0 * errorBound );
-                state[3] = deltaTime > 0.0 ? (currentError - pidStateData.errors[0]) / deltaTime : 0.0;
-                state[4] = deltaTime > 0.0 ? (currentError - ( 2.0 * pidStateData.errors[0] ) + pidStateData.errors[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
-                state[5] = deltaTime > 0.0 ? (pidStateData.outputs[0] - pidStateData.outputs[1]) / deltaTime : 0.0;
-                state[6] = deltaTime > 0.0 ? (pidStateData.outputs[0] - ( 2.0 * pidStateData.outputs[1] ) + pidStateData.outputs[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
-                state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                state[8] = spf;
-            } else {
+                    8.) Seconds per frame: T 
+        
+                */
+                
+                break;
+            
+            case ActionType::ANGLE:
                 state[0] = outputs[0];
                 state[1] = errors[0];
                 state[2] = outputs[1];
@@ -148,33 +155,40 @@ namespace Utility {
                 state[7] = errors[3];
                 state[8] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
                 state[9] = deltaTime > 0.0 ? spf : 0.0;
+                break;
+
+            case ActionType::SPEED:
+                state[0] = deltaAngles[0];
+                state[1] = errors[0];
+                state[2] = deltaAngles[1];
+                state[3] = errors[1];
+                state[4] = deltaAngles[2];
+                state[5] = errors[2];
+                state[6] = deltaAngles[3];
+                state[7] = errors[3];
+                state[8] = deltaAngles[4];
+                state[9] = errors[4];
+                state[10] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                state[11] = deltaTime > 0.0 ? spf : 0.0;
+                break;
             }
         } 
 
-        PIDAndServoStateData() : 
+        StateData() : 
             pidStateData({}),
-            currentAngle(0.0), 
-            lastAngle(0.0), 
-            obj(0.0), 
             errors({ 0.0 }),
             outputs({ 0.0 }),
-            frame(0.0), 
-            e(0.0),
+            deltaAngles({ 0.0 }),
+            actionType(Utility::ActionType::ANGLE),
+            currentAngle(0.0),
             spf(0.0)
         {}
 
     } typedef SD;
 
-    // State of PIDs/Servos after reset
-    struct ResetData {
-        SD servos[NUM_SERVOS];
-        ResetData() : 
-            servos({{}})
-        {}
-    } typedef RD;
-
     // Result Data for taking a step with for a given servo/PID
     struct TrainData {
+        ActionType actionType;
         SD currentState;
         SD nextState;
         double reward;
@@ -182,6 +196,12 @@ namespace Utility {
         double errors[2];
         bool done;
         bool empty;
+
+        void setActionType(ActionType at) {
+            actionType = at;
+            currentState.actionType = actionType;
+            nextState.actionType = actionType;
+        }
 
         TrainData() :
             currentState({}),
@@ -196,11 +216,31 @@ namespace Utility {
 
     // Results of taking actions for each PID/servos in env
     struct StepResults {
+        void setActionType(ActionType at) {
+            for (TD &servo : servos) {
+                servo.setActionType(at);
+            }
+        }
         TD servos[NUM_SERVOS];
         StepResults() :
-            servos({{}})
+            servos({})
         {}
     } typedef SR;
+
+    // State of PIDs/Servos after reset
+    struct ResetData {
+        SD servos[NUM_SERVOS];
+
+        void setActionType(ActionType at) {
+            for (SD &servo : servos) {
+                servo.actionType = at;
+            }
+        }
+
+        ResetData() :
+            servos({})
+        {}
+    } typedef RD;
 
     typedef boost::interprocess::allocator<TD, boost::interprocess::managed_shared_memory::segment_manager> ShmemAllocator;
     typedef boost::interprocess::allocator<char, boost::interprocess::managed_shared_memory::segment_manager> CharAllocator;
@@ -216,6 +256,7 @@ namespace Utility {
         int numInput;
         double actionHigh;
         double actionLow;
+        ActionType actionType;
 
         // Yolo detection options
         DetectorType detector;
@@ -273,6 +314,9 @@ namespace Utility {
         double resetAngles[NUM_SERVOS];
         double anglesHigh[NUM_SERVOS];
         double anglesLow[NUM_SERVOS];
+        double anglesRange[NUM_SERVOS];
+        double minServoSpeed;
+        double maxDeltaAngle;
 
         // Other 
         int dims[2];
@@ -285,6 +329,7 @@ namespace Utility {
             numActions(NUM_ACTIONS),             // Number of output classifications for policy network
             numHidden(NUM_HIDDEN),               // Number of nodes in the hidden layers of each network
             numInput(NUM_INPUT),                 // Number of elements in policy/value network's input vectors
+            actionType(ActionType::ANGLE),       // How output actions of network are used. 
 
             maxTrainingSessions(1),              // Number of training sessions on model params
             maxBufferSize(500000),               // Max size of buffer. When full, oldest elements are kicked out.
@@ -295,14 +340,14 @@ namespace Utility {
             maxStepsPerEpisode(250),             // Max number of steps in an episode
 
             batchSize(512),                      // Network batch size.
-            initialRandomActions(false),         // Enable random actions.
+            initialRandomActions(true),          // Enable random actions.
             numInitialRandomActions(2500),       // Number of random actions taken.
-            stepsWithPretrainedModel(true),      // After random steps, uses loaded save to perform steps in evaluation mode
+            stepsWithPretrainedModel(false),     // After random steps, uses loaded save to perform steps in evaluation mode
             numTransferLearningSteps(5000),      // Number of steps to take on a pre-trained model in evaluation mode, done after random steps
             trainMode(false),                    // When autotuning is on, 'false' means network test mode.
             useAutoTuning(true),                 // Use SAC network to query for PID gains.
             variableFPS(true),                   // Vary the FPS in training
-            FPSVariance(35),                     // Average change in FPS
+            FPSVariance(45),                     // Average change in FPS
             resetAngleVariance(40.0),            // In training, the degree of variance in reset angles
             resetAngleChance(0.05),              // Chance to randomly chance the current angle the servos are wating at
             varyResetAngles(true),               // vary reset angles diring training
@@ -324,12 +369,14 @@ namespace Utility {
             }),          
             anglesLow({                          // Min allowable output angle to servos
                 -45.0, -45.0
-            }),         
+            }), 
+            anglesRange({                       // Total range of the servos
+                90.0, 90.0
+            }),   
             servoConfigurations(                 // Hardware settings for individual servos         
-
                 {                             
-                    { 0, -72.0, 72.0, 0.750, 2.250, 0.0 }, 
-                    { 1, -72.0, 72.0, 0.750, 2.250, 0.0 } // D951TW
+                    { 0, -72.0, 72.0, 0.750, 2.250, 0.0, .14}, 
+                    { 1, -72.0, 72.0, 0.750, 2.250, 0.0, .14 } // D951TW
                 }
 
                 // {                             
@@ -342,7 +389,8 @@ namespace Utility {
                 //     { 1, -65.0, 65.0, 0.900, 2.1, 0.0 } // SB2272MG
                 // }
             ),    
-
+            minServoSpeed(.20),                  // 60 deg / sec. Choose servo rated below this value (faster servo)
+            maxDeltaAngle(15.0),                 // Max angular change made by servos in ActionType::SPEED mode
             trackerType(1),						 // { CSRT, MOSSE, GOTURN }
             useTracking(false),					 // Use openCV tracker instead of face detection
             usePOT(USE_POT),                     // Predictive Object Tracking. If detection has failed, uses AI to predict objects next location

@@ -64,13 +64,14 @@ control::ServoKit* servos = nullptr;
 control::TATS* targetTrackingSystem = nullptr;
 RF24* radio = nullptr;
 
-std::atomic<bool> override = false;
+std::atomic<bool> overrideDisabled = true;
 std::atomic<double> panSpeed = 0.0;
 std::atomic<double> tiltSpeed = 0.0;
-double speed = .14; // For Hitech D951TW (.14sec per 60 deg)
-double maxtravel = 90.0; // TATS only moves 90 degrees in this setup
-double anglesPerSecondScaled = (60.0 / speed) / maxtravel;
+double speed = .20; // For Hitech D951TW (.14sec per 60 deg)
+double anglesPerSecondScaled = 60.0 / speed;
+double maxDeltaAngle = 15.0;
 double previousActions[2] = { 0.0 };
+double speeds[2] = { 0.0 };
 std::chrono::steady_clock::time_point start;
 
 /* 
@@ -84,21 +85,50 @@ std::chrono::steady_clock::time_point start;
     2.) Angles supplied by actionOverride
     3.) Angles predicted by TATS
 */
-bool control::TATS::actionOverride(double actions[2][2]) {
+bool control::TATS::actionOverride(double actions[2][1], Utility::ActionType actionType) {
+
+    Signal newData;
+    uint8_t pipe = 0;
 
     std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
     double dt = std::clamp<double>(std::chrono::duration<double>(now - start).count(), 0.0, 1.0); // In seconds
     start = now;
+  
+    if ( radio->available(&pipe) ) {
+        radio->read(&newData.buffer, 10);
+        char LY = newData.buffer[data::LeftY];
+        char RX = newData.buffer[data::RightX];
+        speeds[0] = mapSpeed(LY, -1.0, 0.0, 1.0);
+        speeds[1] = mapSpeed(RX, -1.0, 0.0, 1.0);
+        
+        if (newData.buffer[data::L1] || newData.buffer[data::R1]) {
+            overrideDisabled = !overrideDisabled;
+        }
+    }
 
-    if (override) {
-        double newPan = std::clamp<double>(previousActions[1] + (anglesPerSecondScaled * panSpeed * dt), -1.0, 1.0);
-        double newTilt = std::clamp<double>(previousActions[0] + (anglesPerSecondScaled * tiltSpeed * dt), -1.0, 1.0);
-        actions[1][0] = newPan;
-        actions[0][0] = newTilt;
-        return true;
-    } else {
-        return false;
-    } 
+    switch(actionType) {
+        case Utility::ActionType::SPEED:
+            if (!overrideDisabled) {
+                actions[1][0] = speeds[1];
+                actions[0][0] = speeds[0];
+                return true;
+            } else {
+                return false;
+            } 
+            break;
+        case Utility::ActionType::ANGLE:
+            if (!overrideDisabled) {
+                for (int i = 0; i < 2; i++) {
+                    double preAct = Utility::mapOutput(previousActions[i], -1.0, 1.0, config->anglesLow[i], config->anglesHigh[i]);
+                    actions[i][0] = std::clamp<double>(anglesPerSecondScaled * speeds[i] * dt, -maxDeltaAngle, maxDeltaAngle) + preAct;
+                    actions[i][0] = Utility::mapOutput(std::clamp<double>(actions[i][0], config->anglesLow[i], config->anglesHigh[i]), config->anglesLow[i], config->anglesHigh[i], -1.0, 1.0);
+                }
+                return true;
+            } else {
+                return false;
+            }            
+            break;
+    }
 }
 
 void control::TATS::onServoUpdate(double pan, double tilt) {
@@ -117,7 +147,7 @@ int main() {
     // Setup train mode options
     config->trainMode = true; /* Enable Train mode */
     config->initialRandomActions = true; /* Fill replay buffer with random experiances */
-    config->stepsWithPretrainedModel = false; /* for transfer learning */
+    config->numInitialRandomActions = 2500;
     config->lossCountMax = 0; /* Slows training down */
     config->multiProcess = true; /* Offloads SAC training in another process */
     config->disableServo[0] = true; /* Turn on pan during training */
@@ -129,8 +159,10 @@ int main() {
     config->logOutput = true;
     config->minBufferSize = 2000;
     config->batchSize = 128;
+    config->maxStepsPerEpisode = 50;
     config->showVideo = true;
     config->draw = true;
+    config->actionType = Utility::ActionType::SPEED; // AI outputs a throttle in a direction
 
     wire = new control::Wire();
     pwm = new control::PCA9685(0x40, wire);
@@ -147,37 +179,20 @@ int main() {
 
     if (pid > 0) {
 
-        std::thread radioThread([&] {
-            // RF24 inits
-            Signal newData;
-            Signal oldData;
-            uint8_t pipe = 0;
-            uint8_t spiBus = 1;
-            uint16_t CE_GPIO = 481;
-            uint8_t address[] = { 0xE6, 0xE6, 0xE6, 0xE6, 0xE6 };
-            radio = new RF24(CE_GPIO, spiBus); // SPI Bus 1 (0 or 1) and GPIO17_40HEADER (pin 22)
+        // RF24 inits
+        uint8_t pipe = 0;
+        uint8_t spiBus = 1;
+        uint16_t CE_GPIO = 481;
+        uint8_t address[] = { 0xE6, 0xE6, 0xE6, 0xE6, 0xE6 };
+        radio = new RF24(CE_GPIO, spiBus); // SPI Bus 1 (0 or 1) and GPIO17_40HEADER (pin 22)
 
-            // Check radio
-            if (!radio->begin(CE_GPIO, spiBus)) {
-                throw std::runtime_error("Radio faild to initialize!");
-            } else {
-                radio->openReadingPipe(pipe, address);
-                radio->startListening(); // Set to radio receiver mode
-            }
-
-            // Main program loop
-            while(!stopFlag) {
-                if ( radio->available(&pipe) ) {
-                    radio->read(&newData.buffer, 10);
-                    oldData = newData;
-                    char LY = newData.buffer[data::LeftY];
-                    char RX = newData.buffer[data::RightX];
-                    override = newData.buffer[data::L1] || newData.buffer[data::R1];
-                    tiltSpeed = mapSpeed(LY, -1.0, 0.0, 1.0);
-                    panSpeed = mapSpeed(RX, -1.0, 0.0, 1.0);
-                } 
-            }       
-        });
+        // Check radio
+        if (!radio->begin(CE_GPIO, spiBus)) {
+            throw std::runtime_error("Radio faild to initialize!");
+        } else {
+            radio->openReadingPipe(pipe, address);
+            radio->startListening(); // Set to radio receiver mode
+        }
         
         std::thread trackingThread([&] {
             targetTrackingSystem->init(pid); 
@@ -257,7 +272,6 @@ int main() {
         }
         
         trackingThread.join();
-        radioThread.join();
 
         delete targetTrackingSystem;
         delete servos;

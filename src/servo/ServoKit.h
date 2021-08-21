@@ -16,14 +16,16 @@ namespace control {
         double minMs;
         double maxMs;
         double resetAngle;
+        double servoSpeed;
         Servo() { }
-        Servo(int servoNum, double minAngle, double maxAngle, double minMs, double maxMs, double resetAngle) {
+        Servo(int servoNum, double minAngle, double maxAngle, double minMs, double maxMs, double resetAngle, double servoSpeed) {
             this->servoNum = servoNum;
             this->minAngle = minAngle;
             this->maxAngle = maxAngle;
             this->minMs = minMs;
             this->maxMs = maxMs;
             this->resetAngle = resetAngle;
+            this->servoSpeed = servoSpeed;
         } 
     };
 
