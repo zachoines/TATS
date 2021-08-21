@@ -99,20 +99,20 @@ namespace Utility {
         void getStateArray(double state[NUM_INPUT]) {
             double errorBound = pidStateData.setPoint * 2.0;
             double deltaTime = pidStateData.dt * 1000.0; // Back to mili
+            double currentError = (errors[0] - pidStateData.setPoint);
             
             switch (actionType)
             {
             case ActionType::PID:
-                // double currentError = (errors[0] - pidStateData.setPoint);
-                // state[0] = currentAngle;
-                // state[1] = currentError / errorBound;
-                // state[2] = ( pidStateData.i + ( currentError * pidStateData.dt )) / ( 2.0 * errorBound );
-                // state[3] = deltaTime > 0.0 ? (currentError - pidStateData.errors[0]) / deltaTime : 0.0;
-                // state[4] = deltaTime > 0.0 ? (currentError - ( 2.0 * pidStateData.errors[0] ) + pidStateData.errors[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
-                // state[5] = deltaTime > 0.0 ? (pidStateData.outputs[0] - pidStateData.outputs[1]) / deltaTime : 0.0;
-                // state[6] = deltaTime > 0.0 ? (pidStateData.outputs[0] - ( 2.0 * pidStateData.outputs[1] ) + pidStateData.outputs[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
-                // state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                // state[8] = spf;
+                state[0] = currentAngle;
+                state[1] = currentError / errorBound;
+                state[2] = ( pidStateData.i + ( currentError * pidStateData.dt )) / ( 2.0 * errorBound );
+                state[3] = deltaTime > 0.0 ? (currentError - pidStateData.errors[0]) / deltaTime : 0.0;
+                state[4] = deltaTime > 0.0 ? (currentError - ( 2.0 * pidStateData.errors[0] ) + pidStateData.errors[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+                state[5] = deltaTime > 0.0 ? (pidStateData.outputs[0] - pidStateData.outputs[1]) / deltaTime : 0.0;
+                state[6] = deltaTime > 0.0 ? (pidStateData.outputs[0] - ( 2.0 * pidStateData.outputs[1] ) + pidStateData.outputs[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+                state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                state[8] = spf;
 
                 /* 
                     The State (then multiplied by constants to move closer to -1 ~ 1)

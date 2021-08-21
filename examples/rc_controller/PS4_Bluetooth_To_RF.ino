@@ -6,13 +6,13 @@ RF24 radio(14, 32); // CE & CS
 const uint8_t pipeOut[] = { 0xE6, 0xE6, 0xE6, 0xE6, 0xE6 };
 
 // Define data and formats
-enum data { wLeft = 0, wRight = 1, sUp = 2, sDown = 3, t1 = 4, t2 = 5, t3 = 6, t4 = 7};
+enum data { LeftY = 0, LeftX = 1, RightY = 2, RightX = 3, L1 = 4, R1 = 5, t1 = 6, t2 = 7, t3 = 8, t4 = 9};
 struct Signal {
-  byte buffer[8];
+  byte buffer[10];
 
   bool operator == (struct Signal& a)
   {
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 6; i++) {
       if (abs(buffer[i] - a.buffer[i]) > 0) {
         return false;
       }
@@ -23,7 +23,7 @@ struct Signal {
 
   struct Signal& operator = (struct Signal& a)
   {
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 10; i++) {
       this->buffer[i] = a.buffer[i];
     }
 
@@ -55,7 +55,8 @@ void setup() {
     Serial.println("There is an issue connecting to radio receiver.");
   }
   
-  Serial.println("Starting radio transmitter...");  
+  Serial.println("Starting radio transmitter...");
+  
 }
 
 void loop() {
@@ -63,18 +64,22 @@ void loop() {
   if (PS4.isConnected()) {
     oldData = newData;
     timestamp_converter.timestamp = millis();
-    newData.buffer[data::wLeft] = mapJoystickValues(PS4.LStickY(), -128, 0, 127, true);
-    newData.buffer[data::sUp] = 0;
-    newData.buffer[data::wRight] = mapJoystickValues(PS4.RStickY(), -128, 0, 127, true);
-    newData.buffer[data::sDown] = 0;
+    newData.buffer[data::LeftY] = mapJoystickValues(PS4.LStickY(), -128, 0, 127, true);
+    newData.buffer[data::LeftX] = mapJoystickValues(PS4.LStickX(), -128, 0, 127, true);
+    newData.buffer[data::RightY] = mapJoystickValues(PS4.RStickY(), -128, 0, 127, true);
+    newData.buffer[data::RightX] = mapJoystickValues(PS4.RStickX(), -128, 0, 127, true);
+    newData.buffer[data::L1] = PS4.L1() ? 1 : 0; 
+    newData.buffer[data::R1] = PS4.R1() ? 1 : 0; 
     newData.buffer[data::t1] = timestamp_converter.buffer[0];
     newData.buffer[data::t2] = timestamp_converter.buffer[1];
     newData.buffer[data::t3] = timestamp_converter.buffer[2];
     newData.buffer[data::t4] = timestamp_converter.buffer[3];
   
     if (!(newData == oldData)) {
-      radio.write(&newData.buffer, 8);
+      radio.write(&newData.buffer, 10);
     }  
+
+    delay(10);
   }
 }
 
