@@ -1281,25 +1281,34 @@ namespace control {
         std::cout << std::endl;
 
         std::cout << "Actions: ";
-
-        if (__config->usePIDs) {
-            for (int j = 0; j < NUM_ACTIONS; j++) {
-                std::cout << std::to_string(Utility::rescaleAction(trainData.actions[j], __config->actionLow, __config->actionHigh)) << ", ";
-            }
-            
+        
+        switch (__actionType)
+        {
+            case Utility::ActionType::PID:
+                for (int j = 0; j < 3; j++) {
+                    std::cout << std::to_string(Utility::rescaleAction(trainData.actions[j], __config->actionLow, __config->actionHigh)) << ", ";
+                }  
+                break;
+            case Utility::ActionType::ANGLE:
+                std::cout << std::to_string(Utility::rescaleAction(trainData.actions[0], __config->anglesLow[servo], __config->anglesHigh[servo])) << ", ";
+                break;
+            case Utility::ActionType::SPEED:
+                std::cout << std::to_string(trainData.actions[0]) << ", ";
+                break;
+            default:
+                throw std::runtime_error("Invalid action type provided");
+        }
+     
+        if (__config->usePOT) {
+            std::cout << std::to_string(Utility::rescaleAction(trainData.actions[1], 0.0, __config->dims[servo])) << std::endl;
         } else {
-            std::cout << std::to_string(Utility::rescaleAction(trainData.actions[0], __config->actionLow, __config->actionHigh)) << ", ";
-
-            if (__config->usePOT) {
-                std::cout << std::to_string(Utility::rescaleAction(trainData.actions[1], 0.0, __config->dims[servo])) << std::endl;
-            }
-
-            std::cout << "Errors: ";
-            std::cout << std::to_string(trainData.errors[0]) << " "; 
-            if (__config->usePOT) {
-                std::cout << std::to_string(trainData.errors[1]);
-            }
             std::cout << std::endl;
+        }
+
+        std::cout << "Errors: ";
+        std::cout << std::to_string(trainData.errors[0]) << " "; 
+        if (__config->usePOT) {
+            std::cout << std::to_string(trainData.errors[1]);
         }
         std::cout << std::endl;
     };
