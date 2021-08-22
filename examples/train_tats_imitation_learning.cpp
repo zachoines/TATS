@@ -160,7 +160,7 @@ int main() {
     config->minBufferSize = 2000;
     config->batchSize = 128;
     config->maxStepsPerEpisode = 50;
-    config->showVideo = true;
+    config->showVideo = false;
     config->draw = true;
     config->actionType = Utility::ActionType::SPEED; // AI outputs a throttle in a direction
 

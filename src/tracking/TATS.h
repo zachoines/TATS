@@ -133,11 +133,11 @@ namespace control {
         // Variables set by update function
         int __frameCount, __recheckFrequency, __trackerType;
         bool __useTracking, __draw, __showVideo;
-        std::chrono::time_point<std::chrono::high_resolution_clock> __execbegin = std::chrono::high_resolution_clock::now();
+        std::chrono::steady_clock::time_point __execbegin = std::chrono::steady_clock::now();
 
         // Target location variables
         bool __programStart, __rechecked, __isTracking, __isSearching;
-        int __lossCount, __trackCount, __searchCount, __searchCountMax, __lossCountMax;
+        int __lossCount, __trackCount, __searchCount, __searchCountMax, __lossCountMax, __maxPredictiveSteps;
         std::vector<std::string> __targets;
         std::string __currentTarget;
         int __targetId;
@@ -348,11 +348,5 @@ namespace control {
          * @return bool train status
          */
         bool isTraining();
-
-        /***
-         * @brief Returns update rate of the servos
-         * @return double current servo update
-         */
-        double updateRate();
     };
 };

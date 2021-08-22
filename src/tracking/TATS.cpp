@@ -66,6 +66,7 @@ namespace control {
         __targets = __config->targets;
         __currentTarget = ""; 
         __targetId = -1;
+        __maxPredictiveSteps = __config->maxPredictiveSteps;
 
         // Training variables
         __trainMode = __config->trainMode;
@@ -168,7 +169,7 @@ namespace control {
                 __s = __segment.find_or_construct<Utility::sharedString>("SharedString")("", __segment.get_segment_manager());
             }
 
-            __execbegin = std::chrono::high_resolution_clock::now();
+            __execbegin = std::chrono::steady_clock::now();
         
             if (__useTracking) {
                 __tracker = createOpenCVTracker(__trackerType);
@@ -317,12 +318,9 @@ namespace control {
                 __objY = __roi.y + (__roi.height / 2);
 
                 // Enter State data
-                auto wall_now = std::chrono::high_resolution_clock::now();
-                double timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_now - __execbegin).count() * 1e-9;
-                
                 std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-                std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
                 double spf = std::chrono::duration<double>(now - detectLoopStart).count();
+                double timestamp = std::chrono::duration<double, std::kilo>(now - __execbegin).count();
                 
                 Utility::ED eventDataArray[2] {
                     {
@@ -333,7 +331,8 @@ namespace control {
                         static_cast<double>(__roi.y),
                         static_cast<double>(__objY),
                         timestamp,
-                        spf
+                        spf,
+                        1.0
                     },
                     {
                         false,
@@ -343,7 +342,8 @@ namespace control {
                         static_cast<double>(__roi.x),
                         static_cast<double>(__objX),
                         timestamp,
-                        spf
+                        spf,
+                        1.0
                     }
                 };
 
@@ -443,6 +443,12 @@ namespace control {
                         }
                     }
                 } 
+
+                // TODO::Randomly make object dissapear for a few frames to simulate false negatives
+                // Train mode only
+                if (__trainMode && __trackCount > 3 && ((rand() % 100) < 25)) {
+
+                }
                 
                 // If we confidently found the object we are looking for
                 if (result.found) {
@@ -460,12 +466,9 @@ namespace control {
                     __objY = result.center.y;
                     
                     // Fill out state data
-                    auto wall_now = std::chrono::high_resolution_clock::now();
-                    double timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_now - __execbegin).count() * 1e-9;
-                    
                     std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-                    std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
                     double spf = std::chrono::duration<double>(now - detectLoopStart).count();
+                    double timestamp = std::chrono::duration<double, std::kilo>(now - __execbegin).count();
 
                     Utility::ED eventDataArray[2] {
                         {
@@ -476,7 +479,8 @@ namespace control {
                             static_cast<double>(__roi.y),
                             static_cast<double>(__objY),
                             timestamp,
-                            spf
+                            spf,
+                            1.0
                         },
                         {
                             false,
@@ -486,7 +490,8 @@ namespace control {
                             static_cast<double>(__roi.x),
                             static_cast<double>(__objX),
                             timestamp,
-                            spf
+                            spf,
+                            1.0
                         }
                     };
 
@@ -516,7 +521,7 @@ namespace control {
                         }
                     }
                 }
-                else if (!__config->trainMode && __config->usePOT) {
+                else if (!__trainMode && __config->usePOT) { // TODO:: REMOVE this after the new POT is created
                     __lossCount++;
                     __frameCount = 0.0;
                     __rechecked = false;
@@ -528,17 +533,13 @@ namespace control {
                         __isSearching = true;
                         __isTracking = false;
                         __lossCount = 0;
-
-                        // Enter state data
                         __frameCenterX = frame.cols / 2;
                         __frameCenterY = frame.rows / 2;
                         
-                        auto wall_now = std::chrono::high_resolution_clock::now();
-                        double timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_now - __execbegin).count() * 1e-9;
-                        
+                        // Enter State data
                         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-                        std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
                         double spf = std::chrono::duration<double>(now - detectLoopStart).count();
+                        double timestamp = std::chrono::duration<double, std::kilo>(now - __execbegin).count();
 
                         Utility::ED eventDataArray[2] {
                             {
@@ -549,7 +550,8 @@ namespace control {
                                 0.0,
                                 static_cast<double>(__frameCenterY * 2), // Max error
                                 timestamp,
-                                spf
+                                spf,
+                                0.0
                             },
                             {
                                 true,
@@ -559,7 +561,8 @@ namespace control {
                                 0.0,
                                 static_cast<double>(__frameCenterX * 2),
                                 timestamp,
-                                spf
+                                spf,
+                                0.0
                             }
                         };
                         
@@ -587,13 +590,11 @@ namespace control {
                         __servos->getPredictedObjectLocation(locations);
                         __frameCenterX = __config->dims[1] / 2;
                         __frameCenterY = __config->dims[0] / 2;
-                        
-                        auto wall_now = std::chrono::high_resolution_clock::now();
-                        double timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_now - __execbegin).count() * 1e-9;
-                        
+
+                        // Enter State data
                         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-                        std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
                         double spf = std::chrono::duration<double>(now - detectLoopStart).count();
+                        double timestamp = std::chrono::duration<double, std::kilo>(now - __execbegin).count();
 
                         Utility::ED eventDataArray[2] {
                             {
@@ -604,7 +605,8 @@ namespace control {
                                 0.0,
                                 locations[0], // Predicted location
                                 timestamp,
-                                spf
+                                spf,
+                                1.0
                             },
                             {
                                 false,
@@ -614,7 +616,8 @@ namespace control {
                                 0.0,
                                 locations[1],
                                 timestamp,
-                                spf
+                                spf,
+                                1.0
                             }
                         };
                         
@@ -631,66 +634,117 @@ namespace control {
                             throw std::runtime_error("cannot update event data");
                         }
                     }
-                }
-                else {
+                } else if (__lossCount < __maxPredictiveSteps && __trackCount > 3) { // let the AI try to predict where the object will be
+                    __lossCount++;
+                    __frameCount = 0.0;
+                    __rechecked = false;
+
+                    // Get the prediction location of object relative to frame center
+                    if (__config->logOutput) {
+                        std::cout << "Target vanished. TATS attemping to recover location..." << std::endl;
+                    }
+                    
+                    // Enter state data                    
+                    std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+                    double spf = std::chrono::duration<double>(now - detectLoopStart).count();
+                    double timestamp = std::chrono::duration<double, std::kilo>(now - __execbegin).count();
+
+                    /* 
+                        When done is false, and tracking is 0.0 (false), the AI will
+                        use the previous object locations to make a predictive movement.
+                        This assumes the objects rate of change is constant speed/accel.
+                    */
+                    Utility::ED eventDataArray[2] {  
+                        {
+                            false,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            timestamp,
+                            spf,
+                            0.0
+                        },
+                        {
+                            false,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            timestamp,
+                            spf,
+                            0.0
+                        }
+                    };
+                    
+                    try {
+                        __queueEvent(EVENT::ON_UPDATE);
+                        onTargetUpdate(INFO(
+                            -1.0, 
+                            -1.0, 
+                            __targetId,
+                            !__isSearching
+                        ), EVENT::ON_UPDATE);
+                        __servos->update(eventDataArray);
+                    } catch (...) {
+                        throw std::runtime_error("cannot update event data");
+                    }
+                } else {
                     __lossCount++;
                     __rechecked = false;
 
-                    // Target is out of sight, inform PID's, model, and servos
-                    if (__lossCount >= __lossCountMax) {
-                        
-                        __isSearching = true;
-                        __isTracking = false;
-                        __lossCount = 0;
-                        __trackCount = 0;
+                    // Target is out of sight, inform PID's, model, and servo
+                    __isSearching = true;
+                    __isTracking = false;
+                    __lossCount = 0;
+                    __trackCount = 0;
+                    __frameCenterX = frame.cols / 2;
+                    __frameCenterY = frame.rows / 2;
 
-                        // Enter State data
-                        __frameCenterX = frame.cols / 2;
-                        __frameCenterY = frame.rows / 2;
-                        
-                        auto wall_now = std::chrono::high_resolution_clock::now();
-                        double timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_now - __execbegin).count() * 1e-9;
-                        
-                        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-                        std::chrono::steady_clock::duration elapsed = now - detectLoopStart;
-                        double spf = std::chrono::duration<double>(now - detectLoopStart).count();
+                    // Enter State data
+                    std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+                    double spf = std::chrono::duration<double>(now - detectLoopStart).count();
+                    double timestamp = std::chrono::duration<double, std::kilo>(now - __execbegin).count();
 
-                        Utility::ED eventDataArray[2] {
-                            {
-                                true,
-                                static_cast<double>(frame.rows), // Obj not on screen, Max error
-                                static_cast<double>(__frameCenterY),
-                                0.0,
-                                0.0,
-                                static_cast<double>(__frameCenterY * 2), 
-                                timestamp,
-                                spf
-                            },
-                            {
-                                true,
-                                static_cast<double>(frame.cols),
-                                static_cast<double>(__frameCenterX),
-                                0.0,
-                                0.0,
-                                static_cast<double>(__frameCenterX * 2),
-                                timestamp,
-                                spf
-                            }
-                        };
-                        
-                        try {
-                            __queueEvent(EVENT::ON_LOST);
-                            onTargetUpdate(INFO(
-                                -1.0, 
-                                -1.0, 
-                                __targetId,
-                                !__isSearching
-                            ), EVENT::ON_LOST);
-                            __servos->update(eventDataArray);
-                        } catch (...) {
-                            throw std::runtime_error("cannot update event data");
+                    Utility::ED eventDataArray[2] {
+                        {
+                            true,
+                            static_cast<double>(frame.rows), // Obj not on screen, Max error
+                            static_cast<double>(__frameCenterY),
+                            0.0,
+                            0.0,
+                            static_cast<double>(__frameCenterY * 2), 
+                            timestamp,
+                            spf,
+                            0.0
+                        },
+                        {
+                            true,
+                            static_cast<double>(frame.cols),
+                            static_cast<double>(__frameCenterX),
+                            0.0,
+                            0.0,
+                            static_cast<double>(__frameCenterX * 2),
+                            timestamp,
+                            spf,
+                            0.0
                         }
-                    } 
+                    };
+                    
+                    try {
+                        __queueEvent(EVENT::ON_LOST);
+                        onTargetUpdate(INFO(
+                            -1.0, 
+                            -1.0, 
+                            __targetId,
+                            !__isSearching
+                        ), EVENT::ON_LOST);
+                        __servos->update(eventDataArray);
+                    } catch (...) {
+                        throw std::runtime_error("cannot update event data");
+                    }
                 }
             }
         }
@@ -915,7 +969,6 @@ namespace control {
                             if (overriden) {
                                 newAngles[servo] = Utility::rescaleAction(overrides[servo][0], __actionLow, __actionHigh);
                             } else {
-                                // newAngles[servo] =  Utility::rescaleAction(std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng), __actionLow, __actionHigh);
                                 newAngles[servo] =  __resetAngleVariance * std::uniform_real_distribution<double>{ -1.0, 1.0 }(eng);
                             }
                         }
@@ -938,11 +991,6 @@ namespace control {
                         overriden ? overrides[1][0] : __resetResults.servos[1].currentAngle,
                         overriden ? overrides[0][0] : __resetResults.servos[0].currentAngle
                     );
-
-                    // onServoUpdate(
-                    //     __resetResults.servos[1].currentAngle,
-                    //     __resetResults.servos[0].currentAngle
-                    // );
                     
                     // Hold onto reset results
                     for (int servo = 0; servo < __numberServos; servo++) {
@@ -1338,9 +1386,5 @@ namespace control {
 
     bool TATS::isTraining() {
         return __isTraining;
-    }
-
-    double TATS::updateRate() {
-        
     }
 };

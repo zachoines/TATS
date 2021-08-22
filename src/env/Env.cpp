@@ -37,9 +37,11 @@ Env::Env(control::ServoKit* servos, Utility::Config* config) {
 
         _servos->initServo(_config->servoConfigurations[servo]);
 
-        for (int i = 0; i < ERROR_LIST_SIZE; i++) {
+        for (int i = 0; i < HISTORY_BUFFER_SIZE; i++) {
             _outputs[servo][i] = 0.0;
             _errors[servo][i] = 0.0;
+            _angleTimestamps[servo][i] = 0.0;
+            _errorTimestamps[servo][i] = 0.0;
         }
     }
 }
@@ -140,10 +142,12 @@ void Env::_resetEnv(bool overrideResetAngles, double angles[NUM_SERVOS]) {
         _currentAngles[servo] = overrideResetAngles ? angles[servo] : _resetAngles[servo];
         _pids[servo]->init();
         
-        for (int i = 0; i < ERROR_LIST_SIZE; i++) {
+        for (int i = 0; i < HISTORY_BUFFER_SIZE; i++) {
             _errors[servo][i] = 0.0;
             _outputs[servo][i] = 0.0;
             _deltaAngles[servo][i] = 0.0;
+            _angleTimestamps[servo][i] = 0.0;
+            _errorTimestamps[servo][i] = 0.0;
         }
     }
 }
@@ -152,20 +156,6 @@ Utility::RD Env::reset(bool useCurrentAngles) {
     // std::unique_lock<std::mutex> lck(_updateLock);
     _updated = false;
     _start = std::chrono::steady_clock::now();
-    // switch (_config->actionType)
-    // {
-    // case Utility::ActionType::PID:
-        
-    //     break;
-    // case Utility::ActionType::ANGLE:
-
-    //     break;
-    // case Utility::ActionType::SPEED:
-
-    //     break;
-    // default:
-    //     throw std::runtime_error("Invalid action type configured");
-    // }
     _resetEnv(useCurrentAngles, _currentAngles);
     _syncEnv();
 
@@ -181,12 +171,21 @@ Utility::RD Env::reset(bool useCurrentAngles) {
         data.servos[servo].pidStateData = _pids[servo]->getState(true);
         data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
         data.servos[servo].spf = _currentData[servo].spf;
+        data.servos[servo].tracking = _currentData[servo].tracking;
 
         int frameCenter = _config->dims[servo] / 2;
         _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo], _config->anglesHigh[servo], 0.0, 1.0);
         _errors[servo][0] = Utility::mapOutput(_invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) :  static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter), - static_cast<double>(frameCenter),  static_cast<double>(frameCenter), 0.0, 1.0);
+        _angleTimestamps[servo][0] = Utility::removeWhole(_currentData[servo].timestamp);
+        _errorTimestamps[servo][0] = Utility::removeWhole(_currentData[servo].timestamp);
         _deltaAngles[servo][0] = 0.0;
-        data.servos[servo].setData(_errors[servo], _outputs[servo], _deltaAngles[servo]);
+        data.servos[servo].setData(
+            _errors[servo], 
+            _outputs[servo], 
+            _deltaAngles[servo], 
+            _angleTimestamps[servo],
+            _errorTimestamps[servo]
+        );
         _stateData[servo] = data.servos[servo];
         _currentDeltaAngles[servo] = 0.0;
         _predObjLoc[servo] = 0.0;
@@ -216,12 +215,21 @@ Utility::RD Env::reset(double angles[NUM_SERVOS]) {
         data.servos[servo].pidStateData = _pids[servo]->getState(true);
         data.servos[servo].currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
         data.servos[servo].spf = _currentData[servo].spf;
+        data.servos[servo].tracking = _currentData[servo].tracking;
 
         int frameCenter = _config->dims[servo] / 2;
         _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo], _config->anglesHigh[servo], 0.0, 1.0);
         _errors[servo][0] = Utility::mapOutput(_invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) :  static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter), - static_cast<double>(frameCenter),  static_cast<double>(frameCenter), 0.0, 1.0);
+        _angleTimestamps[servo][0] = Utility::removeWhole(_currentData[servo].timestamp);
+        _errorTimestamps[servo][0] = Utility::removeWhole(_currentData[servo].timestamp);
         _deltaAngles[servo][0] = 0.0;
-        data.servos[servo].setData(_errors[servo], _outputs[servo], _deltaAngles[servo]);
+        data.servos[servo].setData(
+            _errors[servo], 
+            _outputs[servo], 
+            _deltaAngles[servo], 
+            _angleTimestamps[servo],
+            _errorTimestamps[servo]
+        );
         _stateData[servo] = data.servos[servo];
         _currentDeltaAngles[servo] = 0.0;
         _predObjLoc[servo] = 0.0; 
@@ -238,17 +246,22 @@ Utility::RD Env::reset(double angles[NUM_SERVOS]) {
 Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, double rate) {
     
     // std::unique_lock<std::mutex> lck(_updateLock);
+    // Update/set various loop variants
     _currentSteps = (_currentSteps + 1) % INT_MAX; 
-    double rescaledActions[NUM_SERVOS][NUM_ACTIONS];
-    bool empty = false;
     _updated = false;
+    double rescaledActions[NUM_SERVOS][NUM_ACTIONS];
+    double maxDeltaAngle = _config->maxDeltaAngle;
+    bool empty[NUM_SERVOS] = { false };
+    
+    // Return value
     Utility::SR stepResults = {};
     stepResults.setActionType(_actionType);
+
+    // Delta time 
     std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
     double dt = std::clamp<double>(std::chrono::duration<double>(now - _start).count(), 0.0, 1.0);
     _start = std::chrono::steady_clock::now();
-    double maxDeltaAngle = _config->maxDeltaAngle;
-    
+     
     // Foreach servo, calculate predicted object locations and new servo angles
     for (int servo = 0; servo < NUM_SERVOS; servo++) {
 
@@ -320,7 +333,7 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
                     _preSteps[servo]++;
                 }
                 
-                empty = true;
+                empty[servo] = true;
                 int frameCenter = _config->dims[servo] / 2;
                 double error = _invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) : static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter)  / static_cast<double>(frameCenter);
 
@@ -360,7 +373,6 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
                 
                 // Hold onto actions for step results
                 stepResults.servos[servo].actions[0] = actions[servo][0];
-                // stepResults.servos[servo].actions[0] = Utility::mapOutput(newAngle, _config->anglesLow[servo], _config->anglesHigh[servo], -1.0, 1.0);
                 if (_config->usePOT) {
                     stepResults.servos[servo].actions[1] = actions[servo][1];
                 }
@@ -389,7 +401,7 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
                 // rescaledActions[servo][0] = _currentAngles[servo];
                 // _currentDeltaAngles[servo] = 0.0;
                 // Step in direction of object's motion
-                empty = true;
+                empty[servo] = true;
                 int frameCenter = _config->dims[servo] / 2;
                 double error = _invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) : static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter)  / static_cast<double>(frameCenter);
 
@@ -455,6 +467,7 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
 
         double lastError = _lastData[servo].obj;
         double currentError = _currentData[servo].obj;
+        empty[servo] = !static_cast<bool>(_currentData[servo].tracking);
 
         // Calculate rewards
         if (_lastData[servo].done) {
@@ -472,24 +485,32 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
         // Update state information
         stepResults.servos[servo].nextState.currentAngle = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], -1.0, 1.0);
         stepResults.servos[servo].nextState.spf = _currentData[servo].spf;
+        stepResults.servos[servo].nextState.tracking = _currentData[servo].tracking;
         stepResults.servos[servo].done = _currentData[servo].done;
-        stepResults.servos[servo].empty = empty;
+        stepResults.servos[servo].empty = empty[servo];
         _stateData[servo] = stepResults.servos[servo].nextState;
 
-        // Store error, output, and deltaAngle history
-        for (int i = ERROR_LIST_SIZE - 2; i >= 0; i--) {
+        // Store output and deltaAngle history
+        int frameCenter = _config->dims[servo] / 2;
+        for (int i = HISTORY_BUFFER_SIZE - 2; i >= 0; i--) {
             _outputs[servo][i + 1] = _outputs[servo][i];
-            _errors[servo][i + 1] = _errors[servo][i];
             _deltaAngles[servo][i + 1] = _deltaAngles[servo][i];
+            _angleTimestamps[servo][i + 1] = _angleTimestamps[servo][i];
+        }
+        _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
+        _deltaAngles[servo][0] = _currentDeltaAngles[servo];
+        _angleTimestamps[servo][0] = Utility::removeWhole(_currentData[servo].timestamp);
+        
+        // Store err if tracking
+        if (static_cast<bool>(_currentData[servo].tracking)) {
+            for (int i = HISTORY_BUFFER_SIZE - 2; i >= 0; i--) {
+                _errors[servo][i + 1] = _errors[servo][i];
+                _errorTimestamps[servo][i + 1] = _errorTimestamps[servo][i]; 
+            }
+            _errors[servo][0] = Utility::mapOutput(_invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) : static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter), -static_cast<double>(frameCenter), static_cast<double>(frameCenter), 0.0, 1.0);
+            _errorTimestamps[servo][0] = Utility::removeWhole(_currentData[servo].timestamp);
         }
 
-        // Scale to 0.0 to 1;
-        int frameCenter = _config->dims[servo] / 2;
-        _outputs[servo][0] = Utility::mapOutput(_currentAngles[servo], _config->anglesLow[servo],  _config->anglesHigh[servo], 0.0, 1.0);
-        _errors[servo][0] = Utility::mapOutput(_invertData[servo] ? static_cast<double>(frameCenter - static_cast<int>(_currentData[servo].obj)) : static_cast<double>(static_cast<int>(_currentData[servo].obj) - frameCenter), -static_cast<double>(frameCenter), static_cast<double>(frameCenter), 0.0, 1.0);
-        _deltaAngles[servo][0] = _currentDeltaAngles[servo];
-        
-        // We still use PIDS for keeping track of error in ENV. Otherwise the caller supplies actions rather than PIDS
         switch (_config->actionType)
         {
         case Utility::ActionType::PID:
@@ -498,12 +519,24 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
         case Utility::ActionType::ANGLE:
             _pids[servo]->update(currentError);
             stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
-            stepResults.servos[servo].nextState.setData(_errors[servo], _outputs[servo], _deltaAngles[servo]);
+            stepResults.servos[servo].nextState.setData(
+                _errors[servo], 
+                _outputs[servo], 
+                _deltaAngles[servo], 
+                _angleTimestamps[servo],
+                _errorTimestamps[servo]
+            );
             break;
         case Utility::ActionType::SPEED:
             _pids[servo]->update(currentError);
             stepResults.servos[servo].nextState.pidStateData = _pids[servo]->getState(true);
-            stepResults.servos[servo].nextState.setData(_errors[servo], _outputs[servo], _deltaAngles[servo]);
+            stepResults.servos[servo].nextState.setData(
+                _errors[servo], 
+                _outputs[servo], 
+                _deltaAngles[servo], 
+                _angleTimestamps[servo],
+                _errorTimestamps[servo]
+            );
             break;
         default:
             throw std::runtime_error("Invalid action type configured in config");

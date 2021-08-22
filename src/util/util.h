@@ -478,4 +478,13 @@ namespace Utility {
 	{
 		return (low <= x && x <= high);
 	}
+
+	/***
+	 * @brief Remove everything left of the decimal point
+	 * @param x Number to be clipped
+	 * @return double
+	 */
+	static double removeWhole(double x) {
+		return x - std::floor(x);
+	}
 }

@@ -14,8 +14,8 @@
 
 namespace Utility {
     #define NUM_SERVOS 2                         // Number of servos used 
-    #define NUM_INPUT 12                         // Size of the state schema
-    #define ERROR_LIST_SIZE 6                    // Number of errors/outputs to hold onto accross application
+    #define NUM_INPUT 23                         // Size of the state schema
+    #define HISTORY_BUFFER_SIZE 10               // Number of errors/outputs to hold onto accross application
     #define NUM_HIDDEN 256                       // Number of nodes in each networks hidden layer
     #define USE_PIDS false                       // When enabled, AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
     #define USE_POT false                        // Use predictive object location
@@ -43,6 +43,7 @@ namespace Utility {
         double error;                            // Number of pixels between object and target centers
         double timestamp;                        // Unique identifier of this event
         double spf;                              // seconds per frame of the detect thread
+        double tracking;                         // Flag that indicates if target has temporally vanished.
 
         void reset() {
             done = false;
@@ -52,6 +53,7 @@ namespace Utility {
             frame = 0.0;
             timestamp = 0.0;
             spf = 0.0;
+            tracking = 0.0;
         }
         
         EventData() : 
@@ -62,10 +64,11 @@ namespace Utility {
             point(0.0),
             obj(0.0), 
             timestamp(0.0),
-            spf(0.0)
+            spf(0.0),
+            tracking(1.0)
         {}
 
-        EventData( bool done, double error, double frame, double size, double point, double obj, double timestamp, double spf)
+        EventData( bool done, double error, double frame, double size, double point, double obj, double timestamp, double spf, double tracking)
         {
             this->done = done;
             this->error = error;
@@ -75,24 +78,37 @@ namespace Utility {
             this->obj = obj;
             this->timestamp = timestamp;
             this->spf = spf;
+            this->tracking = tracking;
         }
     } typedef ED;
 
     // Current state of servo/pid
     struct StateData {
         struct PIDState pidStateData;
-        double errors[ERROR_LIST_SIZE] = { 0.0 };
-        double outputs[ERROR_LIST_SIZE] = { 0.0 };
-        double deltaAngles[ERROR_LIST_SIZE] = { 0.0 };
+        double errors[HISTORY_BUFFER_SIZE] = { 0.0 };
+        double outputs[HISTORY_BUFFER_SIZE] = { 0.0 };
+        double deltaAngles[HISTORY_BUFFER_SIZE] = { 0.0 };
+        double angleTimestamps[HISTORY_BUFFER_SIZE] = { 0.0 };
+        double errorTimestamps[HISTORY_BUFFER_SIZE] = { 0.0 };
         ActionType actionType = ActionType::ANGLE;
         double currentAngle;
         double spf;  
+        double tracking;
 
-        void setData(double errs[ERROR_LIST_SIZE], double outs[ERROR_LIST_SIZE], double dltAng[ERROR_LIST_SIZE]) {
-            for (int i = 0; i < ERROR_LIST_SIZE; i++) {
+        void setData(
+            double errs[HISTORY_BUFFER_SIZE], 
+            double outs[HISTORY_BUFFER_SIZE], 
+            double dltAng[HISTORY_BUFFER_SIZE], 
+            double angleT[HISTORY_BUFFER_SIZE],
+            double errorT[HISTORY_BUFFER_SIZE]
+        ) {
+            
+            for (int i = 0; i < HISTORY_BUFFER_SIZE; i++) {
                 errors[i] = errs[i];
                 outputs[i] = outs[i];
                 deltaAngles[i] = dltAng[i];
+                angleTimestamps[i] = angleT[i];
+                errorTimestamps[i] = errorT[i];
             }
         }
 
@@ -104,18 +120,32 @@ namespace Utility {
             switch (actionType)
             {
             case ActionType::PID:
-                state[0] = currentAngle;
-                state[1] = currentError / errorBound;
-                state[2] = ( pidStateData.i + ( currentError * pidStateData.dt )) / ( 2.0 * errorBound );
-                state[3] = deltaTime > 0.0 ? (currentError - pidStateData.errors[0]) / deltaTime : 0.0;
-                state[4] = deltaTime > 0.0 ? (currentError - ( 2.0 * pidStateData.errors[0] ) + pidStateData.errors[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
-                state[5] = deltaTime > 0.0 ? (pidStateData.outputs[0] - pidStateData.outputs[1]) / deltaTime : 0.0;
-                state[6] = deltaTime > 0.0 ? (pidStateData.outputs[0] - ( 2.0 * pidStateData.outputs[1] ) + pidStateData.outputs[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
-                state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                state[8] = spf;
+                state[0] = outputs[0];
+                state[1] = errors[0];
+                state[2] = outputs[1];
+                state[3] = errors[1];
+                state[4] = outputs[2];
+                state[5] = errors[2];
+                state[6] = outputs[3];
+                state[7] = errors[3];
+                state[8] = outputs[3];
+                state[9] = errors[3];
+                state[10] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                state[11] = deltaTime > 0.0 ? spf : 0.0;
+                state[12] = tracking;
+                break;
 
                 /* 
-                    The State (then multiplied by constants to move closer to -1 ~ 1)
+            
+                    state[0] = currentAngle;
+                    state[1] = currentError / errorBound;
+                    state[2] = ( pidStateData.i + ( currentError * pidStateData.dt )) / ( 2.0 * errorBound );
+                    state[3] = deltaTime > 0.0 ? (currentError - pidStateData.errors[0]) / deltaTime : 0.0;
+                    state[4] = deltaTime > 0.0 ? (currentError - ( 2.0 * pidStateData.errors[0] ) + pidStateData.errors[1]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+                    state[5] = deltaTime > 0.0 ? (pidStateData.outputs[0] - pidStateData.outputs[1]) / deltaTime : 0.0;
+                    state[6] = deltaTime > 0.0 ? (pidStateData.outputs[0] - ( 2.0 * pidStateData.outputs[1] ) + pidStateData.outputs[2]) / std::pow<double>(deltaTime, 2.0) : 0.0; 
+                    state[7] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                    state[8] = spf;
 
                     1.) Current Error
 
@@ -153,24 +183,39 @@ namespace Utility {
                 state[5] = errors[2];
                 state[6] = outputs[3];
                 state[7] = errors[3];
-                state[8] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                state[9] = deltaTime > 0.0 ? spf : 0.0;
-                break;
-
-            case ActionType::SPEED:
-                state[0] = deltaAngles[0];
-                state[1] = errors[0];
-                state[2] = deltaAngles[1];
-                state[3] = errors[1];
-                state[4] = deltaAngles[2];
-                state[5] = errors[2];
-                state[6] = deltaAngles[3];
-                state[7] = errors[3];
-                state[8] = deltaAngles[4];
-                state[9] = errors[4];
+                state[8] = outputs[3];
+                state[9] = errors[3];
                 state[10] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
                 state[11] = deltaTime > 0.0 ? spf : 0.0;
+                state[12] = tracking;
                 break;
+            case ActionType::SPEED:
+                state[0] = errors[0];
+                state[1] = deltaAngles[0];
+                state[2] = angleTimestamps[0];
+                state[3] = errorTimestamps[0];
+                state[4] = errors[1];
+                state[5] = deltaAngles[1];
+                state[6] = angleTimestamps[1];
+                state[7] = errorTimestamps[1];
+                state[8] = errors[2];
+                state[9] = deltaAngles[2];
+                state[10] = angleTimestamps[2];
+                state[11] = errorTimestamps[2];
+                state[12] = errors[3];
+                state[13] = deltaAngles[3];
+                state[14] = angleTimestamps[3];
+                state[15] = errorTimestamps[3];
+                state[16] = errors[4];
+                state[17] = deltaAngles[4];
+                state[18] = angleTimestamps[4];
+                state[19] = errorTimestamps[4];
+                state[20] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                state[21] = deltaTime > 0.0 ? spf : 0.0;
+                state[22] = tracking;
+                break;
+            default:
+                throw std::runtime_error("Invalid action type provided");
             }
         } 
 
@@ -181,7 +226,8 @@ namespace Utility {
             deltaAngles({ 0.0 }),
             actionType(Utility::ActionType::ANGLE),
             currentAngle(0.0),
-            spf(0.0)
+            spf(0.0),
+            tracking(1.0)
         {}
 
     } typedef SD;
@@ -300,6 +346,7 @@ namespace Utility {
         bool usePIDs;
         bool usePOT;
         int resetAfterNInnactiveFrames;
+        int maxPredictiveSteps;
 
         // PID options
         double pidOutputHigh;
@@ -370,7 +417,7 @@ namespace Utility {
             anglesLow({                          // Min allowable output angle to servos
                 -45.0, -45.0
             }), 
-            anglesRange({                       // Total range of the servos
+            anglesRange({                        // Total range of the servos
                 90.0, 90.0
             }),   
             servoConfigurations(                 // Hardware settings for individual servos         
@@ -395,6 +442,9 @@ namespace Utility {
             useTracking(false),					 // Use openCV tracker instead of face detection
             usePOT(USE_POT),                     // Predictive Object Tracking. If detection has failed, uses AI to predict objects next location
             resetAfterNInnactiveFrames(25),      // Reset to default angles after N frames. -1 indicates never resetting. 
+            maxPredictiveSteps(                  // When target disappears, Number of times AI can guess its new action
+                HISTORY_BUFFER_SIZE / 4
+            ),
             useCurrentAngleForReset(true),       // Use current angle as reset angle when target has lost track
             draw(false),  					     // Draw target bounding box and center on frame
             showVideo(false),					 // Show camera feed

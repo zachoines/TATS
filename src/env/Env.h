@@ -40,9 +40,11 @@ private:
     double _currentAngles[NUM_SERVOS] = { 0.0 };
     double _lastAngles[NUM_SERVOS] = { 0.0 };
     double _currentDeltaAngles[NUM_SERVOS] = { 0.0 };
-    double _errors[NUM_SERVOS][ERROR_LIST_SIZE] = { 0.0 };
-    double _outputs[NUM_SERVOS][ERROR_LIST_SIZE] = { 0.0 };
-    double _deltaAngles[NUM_SERVOS][ERROR_LIST_SIZE] = { 0.0 };
+    double _errors[NUM_SERVOS][HISTORY_BUFFER_SIZE] = { 0.0 };
+    double _outputs[NUM_SERVOS][HISTORY_BUFFER_SIZE] = { 0.0 };
+    double _deltaAngles[NUM_SERVOS][HISTORY_BUFFER_SIZE] = { 0.0 };
+    double _angleTimestamps[NUM_SERVOS][HISTORY_BUFFER_SIZE] = { 0.0 };
+    double _errorTimestamps[NUM_SERVOS][HISTORY_BUFFER_SIZE] = { 0.0 };
     double _predObjLoc[NUM_SERVOS] = { 0.0 };
     int _currentSteps; 
     bool _recentReset[NUM_SERVOS];
