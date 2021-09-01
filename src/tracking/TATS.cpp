@@ -444,10 +444,10 @@ namespace control {
                     }
                 } 
 
-                // TODO::Randomly make object dissapear for a few frames to simulate false negatives
+                // TODO::Randomly make object dissapear after a few frames to simulate false negatives
                 // Train mode only
                 if (__trainMode && __trackCount > 3 && ((rand() % 100) < 25)) {
-
+                    result.found = false;
                 }
                 
                 // If we confidently found the object we are looking for
@@ -881,7 +881,6 @@ namespace control {
                         __trainData[servo].currentState = __currentState[servo];
                         __currentState[servo] = __trainData[servo].nextState;
 
-                        // If servo is disabled, null record
                         if (__trainData[servo].empty) {
                             continue;
                         }
@@ -1300,6 +1299,10 @@ namespace control {
     }
 
     void TATS::__printOutput(Utility::TD trainData, int servo) {
+        if (trainData.empty) {
+            return;
+        }
+
         double state[NUM_INPUT];
         std::cout << (servo ? "Pan step info:" : "Tilt step info:") << std::endl;
         std::cout << "Next State: ";

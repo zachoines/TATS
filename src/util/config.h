@@ -14,8 +14,8 @@
 
 namespace Utility {
     #define NUM_SERVOS 2                         // Number of servos used 
-    #define NUM_INPUT 23                         // Size of the state schema
-    #define HISTORY_BUFFER_SIZE 10               // Number of errors/outputs to hold onto accross application
+    #define NUM_INPUT 22                         // Size of the state schema
+    #define HISTORY_BUFFER_SIZE 6                // Number of errors/outputs to hold onto accross application
     #define NUM_HIDDEN 256                       // Number of nodes in each networks hidden layer
     #define USE_PIDS false                       // When enabled, AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
     #define USE_POT false                        // Use predictive object location
@@ -210,9 +210,9 @@ namespace Utility {
                 state[17] = deltaAngles[4];
                 state[18] = angleTimestamps[4];
                 state[19] = errorTimestamps[4];
-                state[20] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
-                state[21] = deltaTime > 0.0 ? spf : 0.0;
-                state[22] = tracking;
+                // state[20] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
+                state[20] = deltaTime > 0.0 ? spf : 0.0;
+                state[21] = tracking;
                 break;
             default:
                 throw std::runtime_error("Invalid action type provided");
@@ -405,17 +405,17 @@ namespace Utility {
             trainRate(.25),					     // Network updates, sessions per second
             logOutput(true),                     // Prints various info to console
             
-            disableServo({ true, false }),       // Disable the { Y, X } servos
+            disableServo({ false, false }),       // Disable the { Y, X } servos
             invertData({ true, false }),         // Flip input data { Y, X } servos
             invertAngles({ false, false }),      // Flip output angles { Y, X } servos
             resetAngles({                        // Angle when reset
                 0.0, 0.0
             }),    
             anglesHigh({                         // Max allowable output angle to servos
-                45.0, 45.0
+                72.0, 72.0
             }),          
             anglesLow({                          // Min allowable output angle to servos
-                -45.0, -45.0
+                -72.0, -72.0
             }), 
             anglesRange({                        // Total range of the servos
                 90.0, 90.0
@@ -443,7 +443,7 @@ namespace Utility {
             usePOT(USE_POT),                     // Predictive Object Tracking. If detection has failed, uses AI to predict objects next location
             resetAfterNInnactiveFrames(25),      // Reset to default angles after N frames. -1 indicates never resetting. 
             maxPredictiveSteps(                  // When target disappears, Number of times AI can guess its new action
-                HISTORY_BUFFER_SIZE / 4
+                5
             ),
             useCurrentAngleForReset(true),       // Use current angle as reset angle when target has lost track
             draw(false),  					     // Draw target bounding box and center on frame
@@ -475,24 +475,24 @@ namespace Utility {
             // targets({"face"}),
             // classes({"face"})
 
-            // detector(DetectorType::YOLO),
-            // detectorPath("/models/yolo/yolo5s6_uno_v2.torchscript.pt"),
-            // targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
-            // classes({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"})
-
             detector(DetectorType::YOLO),
-            detectorPath("/models/yolo/yolov5s6.coco.640.torchscript.pt"),
-            targets({ "person", "car", "stop sign", "cup"}),
-            classes({ 
-            "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
-            "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-            "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-            "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
-            "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-            "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-            "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
-            "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
-            "hair drier", "toothbrush" })
+            detectorPath("/models/yolo/yolov5s6.uno.640.torchscript.pt"),
+            targets({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"}),
+            classes({"0", "1", "10", "11", "12", "13", "14", "2", "3", "4", "5", "6", "7", "8", "9"})
+
+            // detector(DetectorType::YOLO),
+            // detectorPath("/models/yolo/yolov5s6.coco.640.torchscript.pt"),
+            // targets({ "cat", "dog", "bottle", "cup"}),
+            // classes({ 
+            // "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
+            // "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
+            // "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+            // "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
+            // "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+            // "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+            // "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
+            // "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
+            // "hair drier", "toothbrush" })
             {}
     } typedef cfg;
 

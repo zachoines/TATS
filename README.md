@@ -10,18 +10,17 @@ Target acquisition and tracking system. The aim of this repo is to use various d
 
 ## Highlights
 * Target detection 
-	* Choice of cascade models, RCNN models, or Yolo5 models.
+	* Choice of ARUCO, cascade, RCNN, or Yolo5 models.
 * Advance PID autotuning 
 	* Soft Actor Critic Reinforcement learning optimizes PID gains for fast response rates.
 * Predictive object tracking
-	* AI model predicts fiture locations for occluded objects 
-* Dynamically responds to first order and second order movement characteristics (constant speed vs. accelerating objects)
-* Avoids setpoint oscillation common in traditional PID systems
-* Performance optimized with fast C++ api's, asynchronous multithreading, and multiprocessing.
+	* AI model predicts future locations when objects are occluded temporarily.
+* Dynamically responds to different movement characteristics (constant speed vs. accelerating objects), avoiding oscillations and overshooting common in traditional PID systems.
+* Performance optimized with low level C++ API's
 * Highly flexable
-	* Can utilize plain PIDS, Autotuned PIDS, or an AI to calculate angles 
-	* Use of RCNN, Cascade, or Yolo5 machine vision models. Plan to add more in future.
-	* Can be configured to different resoultuion/speed cameras and servos
+	* Can utilize PIDS, Autotuned PIDS, or an AI to calculate angle vectors.
+	* Use of different machine vision models.
+	* Can be configured to different resolution/speed cameras and servos.
 
 ## Recommended Hardware
 * [Raspberry Pi 4 Model B](https://www.raspberrypi.org/products/raspberry-pi-4-model-b/) or [JETSON XAVIER NX](https://www.nvidia.com/en-us/autonomous-machines/embedded-systems/jetson-xavier-nx/)

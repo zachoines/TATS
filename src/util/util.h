@@ -404,13 +404,13 @@ namespace Utility {
 				r1 = - errorNewScaled;
 			}
 			
-			if (errorNewScaled <= errorOldScaled) {
+			if (errorNewScaled < errorOldScaled) {
 				r2 = 0.0;
 			}
 			else {
-				r2 = (errorNewScaled - errorOldScaled);
+				r2 = (errorOldScaled - errorNewScaled);
 			}
-			
+
 			return done ? -2.0 : ((r1 * w1) + (r2 * w2));	
 		}	
 	}

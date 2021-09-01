@@ -474,7 +474,14 @@ Utility::SR Env::step(double actions[NUM_SERVOS][NUM_ACTIONS], bool rescale, dou
             throw std::runtime_error("State must represent a complete transition");
         }
         else {
-            stepResults.servos[servo].reward = Utility::pidErrorToReward(static_cast<int>(currentError), static_cast<int>(lastError), _config->dims[servo] / 2, _currentData[servo].done, false, 0.0);
+            if (empty[servo]) {
+                stepResults.servos[servo].reward = 0.0;
+            } else if (static_cast<bool>(_lastData[servo].tracking)) {
+                stepResults.servos[servo].reward = Utility::pidErrorToReward(static_cast<int>(currentError), static_cast<int>(lastError), _config->dims[servo] / 2, _currentData[servo].done, false, 0.0);
+            } else {
+                stepResults.servos[servo].reward = -currentError / static_cast<double>(_config->dims[servo]);
+            }
+            
             stepResults.servos[servo].errors[0] = stepResults.servos[servo].reward;
             if (_config->usePOT) {
                 stepResults.servos[servo].errors[1] = Utility::predictedObjectLocationToReward(static_cast<int>(rescaledActions[servo][1]), static_cast<int>(_currentData[servo].obj), _config->dims[servo], _currentData[servo].done, false, 0.0);

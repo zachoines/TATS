@@ -145,22 +145,22 @@ int main() {
     config = new Utility::Config();
 
     // Setup train mode options
-    config->trainMode = true; /* Enable Train mode */
+    config->trainMode = false; /* Enable Train mode */
     config->initialRandomActions = true; /* Fill replay buffer with random experiances */
     config->numInitialRandomActions = 2500;
     config->lossCountMax = 0; /* Slows training down */
     config->multiProcess = true; /* Offloads SAC training in another process */
-    config->disableServo[0] = true; /* Turn on pan during training */
+    config->disableServo[0] = false; /* Turn on pan during training */
     config->disableServo[1] = false; /* Turn off tilt during training */
-    config->detector = Utility::DetectorType::CASCADE; /* Faster and more precise for training */
-    config->detectorPath = "/models/haar/haarcascade_frontalface_default.xml"; 
-    config->targets = { "face" };
-    config->classes = { "face" };
+    // config->detector = Utility::DetectorType::CASCADE; /* Faster and more precise for training */
+    // config->detectorPath = "/models/haar/haarcascade_frontalface_default.xml"; 
+    // config->targets = { "face" };
+    // config->classes = { "face" };
     config->logOutput = true;
     config->minBufferSize = 2000;
     config->batchSize = 128;
     config->maxStepsPerEpisode = 50;
-    config->showVideo = false;
+    config->showVideo = true;
     config->draw = true;
     config->actionType = Utility::ActionType::SPEED; // AI outputs a throttle in a direction
 
