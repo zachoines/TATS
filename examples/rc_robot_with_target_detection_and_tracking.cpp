@@ -4,30 +4,22 @@
 #include <csignal>
 #include <sys/prctl.h>  /* prctl */
 
-std::atomic<bool> startTATSFlag = false;
-
 // Local Function hoisting
-unsigned long getTimestamp(struct Signal& s);
-int mapSpeeds(unsigned char val, int pwm_min, int pwm_mid, int pwm_max);
+double mapSpeed(unsigned char val, double map_low, double map_mid, double map_high);
 
 // Signal handlers
 static void sig_handler(int signum);
-volatile sig_atomic_t sig_value1;
-volatile bool stopFlag = false;
+std::atomic<bool> stopFlag = false;
 
 // Data for RF24
-union bytesToTimestamp {
-  unsigned char buffer[4];
-  unsigned long timestamp;
-} timestamp_converter;
-enum data { wLeft = 0, wRight = 1, sUp = 2, sDown = 3, t1 = 4, t2 = 5, t3 = 6, t4 = 7 };
+enum data { LeftY = 0, LeftX = 1, RightY = 2, RightX = 3, L1 = 4, R1 = 5, t1 = 6, t2 = 7, t3 = 8, t4 = 9};
 struct Signal {
-  unsigned char buffer[8];
+  unsigned char buffer[10] = { 0 };
 
   bool operator == (struct Signal& a)
   {
-    for (int i = 0; i < 4; i++) {
-      if (abs(buffer[i] - a.buffer[i]) > 2) {
+    for (int i = 0; i < 6; i++) {
+      if (abs(buffer[i] - a.buffer[i]) > 0) {
         return false;
       }
     }
@@ -37,7 +29,7 @@ struct Signal {
 
   struct Signal& operator = (struct Signal& a)
   {
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 10; i++) {
       this->buffer[i] = a.buffer[i];
     }
 
@@ -51,6 +43,8 @@ control::Wire* wire = nullptr;
 control::PCA9685* pwm = nullptr;
 control::ServoKit* servos = nullptr;
 control::TATS* targetTrackingSystem = nullptr;
+double previousActions[2] = { 0.0 };
+double speeds[2] = { 0.0 };
 
 // Overridden with custom logic, alternative to the callbacks if only one TATS object
 void control::TATS::onTargetUpdate(control::INFO info, EVENT eventType) {
@@ -66,6 +60,8 @@ void control::TATS::onTargetUpdate(control::INFO info, EVENT eventType) {
 }
 
 void control::TATS::onServoUpdate(double pan, double tilt) {
+    previousActions[1] = pan;
+    previousActions[0] = tilt;
 //    std::cout << "Pan: " 
 //    << std::to_string(Utility::rescaleAction(pan, -45.0, 45.0)) 
 //    << ", Tilt: " 
@@ -82,27 +78,16 @@ int main() {
     // Setup eval mode options
     config->trainMode = false; /* Disable train mode */
     config->logOutput = false; /* Disable debug messages */
+    config->actionType = Utility::ActionType::SPEED;
+    config->detector = Utility::DetectorType::CASCADE; /* Faster and more precise for training */
+    config->detectorPath = "/models/haar/haarcascade_frontalface_default.xml"; 
+    config->targets = { "face" };
+    config->classes = { "face" };
 
     wire = new control::Wire();
     pwm = new control::PCA9685(0x40, wire);
     servos = new control::ServoKit(pwm);
     targetTrackingSystem = new control::TATS(config, servos);
-        
-    
-    /*  
-        Callbacks follow a different set of rules than onTargetUpdate() and onServoUpdate().
-        1.) Its called asynchronously in another thread (will not slow detection or servo updates)
-        2.) Called after servos AND the target updates. 
-        3.) Allows for instance specific logic.
-        
-        As a result, callbacks have more computational overhead 
-    
-        Example: 
-        std::function<void(control::INFO const&)> updateCallback = [](control::INFO event) {
-            // TODO:: Logic that moves car towards the target given angle
-        };
-        targetTrackingSystem->registerCallback(control::EVENT::ON_UPDATE, updateCallback); 
-    */
    
     std::thread radioThreadT([&] {
         // RF24 inits
@@ -126,24 +111,18 @@ int main() {
 
         // Main program loop
         while(!stopFlag) {
-            if ( startTATSFlag = radio.available(&pipe) ) {
-                oldData = newData;
-                radio.read(&newData.buffer, 8);
-
-                if (getTimestamp(newData) != getTimestamp(oldData)) {
-                    double wls = mapSpeeds(newData.buffer[data::wLeft], 750, 1450, 2250);
-                    double wrs = mapSpeeds(newData.buffer[data::wRight], 750, 1450, 2250);
-                    pwm->writeMicroseconds(10, wls);
-                    pwm->writeMicroseconds(11, wrs);
-                }
-            } 
+            if ( radio.available(&pipe) ) {
+                radio.read(&newData.buffer, 10);
+                char LY = newData.buffer[data::LeftY];
+                char RX = newData.buffer[data::RightY];
+                double wls = mapSpeed(LY, 750.0, 1450.0, 2250.0);
+                double wrs = mapSpeed(RX, 750.0, 1450.0, 2250.0);
+                pwm->writeMicroseconds(10, wls);
+                pwm->writeMicroseconds(11, wrs);
+            }
         }       
     });
-    
-    // Wait until radio signals are being received; 
-    // Could use thread signals instead for performance
-    while (startTATSFlag == false); { Utility::msleep(500); }
-
+        
     std::thread trackingThreadT([&] {
         targetTrackingSystem->init(1);
         cv::VideoCapture* camera = new cv::VideoCapture(0, cv::CAP_GSTREAMER);
@@ -163,11 +142,6 @@ int main() {
         while(!stopFlag) {
             cv::Mat image = Utility::GetImageFromCamera(camera);
             targetTrackingSystem->update(image);
-
-            if (config->showVideo) {
-                cv::imshow("Viewport", image);
-                cv::waitKey(1);
-            }
         }
     });
 
@@ -186,29 +160,19 @@ static void sig_handler(int signum) {
     stopFlag = true;
 }
 
-int mapSpeeds(unsigned char val, int pwm_min=750, int pwm_mid=1450, int pwm_max=2250) {
+double mapSpeed(unsigned char val, double map_low, double map_mid, double map_high) {
 
-    int adjusted;
-    int max = 255;
-    int middle = 127;
-    int clipped = std::clamp(static_cast<int>(val), 0, max);
+    double adjusted;
+    double max = 255.0;
+    double middle = 127.0;
+    double value = static_cast<double>(val);
 
     // Not one-to-one mapping of microseconds on lower and upper speed ranges
-    if (clipped <= middle) {
-        adjusted = Utility::mapOutput(clipped, 0, middle, pwm_min, pwm_mid); 
+    if (value <= middle) {
+        adjusted = Utility::mapOutput(value, 0.0, middle, map_low, map_mid); 
     } else {
-        adjusted = Utility::mapOutput(clipped, middle + 1, max, pwm_mid, pwm_max);
+        adjusted = Utility::mapOutput(value, middle + 1.0, max, map_mid, map_high);
     }
 
     return adjusted;
-}
-
-unsigned long getTimestamp(struct Signal& s) {
-
-  timestamp_converter.buffer[0] = s.buffer[data::t1];
-  timestamp_converter.buffer[1] = s.buffer[data::t2];
-  timestamp_converter.buffer[2] = s.buffer[data::t3];
-  timestamp_converter.buffer[3] = s.buffer[data::t4];
-
-  return timestamp_converter.timestamp;
 }

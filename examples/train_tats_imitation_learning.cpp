@@ -151,7 +151,7 @@ int main() {
     config->lossCountMax = 0; /* Slows training down */
     config->multiProcess = true; /* Offloads SAC training in another process */
     config->disableServo[0] = false; /* Turn on pan during training */
-    config->disableServo[1] = false; /* Turn off tilt during training */
+    config->disableServo[1] = true; /* Turn off tilt during training */
     // config->detector = Utility::DetectorType::CASCADE; /* Faster and more precise for training */
     // config->detectorPath = "/models/haar/haarcascade_frontalface_default.xml"; 
     // config->targets = { "face" };
