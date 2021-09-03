@@ -65,8 +65,6 @@ control::TATS* targetTrackingSystem = nullptr;
 RF24* radio = nullptr;
 
 std::atomic<bool> overrideDisabled = true;
-std::atomic<double> panSpeed = 0.0;
-std::atomic<double> tiltSpeed = 0.0;
 double speed = .20; // For Hitech D951TW (.14sec per 60 deg)
 double anglesPerSecondScaled = 60.0 / speed;
 double maxDeltaAngle = 15.0;

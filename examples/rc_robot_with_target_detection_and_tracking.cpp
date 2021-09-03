@@ -45,6 +45,11 @@ control::ServoKit* servos = nullptr;
 control::TATS* targetTrackingSystem = nullptr;
 double previousActions[2] = { 0.0 };
 double speeds[2] = { 0.0 };
+double speed = .20; // For Hitech D951TW (.14sec per 60 deg)
+double anglesPerSecondScaled = 60.0 / speed;
+double maxDeltaAngle = 15.0;
+std::atomic<bool> servosOverride = false;
+std::chrono::steady_clock::time_point start;
 
 // Overridden with custom logic, alternative to the callbacks if only one TATS object
 void control::TATS::onTargetUpdate(control::INFO info, EVENT eventType) {
@@ -59,14 +64,34 @@ void control::TATS::onTargetUpdate(control::INFO info, EVENT eventType) {
     }
 }
 
+bool control::TATS::actionOverride(double actions[2][1], Utility::ActionType actionType) {
+    std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+    double dt = std::clamp<double>(std::chrono::duration<double>(now - start).count(), 0.0, 1.0); // In seconds
+    start = now;
+  
+    if (servosOverride) {
+        switch(actionType) {
+            case Utility::ActionType::SPEED:
+                actions[1][0] = speeds[1];
+                actions[0][0] = speeds[0];
+                return true;
+            case Utility::ActionType::ANGLE:
+                for (int i = 0; i < 2; i++) {
+                    double preAct = Utility::mapOutput(previousActions[i], -1.0, 1.0, config->anglesLow[i], config->anglesHigh[i]);
+                    actions[i][0] = std::clamp<double>(anglesPerSecondScaled * speeds[i] * dt, -maxDeltaAngle, maxDeltaAngle) + preAct;
+                    actions[i][0] = Utility::mapOutput(std::clamp<double>(actions[i][0], config->anglesLow[i], config->anglesHigh[i]), config->anglesLow[i], config->anglesHigh[i], -1.0, 1.0);
+                }
+                return true;
+        }
+    } else {
+        return false;
+    }
+    
+}
+
 void control::TATS::onServoUpdate(double pan, double tilt) {
     previousActions[1] = pan;
     previousActions[0] = tilt;
-//    std::cout << "Pan: " 
-//    << std::to_string(Utility::rescaleAction(pan, -45.0, 45.0)) 
-//    << ", Tilt: " 
-//    << std::to_string(Utility::rescaleAction(tilt, -45.0, 45.0)) 
-//    << std::endl;
 }
 
 int main() {
@@ -113,12 +138,20 @@ int main() {
         while(!stopFlag) {
             if ( radio.available(&pipe) ) {
                 radio.read(&newData.buffer, 10);
-                char LY = newData.buffer[data::LeftY];
-                char RX = newData.buffer[data::RightY];
-                double wls = mapSpeed(LY, 750.0, 1450.0, 2250.0);
-                double wrs = mapSpeed(RX, 750.0, 1450.0, 2250.0);
-                pwm->writeMicroseconds(10, wls);
-                pwm->writeMicroseconds(11, wrs);
+                
+                if (newData.buffer[data::L1] || newData.buffer[data::R1]) {
+                    servosOverride = !servosOverride;
+                }
+
+                if (!servosOverride) {
+                    double wls = mapSpeed(newData.buffer[data::LeftY], 750.0, 1450.0, 2250.0);
+                    double wrs = mapSpeed(newData.buffer[data::RightY], 750.0, 1450.0, 2250.0);
+                    pwm->writeMicroseconds(10, wls);
+                    pwm->writeMicroseconds(11, wrs);    
+                } else {
+                    speeds[0] = mapSpeed(newData.buffer[data::LeftY], -1.0, 0.0, 1.0);
+                    speeds[1] = mapSpeed(newData.buffer[data::RightX], -1.0, 0.0, 1.0);
+                }
             }
         }       
     });
