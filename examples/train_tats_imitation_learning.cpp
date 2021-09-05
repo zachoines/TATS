@@ -83,56 +83,61 @@ std::chrono::steady_clock::time_point start;
     2.) Angles supplied by actionOverride
     3.) Angles predicted by TATS
 */
-bool control::TATS::actionOverride(double actions[2][1], Utility::ActionType actionType) {
+// bool control::TATS::actionOverride(double actions[NUM_SERVOS][NUM_ACTIONS], Utility::ActionType actionType) {
 
-    Signal newData;
-    uint8_t pipe = 0;
+//     Signal newData;
+//     uint8_t pipe = 0;
 
-    std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-    double dt = std::clamp<double>(std::chrono::duration<double>(now - start).count(), 0.0, 1.0); // In seconds
-    start = now;
+//     std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+//     double dt = std::clamp<double>(std::chrono::duration<double>(now - start).count(), 0.0, 1.0); // In seconds
+//     start = now;
   
-    if ( radio->available(&pipe) ) {
-        radio->read(&newData.buffer, 10);
-        char LY = newData.buffer[data::LeftY];
-        char RX = newData.buffer[data::RightX];
-        speeds[0] = mapSpeed(LY, -1.0, 0.0, 1.0);
-        speeds[1] = mapSpeed(RX, -1.0, 0.0, 1.0);
+//     if ( radio->available(&pipe) ) {
+//         radio->read(&newData.buffer, 10);
+//         char LY = newData.buffer[data::LeftY];
+//         char RX = newData.buffer[data::RightX];
+//         speeds[0] = mapSpeed(LY, -1.0, 0.0, 1.0);
+//         speeds[1] = mapSpeed(RX, -1.0, 0.0, 1.0);
         
-        if (newData.buffer[data::L1] || newData.buffer[data::R1]) {
-            overrideDisabled = !overrideDisabled;
-        }
-    }
+//         if (newData.buffer[data::L1] || newData.buffer[data::R1]) {
+//             overrideDisabled = !overrideDisabled;
+//         }
+//     }
 
-    switch(actionType) {
-        case Utility::ActionType::SPEED:
-            if (!overrideDisabled) {
-                actions[1][0] = speeds[1];
-                actions[0][0] = speeds[0];
-                return true;
-            } else {
-                return false;
-            } 
-            break;
-        case Utility::ActionType::ANGLE:
-            if (!overrideDisabled) {
-                for (int i = 0; i < 2; i++) {
-                    double preAct = Utility::mapOutput(previousActions[i], -1.0, 1.0, config->anglesLow[i], config->anglesHigh[i]);
-                    actions[i][0] = std::clamp<double>(anglesPerSecondScaled * speeds[i] * dt, -maxDeltaAngle, maxDeltaAngle) + preAct;
-                    actions[i][0] = Utility::mapOutput(std::clamp<double>(actions[i][0], config->anglesLow[i], config->anglesHigh[i]), config->anglesLow[i], config->anglesHigh[i], -1.0, 1.0);
-                }
-                return true;
-            } else {
-                return false;
-            }            
-            break;
-    }
-}
+//     std::cout << "current speed: " << std::to_string(speeds[1]);
+//     std::cout << ", last angle: " << std::to_string(previousActions[1]);
+//     std::cout << ", dt: " << std::to_string(dt);
+//     std::cout << std::endl;
 
-void control::TATS::onServoUpdate(double pan, double tilt) {
-    previousActions[1] = pan;
-    previousActions[0] = tilt;
-}
+//     switch(actionType) {
+//         case Utility::ActionType::SPEED:
+//             if (!overrideDisabled) {
+//                 actions[0][0] = speeds[0];
+//                 actions[1][0] = speeds[1];
+//                 return true;
+//             } else {
+//                 return false;
+//             } 
+//             break;
+//         case Utility::ActionType::ANGLE:
+//             if (!overrideDisabled) {
+//                 for (int i = 0; i < 2; i++) {
+//                     double preAct = Utility::mapOutput(previousActions[i], -1.0, 1.0, config->anglesLow[i], config->anglesHigh[i]);
+//                     actions[i][0] = std::clamp<double>(anglesPerSecondScaled * speeds[i] * dt, -maxDeltaAngle, maxDeltaAngle) + preAct;
+//                     actions[i][0] = Utility::mapOutput(std::clamp<double>(actions[i][0], config->anglesLow[i], config->anglesHigh[i]), config->anglesLow[i], config->anglesHigh[i], -1.0, 1.0);
+//                 }
+//                 return true;
+//             } else {
+//                 return false;
+//             }            
+//             break;
+//     }
+// }
+
+// void control::TATS::onServoUpdate(double pan, double tilt) {
+//     previousActions[1] = pan;
+//     previousActions[0] = tilt;
+// }
 
 int main() {
     start = std::chrono::steady_clock::now();
@@ -145,22 +150,28 @@ int main() {
     // Setup train mode options
     config->trainMode = false; /* Enable Train mode */
     config->initialRandomActions = true; /* Fill replay buffer with random experiances */
-    config->numInitialRandomActions = 2500;
-    config->lossCountMax = 0; /* Slows training down */
+    config->numInitialRandomActions = 5000;
     config->multiProcess = true; /* Offloads SAC training in another process */
-    config->disableServo[0] = false; /* Turn on pan during training */
-    config->disableServo[1] = true; /* Turn off tilt during training */
+    config->logOutput = true;
+    config->minBufferSize = 2000;
+    config->batchSize = 256;
+    config->maxStepsPerEpisode = 50;
+    config->actionType = Utility::ActionType::SPEED; // AI outputs a throttle in a direction
+    
+    // config->lossCountMax = 0; /* Slows training down */
     // config->detector = Utility::DetectorType::CASCADE; /* Faster and more precise for training */
     // config->detectorPath = "/models/haar/haarcascade_frontalface_default.xml"; 
     // config->targets = { "face" };
     // config->classes = { "face" };
-    config->logOutput = true;
-    config->minBufferSize = 2000;
-    config->batchSize = 128;
-    config->maxStepsPerEpisode = 50;
-    config->showVideo = true;
-    config->draw = true;
-    config->actionType = Utility::ActionType::SPEED; // AI outputs a throttle in a direction
+    // config->disableServo[0] = true; /* Turn on tilt during training */
+    // config->disableServo[1] = false; /* Turn off pan during training */
+    // config->anglesHigh[0] = 45.0;
+    // config->anglesHigh[1] = 45.0;
+    // config->anglesLow[0] = -45.0;
+    // config->anglesLow[1] = -45.0;
+    // config->showVideo = true;
+    // config->draw = true;
+    
 
     wire = new control::Wire();
     pwm = new control::PCA9685(0x40, wire);

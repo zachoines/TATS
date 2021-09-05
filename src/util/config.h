@@ -18,7 +18,7 @@ namespace Utility {
     #define HISTORY_BUFFER_SIZE 6                // Number of errors/outputs to hold onto accross application
     #define NUM_HIDDEN 256                       // Number of nodes in each networks hidden layer
     #define USE_PIDS false                       // When enabled, AI directly computes angles angles are non-negative, from 0 to 180, otherwise -90 to 90.
-    #define USE_POT false                        // Use predictive object location
+    #define USE_POT true                         // Use predictive object location
     #define NUM_ACTIONS ((USE_PIDS) ? 3 : ((USE_POT) ? 2 : 1) ) 
 
     enum DetectorType {
@@ -210,7 +210,6 @@ namespace Utility {
                 state[17] = deltaAngles[4];
                 state[18] = angleTimestamps[4];
                 state[19] = errorTimestamps[4];
-                // state[20] = deltaTime > 0.0 ? pidStateData.dt : 0.0;
                 state[20] = deltaTime > 0.0 ? spf : 0.0;
                 state[21] = tracking;
                 break;

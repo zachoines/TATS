@@ -316,7 +316,7 @@ namespace Utility {
 		double r1 = 0.0; // baseline error
 		double r2 = 0.0; // transition error
 		double w1 = 1.0; // baseline error weight
-		double w2 = 2.0; // transition error weight
+		double w2 = 1.0; // transition error weight
 		
 		// Indicate target direction
 		const bool RIGHT = true;

@@ -418,22 +418,42 @@ namespace control {
                         goto lostTracking;
                     } else {                
                         if (__results.size() > 1) {
-                            
-                            int bestDistance = __config->dims[0];
-                            for (auto res : __results) {
-                                // TODO:: Assumption below potentially wrong, use POT in the future
-                                if (__currentTarget == res.target) {   
-                                    cv::Point2i a = res.center;
-                                    cv::Point2i b = (__roi.tl() + __roi.br()) / 2;
-                                    int distance = std::sqrt<int>( (a.x-b.x) * (a.x-b.x) + (a.y-b.y) * (a.y-b.y) );
 
-                                    if (distance <= bestDistance) {
-                                        bestDistance = distance;
-                                        result = res;
-                                        __roi = result.boundingBox;
+                            if (__config->usePOT) {
+                                int bestDistance = __config->dims[0];
+                                double locations[__numberServos] = { 0.0 };
+                                __servos->getPredictedObjectLocation(locations);
+       
+                                for (auto res : __results) {
+                                    if (__currentTarget == res.target) {   
+                                        cv::Point2i a = res.center;
+                                        int x = (a.x-static_cast<int>(std::floor(locations[1])));
+                                        int y = (a.y-static_cast<int>(std::floor(locations[0])));
+                                        int distance = std::sqrt<int>((x * x) + (y * y));
+
+                                        if (distance < bestDistance) {
+                                            bestDistance = distance;
+                                            result = res;
+                                            __roi = result.boundingBox;
+                                        }
                                     }
-                                }
-                            } 
+                                } 
+                            } else {
+                                int bestDistance = __config->dims[0];
+                                for (auto res : __results) {
+                                    if (__currentTarget == res.target) {   
+                                        cv::Point2i a = res.center;
+                                        cv::Point2i b = (__roi.tl() + __roi.br()) / 2;
+                                        int distance = std::sqrt<int>(((a.x-b.x) * (a.x-b.x)) + ((a.y-b.y) * (a.y-b.y)));
+
+                                        if (distance <= bestDistance) {
+                                            bestDistance = distance;
+                                            result = res;
+                                            __roi = result.boundingBox;
+                                        }
+                                    }
+                                } 
+                            }
                         } else {
                             if (__currentTarget == __results[0].target) {
                                 // TODO:: Trigger target detect event
@@ -521,120 +541,121 @@ namespace control {
                         }
                     }
                 }
-                else if (!__trainMode && __config->usePOT) { // TODO:: REMOVE this after the new POT is created
-                    __lossCount++;
-                    __frameCount = 0.0;
-                    __rechecked = false;
+                // else if (!__trainMode && __config->usePOT) { // TODO:: REMOVE this after the new POT is created
+                //     __lossCount++;
+                //     __frameCount = 0.0;
+                //     __rechecked = false;
 
-                    // Target is out of sight, inform PID's, model, and servos
-                    if (__lossCount >= __lossCountMax) {
-                        // TODO:: Tigger on target lost track
-                        __trackCount = 0;
-                        __isSearching = true;
-                        __isTracking = false;
-                        __lossCount = 0;
-                        __frameCenterX = frame.cols / 2;
-                        __frameCenterY = frame.rows / 2;
+                //     // Target is out of sight, inform PID's, model, and servos
+                //     if (__lossCount >= __lossCountMax) {
+                //         // TODO:: Tigger on target lost track
+                //         __trackCount = 0;
+                //         __isSearching = true;
+                //         __isTracking = false;
+                //         __lossCount = 0;
+                //         __frameCenterX = frame.cols / 2;
+                //         __frameCenterY = frame.rows / 2;
                         
-                        // Enter State data
-                        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-                        double spf = std::chrono::duration<double>(now - detectLoopStart).count();
-                        double timestamp = std::chrono::duration<double, std::kilo>(now - __execbegin).count();
+                //         // Enter State data
+                //         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+                //         double spf = std::chrono::duration<double>(now - detectLoopStart).count();
+                //         double timestamp = std::chrono::duration<double, std::kilo>(now - __execbegin).count();
 
-                        Utility::ED eventDataArray[2] {
-                            {
-                                true,
-                                static_cast<double>(__frameCenterY),
-                                static_cast<double>(__frameCenterY),
-                                0.0,
-                                0.0,
-                                static_cast<double>(__frameCenterY * 2), // Max error
-                                timestamp,
-                                spf,
-                                0.0
-                            },
-                            {
-                                true,
-                                static_cast<double>(__frameCenterX),
-                                static_cast<double>(__frameCenterX),
-                                0.0,
-                                0.0,
-                                static_cast<double>(__frameCenterX * 2),
-                                timestamp,
-                                spf,
-                                0.0
-                            }
-                        };
+                //         Utility::ED eventDataArray[2] {
+                //             {
+                //                 true,
+                //                 static_cast<double>(__frameCenterY),
+                //                 static_cast<double>(__frameCenterY),
+                //                 0.0,
+                //                 0.0,
+                //                 static_cast<double>(__frameCenterY * 2), // Max error
+                //                 timestamp,
+                //                 spf,
+                //                 0.0
+                //             },
+                //             {
+                //                 true,
+                //                 static_cast<double>(__frameCenterX),
+                //                 static_cast<double>(__frameCenterX),
+                //                 0.0,
+                //                 0.0,
+                //                 static_cast<double>(__frameCenterX * 2),
+                //                 timestamp,
+                //                 spf,
+                //                 0.0
+                //             }
+                //         };
                         
-                        try {
-                            __queueEvent(EVENT::ON_LOST);
-                            onTargetUpdate(INFO(
-                                -1.0, 
-                                -1.0, 
-                                __targetId,
-                                !__isSearching
-                            ), EVENT::ON_LOST);
-                            __servos->update(eventDataArray);
-                        } catch (...) {
-                            throw std::runtime_error("cannot update event data");
-                        }
-                    } else if (!__isSearching && !__programStart && __trackCount > 3) {
+                //         try {
+                //             __queueEvent(EVENT::ON_LOST);
+                //             onTargetUpdate(INFO(
+                //                 -1.0, 
+                //                 -1.0, 
+                //                 __targetId,
+                //                 !__isSearching
+                //             ), EVENT::ON_LOST);
+                //             __servos->update(eventDataArray);
+                //         } catch (...) {
+                //             throw std::runtime_error("cannot update event data");
+                //         }
+                //     } else if (!__isSearching && !__programStart && __trackCount > 3) {
                         
-                        // Get the prediction location of object relative to frame center
-                        if (__config->logOutput) {
-                            std::cout << "Using Predictive Object Tracking: frame # " << std::to_string(__lossCount) << std::endl;
-                        }
+                //         // Get the prediction location of object relative to frame center
+                //         if (__config->logOutput) {
+                //             std::cout << "Using Predictive Object Tracking: frame # " << std::to_string(__lossCount) << std::endl;
+                //         }
                         
-                        // Enter state data
-                        double locations[__numberServos] = { 0.0 };
-                        __servos->getPredictedObjectLocation(locations);
-                        __frameCenterX = __config->dims[1] / 2;
-                        __frameCenterY = __config->dims[0] / 2;
+                //         // Enter state data
+                //         double locations[__numberServos] = { 0.0 };
+                //         __servos->getPredictedObjectLocation(locations);
+                //         __frameCenterX = __config->dims[1] / 2;
+                //         __frameCenterY = __config->dims[0] / 2;
 
-                        // Enter State data
-                        std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-                        double spf = std::chrono::duration<double>(now - detectLoopStart).count();
-                        double timestamp = std::chrono::duration<double, std::kilo>(now - __execbegin).count();
+                //         // Enter State data
+                //         std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+                //         double spf = std::chrono::duration<double>(now - detectLoopStart).count();
+                //         double timestamp = std::chrono::duration<double, std::kilo>(now - __execbegin).count();
 
-                        Utility::ED eventDataArray[2] {
-                            {
-                                false,
-                                static_cast<double>(__frameCenterY) - locations[0],
-                                static_cast<double>(__frameCenterY),
-                                0.0,
-                                0.0,
-                                locations[0], // Predicted location
-                                timestamp,
-                                spf,
-                                1.0
-                            },
-                            {
-                                false,
-                                static_cast<double>(__frameCenterX) - locations[1],
-                                static_cast<double>(__frameCenterX),
-                                0.0,
-                                0.0,
-                                locations[1],
-                                timestamp,
-                                spf,
-                                1.0
-                            }
-                        };
+                //         Utility::ED eventDataArray[2] {
+                //             {
+                //                 false,
+                //                 static_cast<double>(__frameCenterY) - locations[0],
+                //                 static_cast<double>(__frameCenterY),
+                //                 0.0,
+                //                 0.0,
+                //                 locations[0], // Predicted location
+                //                 timestamp,
+                //                 spf,
+                //                 1.0
+                //             },
+                //             {
+                //                 false,
+                //                 static_cast<double>(__frameCenterX) - locations[1],
+                //                 static_cast<double>(__frameCenterX),
+                //                 0.0,
+                //                 0.0,
+                //                 locations[1],
+                //                 timestamp,
+                //                 spf,
+                //                 1.0
+                //             }
+                //         };
                         
-                        try {
-                            __queueEvent(EVENT::ON_UPDATE);
-                            onTargetUpdate(INFO(
-                                -1.0, 
-                                -1.0, 
-                                __targetId,
-                                !__isSearching
-                            ), EVENT::ON_UPDATE);
-                            __servos->update(eventDataArray);
-                        } catch (...) {
-                            throw std::runtime_error("cannot update event data");
-                        }
-                    }
-                } else if (__lossCount < __maxPredictiveSteps && __trackCount > 3) { // let the AI try to predict where the object will be
+                //         try {
+                //             __queueEvent(EVENT::ON_UPDATE);
+                //             onTargetUpdate(INFO(
+                //                 -1.0, 
+                //                 -1.0, 
+                //                 __targetId,
+                //                 !__isSearching
+                //             ), EVENT::ON_UPDATE);
+                //             __servos->update(eventDataArray);
+                //         } catch (...) {
+                //             throw std::runtime_error("cannot update event data");
+                //         }
+                //     }
+                // } 
+                else if (__lossCount < __maxPredictiveSteps && __trackCount > 3) { // let the AI try to predict where the object will be
                     __lossCount++;
                     __frameCount = 0.0;
                     __rechecked = false;

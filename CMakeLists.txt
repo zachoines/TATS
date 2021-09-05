@@ -18,9 +18,9 @@ add_definitions(-DTORCH_VERSION_PATCH=${Torch_VERSION_PATCH})
 
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 
-# file(GLOB_RECURSE SOURCES "./examples/train_tats_imitation_learning.cpp" "./src/*/*.cpp" "./src/*/*.h")
+file(GLOB_RECURSE SOURCES "./examples/train_tats_imitation_learning.cpp" "./src/*/*.cpp" "./src/*/*.h")
 # file(GLOB_RECURSE SOURCES "./examples/train_tats_multiprocess.cpp" "./src/*/*.cpp" "./src/*/*.h")
-file(GLOB_RECURSE SOURCES "./examples/rc_robot_with_target_detection_and_tracking.cpp" "./src/*/*.cpp" "./src/*/*.h")
+# file(GLOB_RECURSE SOURCES "./examples/rc_robot_with_target_detection_and_tracking.cpp" "./src/*/*.cpp" "./src/*/*.h")
 
 add_executable(TATS ${SOURCES})
 
